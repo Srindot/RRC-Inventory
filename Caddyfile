@@ -1,0 +1,59 @@
+# Caddyfile for RRC Inventory Application
+# This configuration routes API requests to Go backend and serves SvelteKit static files
+
+# For local development (change to your domain for production)
+:80 {
+    # Handle API requests - proxy to Go backend
+    handle /api/* {
+        reverse_proxy backend:8080
+    }
+
+    # Serve static frontend files from the frontend container
+    handle /* {
+        reverse_proxy frontend:80
+    }
+
+    # Enable gzip compression
+    encode gzip
+
+    # Security headers
+    header {
+        # Enable HSTS
+        Strict-Transport-Security max-age=31536000;
+        # Prevent MIME sniffing
+        X-Content-Type-Options nosniff
+        # Enable XSS protection
+        X-XSS-Protection "1; mode=block"
+        # Prevent clickjacking
+        X-Frame-Options DENY
+        # Remove server info
+        -Server
+    }
+
+    # Logging
+    log {
+        output stdout
+        format console
+    }
+}
+
+# For production with SSL (uncomment and modify domain as needed)
+# yourdomain.com {
+#     handle /api/* {
+#         reverse_proxy backend:8080
+#     }
+#     
+#     handle /* {
+#         reverse_proxy frontend:80
+#     }
+#     
+#     encode gzip
+#     
+#     header {
+#         Strict-Transport-Security max-age=31536000;
+#         X-Content-Type-Options nosniff
+#         X-XSS-Protection "1; mode=block"
+#         X-Frame-Options DENY
+#         -Server
+#     }
+# }

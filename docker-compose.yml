@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  # Go Backend API
+  backend:
+    build: 
+      context: ./backend
+      target: production
+    restart: always
+    environment:
+      - DATABASE_URL=postgresql://user:password@db:5432/mydatabase
+    depends_on:
+      - db
+
+  # SvelteKit Frontend (built as static files)
+  frontend:
+    build: 
+      context: ./frontend
+      target: production
+    restart: always
+
+  # PostgreSQL Database
+  db:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=mydatabase
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # Caddy Reverse Proxy & Web Server
+  caddy:
+    image: caddy:2-alpine
+    restart: always
+    ports:
+      - "0.0.0.0:80:80"
+      - "0.0.0.0:443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - backend
+      - frontend
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:

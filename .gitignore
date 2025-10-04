@@ -1,0 +1,40 @@
+# Docker
+.dockerignore
+
+# Go
+backend/tmp/
+backend/*.log
+backend/build-errors.log
+
+# Node.js
+frontend/node_modules/
+frontend/build/
+frontend/.svelte-kit/
+frontend/package-lock.json
+
+# Environment files
+.env
+.env.local
+.env.production
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Database
+*.db
+*.sqlite
+
+# Temporary files
+tmp/
+temp/

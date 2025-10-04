@@ -1,0 +1,25 @@
+# Development Caddyfile for RRC Inventory Application
+:80 {
+    # Handle API requests - proxy to Go backend
+    handle /api/* {
+        reverse_proxy backend:8080
+    }
+
+    # In development, proxy to SvelteKit dev server
+    handle /* {
+        reverse_proxy frontend:5173
+    }
+
+    # Enable CORS for development
+    header {
+        Access-Control-Allow-Origin *
+        Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
+        Access-Control-Allow-Headers "Origin, Content-Type, Authorization"
+    }
+
+    # Logging
+    log {
+        output stdout
+        format console
+    }
+}
