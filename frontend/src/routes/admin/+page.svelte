@@ -376,6 +376,22 @@
         return new Date(dateString).toLocaleDateString();
     }
 
+    function formatExpectedReturn(dateString) {
+        const expectedDate = new Date(dateString);
+        const now = new Date();
+        const diffMs = expectedDate.getTime() - now.getTime();
+        const diffHours = Math.ceil(diffMs / (1000 * 60 * 60));
+        const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
+        if (diffMs < 0) {
+            return `Overdue (${formatDate(dateString)})`;
+        } else if (diffHours <= 24) {
+            return `${diffHours} hour${diffHours !== 1 ? 's' : ''} (${expectedDate.toLocaleString()})`;
+        } else {
+            return `${diffDays} day${diffDays !== 1 ? 's' : ''} (${expectedDate.toLocaleString()})`;
+        }
+    }
+
     function isOverdue(returnDate) {
         return new Date(returnDate) < new Date();
     }
@@ -433,6 +449,9 @@
     {#if !isLoggedIn}
         <div class="login-container">
             <div class="login-header">
+                <button class="close-btn" on:click={() => window.location.href = '/'} title="Go back to main page">
+                    ✕
+                </button>
                 <img src="/rrc_logo.png" alt="RRC Logo" class="login-logo" />
                 <h1>Admin Login</h1>
             </div>
@@ -593,8 +612,25 @@
                             {#each pendingLoans as loan}
                                 <div class="loan-card pending">
                                     <div class="loan-header">
-                                        <h3>{loan.item_name}</h3>
-                                        <span class="status-badge pending">Pending</span>
+                                        <div class="loan-title-section">
+                                            <h3>{loan.item_name}</h3>
+                                            {#if loan.photo_filename}
+                                                <div class="item-image">
+                                                    <img 
+                                                        src="/api/photos/{loan.photo_filename}" 
+                                                        alt="{loan.item_name}"
+                                                        on:error={(e) => e.target.style.display = 'none'}
+                                                    />
+                                                </div>
+                                            {:else}
+                                                <div class="item-image placeholder">
+                                                    <span>📷</span>
+                                                </div>
+                                            {/if}
+                                        </div>
+                                        <div class="status-badges">
+                                            <span class="status-badge pending">Pending</span>
+                                        </div>
                                     </div>
                                     <div class="loan-details">
                                         <p><strong>Borrower:</strong> {loan.borrower_name}</p>
@@ -602,14 +638,9 @@
                                         <p><strong>Lab:</strong> {loan.lab_location}</p>
                                         <p><strong>Quantity:</strong> {loan.quantity_borrowed}</p>
                                         <p><strong>Purpose:</strong> {loan.purpose}</p>
-                                        <p><strong>Expected Return:</strong> {loan.expected_return_date}</p>
+                                        <p><strong>Expected Return:</strong> {formatExpectedReturn(loan.expected_return_date)}</p>
                                         <p><strong>Requested:</strong> {formatDate(loan.CreatedAt)}</p>
                                     </div>
-                                    {#if loan.photo_filename}
-                                        <div class="photo-section">
-                                            <p><strong>Photo:</strong> {loan.photo_filename}</p>
-                                        </div>
-                                    {/if}
                                     <div class="loan-actions">
                                         <button 
                                             class="approve-btn" 
@@ -646,15 +677,32 @@
                             {#each pendingReturns as loan}
                                 <div class="loan-card return-pending">
                                     <div class="loan-header">
-                                        <h3>{loan.item_name}</h3>
-                                        <span class="status-badge return-pending">Return Pending</span>
+                                        <div class="loan-title-section">
+                                            <h3>{loan.item_name}</h3>
+                                            {#if loan.photo_filename}
+                                                <div class="item-image">
+                                                    <img 
+                                                        src="/api/photos/{loan.photo_filename}" 
+                                                        alt="{loan.item_name}"
+                                                        on:error={(e) => e.target.style.display = 'none'}
+                                                    />
+                                                </div>
+                                            {:else}
+                                                <div class="item-image placeholder">
+                                                    <span>📷</span>
+                                                </div>
+                                            {/if}
+                                        </div>
+                                        <div class="status-badges">
+                                            <span class="status-badge return-pending">Return Pending</span>
+                                        </div>
                                     </div>
                                     <div class="loan-details">
                                         <p><strong>Borrower:</strong> {loan.borrower_name}</p>
                                         <p><strong>Phone:</strong> {loan.borrower_phone}</p>
                                         <p><strong>Lab:</strong> {loan.lab_location}</p>
                                         <p><strong>Quantity:</strong> {loan.quantity_borrowed}</p>
-                                        <p><strong>Expected Return:</strong> {loan.expected_return_date}</p>
+                                        <p><strong>Expected Return:</strong> {formatExpectedReturn(loan.expected_return_date)}</p>
                                         <p><strong>Return Requested:</strong> {formatDate(loan.return_requested_at)}</p>
                                         {#if isOverdue(loan.expected_return_date)}
                                             <p class="overdue-text"><strong>Status:</strong> OVERDUE</p>
@@ -726,7 +774,7 @@
                                         <p><strong>Phone:</strong> {loan.borrower_phone}</p>
                                         <p><strong>Lab:</strong> {loan.lab_location}</p>
                                         <p><strong>Quantity:</strong> {loan.quantity_borrowed}</p>
-                                        <p><strong>Expected Return:</strong> {loan.expected_return_date}</p>
+                                        <p><strong>Expected Return:</strong> {formatExpectedReturn(loan.expected_return_date)}</p>
                                         {#if loan.status === 'not_found'}
                                             <p><strong>Status:</strong> Marked as not found</p>
                                         {:else}
@@ -920,7 +968,7 @@
                                         <p><strong>Phone:</strong> {loan.borrower_phone}</p>
                                         <p><strong>Quantity:</strong> {loan.quantity_borrowed}</p>
                                         <p><strong>Purpose:</strong> {loan.purpose}</p>
-                                        <p><strong>Expected Return:</strong> {loan.expected_return_date}</p>
+                                        <p><strong>Expected Return:</strong> {formatExpectedReturn(loan.expected_return_date)}</p>
                                         <p><strong>Borrowed:</strong> {formatDate(loan.CreatedAt)}</p>
                                         {#if loan.approved_by}
                                             <p><strong>Approved by:</strong> {loan.approved_by}</p>
@@ -1043,7 +1091,8 @@
         padding: clamp(15px, 3vw, 30px);
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         background: #181825;
-        min-height: 100vh;
+        height: 100vh;
+        overflow-y: auto;
     }
 
     /* Message styles */
@@ -1086,6 +1135,32 @@
         justify-content: center;
         gap: clamp(15px, 3vw, 20px);
         margin-bottom: 30px;
+        position: relative;
+    }
+
+    .close-btn {
+        position: absolute;
+        top: -10px;
+        right: -10px;
+        background: #f38ba8;
+        color: #1e1e2e;
+        border: none;
+        border-radius: 50%;
+        width: 32px;
+        height: 32px;
+        font-size: 16px;
+        font-weight: bold;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s ease;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    }
+
+    .close-btn:hover {
+        background: #eba0ac;
+        transform: scale(1.1);
     }
 
     .login-logo {

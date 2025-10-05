@@ -206,6 +206,22 @@
         return new Date(dateString).toLocaleDateString();
     }
 
+    function formatExpectedReturn(dateString) {
+        const expectedDate = new Date(dateString);
+        const now = new Date();
+        const diffMs = expectedDate.getTime() - now.getTime();
+        const diffHours = Math.ceil(diffMs / (1000 * 60 * 60));
+        const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
+        if (diffMs < 0) {
+            return `Overdue (${formatDate(dateString)})`;
+        } else if (diffHours <= 24) {
+            return `${diffHours} hour${diffHours !== 1 ? 's' : ''} (${expectedDate.toLocaleString()})`;
+        } else {
+            return `${diffDays} day${diffDays !== 1 ? 's' : ''} (${expectedDate.toLocaleString()})`;
+        }
+    }
+
     function goHome() {
         currentView = 'home';
         message = '';
@@ -424,7 +440,12 @@
                 <div class="loans-list">
                     <h3>Borrowed Items:</h3>
                     {#each filteredLoans as loan}
-                        <div class="loan-card">
+                        <div class="loan-card" class:missing={loan.status === 'not_found'}>
+                            {#if loan.status === 'not_found'}
+                                <div class="missing-header">
+                                    <span class="missing-badge">⚠️ MISSING/NOT FOUND</span>
+                                </div>
+                            {/if}
                             <div class="loan-info">
                                 <h4>{loan.item_name}</h4>
                                 <p><strong>Borrower:</strong> {loan.borrower_name}</p>
@@ -433,15 +454,30 @@
                                 <p><strong>Quantity:</strong> {loan.quantity_borrowed}</p>
                                 <p><strong>Purpose:</strong> {loan.purpose}</p>
                                 <p><strong>Borrowed on:</strong> {formatDate(loan.CreatedAt)}</p>
-                                <p><strong>Expected return:</strong> {loan.expected_return_date}</p>
+                                <p><strong>Expected return:</strong> {formatExpectedReturn(loan.expected_return_date)}</p>
+                                {#if loan.status === 'not_found'}
+                                    <p class="missing-note"><strong>Status:</strong> This item has been marked as missing/not found by administrators</p>
+                                {:else if loan.return_requested}
+                                    <p class="return-pending-note"><strong>Status:</strong> Return request submitted - waiting for admin approval</p>
+                                {/if}
                             </div>
-                            <button 
-                                class="return-btn-action" 
-                                on:click={() => returnItem(loan.ID)}
-                                disabled={loading}
-                            >
-                                ✅ Mark as Returned
-                            </button>
+                            {#if loan.status === 'not_found'}
+                                <div class="missing-actions">
+                                    <p class="missing-contact">Please contact administration if you have found this item</p>
+                                </div>
+                            {:else if loan.return_requested}
+                                <div class="return-pending-actions">
+                                    <p class="return-pending-message">✅ Return request submitted! Waiting for admin approval.</p>
+                                </div>
+                            {:else}
+                                <button 
+                                    class="return-btn-action" 
+                                    on:click={() => returnItem(loan.ID)}
+                                    disabled={loading}
+                                >
+                                    ✅ Mark as Returned
+                                </button>
+                            {/if}
                         </div>
                     {/each}
                 </div>
@@ -1052,5 +1088,63 @@
         .option-buttons {
             max-width: 1400px;
         }
+    }
+
+    /* Missing item styles */
+    .loan-card.missing {
+        border: 2px solid #f38ba8;
+        background: rgba(243, 139, 168, 0.1);
+    }
+
+    .missing-header {
+        margin-bottom: 15px;
+    }
+
+    .missing-badge {
+        background: #f38ba8;
+        color: #1e1e2e;
+        padding: 5px 10px;
+        border-radius: 4px;
+        font-weight: bold;
+        font-size: 0.9rem;
+    }
+
+    .missing-note {
+        color: #f38ba8;
+        font-weight: 500;
+        margin-top: 10px;
+    }
+
+    .missing-actions {
+        padding: 15px;
+        background: rgba(243, 139, 168, 0.15);
+        border-radius: 6px;
+        text-align: center;
+    }
+
+    .missing-contact {
+        color: #cdd6f4;
+        font-style: italic;
+        margin: 0;
+    }
+
+    .return-pending-note {
+        color: #fab387;
+        font-weight: 500;
+        margin-top: 10px;
+    }
+
+    .return-pending-actions {
+        padding: 15px;
+        background: rgba(166, 227, 161, 0.15);
+        border-radius: 6px;
+        text-align: center;
+    }
+
+    .return-pending-message {
+        color: #a6e3a1;
+        font-weight: 600;
+        margin: 0;
+        font-size: 1.1rem;
     }
 </style>

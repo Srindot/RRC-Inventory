@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/csv"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log"
 	"mime/multipart"
@@ -190,7 +191,10 @@ func main() {
 		// Get a list of all active loans (for the dashboard)
 		api.GET("/loans/active", func(c *gin.Context) {
 			var loans []Loan
-			if err := db.Where("status = ? AND approval_status = ?", "active", "approved").Find(&loans).Error; err != nil {
+			// Include both active loans and items marked as not found (to show at top of list)
+			if err := db.Where("(status = ? AND approval_status = ?) OR status = ?", "active", "approved", "not_found").
+				Order("CASE WHEN status = 'not_found' THEN 0 ELSE 1 END, created_at DESC").
+				Find(&loans).Error; err != nil {
 				c.JSON(500, gin.H{"error": "Failed to retrieve active loans"})
 				return
 			}
@@ -301,11 +305,22 @@ func main() {
 			err = db.Transaction(func(tx *gorm.DB) error {
 				var loan Loan
 				if err := tx.First(&loan, loanID).Error; err != nil {
+					if errors.Is(err, gorm.ErrRecordNotFound) {
+						return fmt.Errorf("loan not found")
+					}
 					return err
 				}
 
-				if loan.Status == "returned" || loan.ReturnRequested {
-					return gorm.ErrInvalidData
+				if loan.Status == "returned" {
+					return fmt.Errorf("item has already been returned")
+				}
+
+				if loan.ReturnRequested {
+					return fmt.Errorf("return request already submitted for this item")
+				}
+
+				if loan.ApprovalStatus != "approved" {
+					return fmt.Errorf("cannot return item that hasn't been approved for borrowing")
 				}
 
 				now := time.Now()
@@ -319,7 +334,7 @@ func main() {
 			})
 
 			if err != nil {
-				c.JSON(500, gin.H{"error": "Failed to process return request: " + err.Error()})
+				c.JSON(400, gin.H{"error": err.Error()})
 				return
 			}
 
@@ -655,13 +670,24 @@ func main() {
 					"ID", "Created At", "Updated At", "Borrower Name", "Borrower Phone",
 					"Item Name", "Lab Location", "Quantity Borrowed", "Expected Return Date",
 					"Purpose", "Photo Filename", "Status", "Approval Status",
-					"Approved By", "Approved At", "Return Requested", "Return Approval Status",
-					"Return Requested At",
+					"Approved By", "Approved At", "Denied At", "Return Requested",
+					"Return Approval Status", "Return Requested At", "Days Since Borrowed",
+					"Is Overdue", "Days Overdue",
 				}
 				writer.Write(header)
 
 				// Write data rows
 				for _, loan := range loans {
+					// Calculate additional fields
+					daysSinceBorrowed := int(time.Since(loan.CreatedAt).Hours() / 24)
+
+					expectedReturnTime, _ := time.Parse("2006-01-02T15:04:05Z07:00", loan.ExpectedReturnDate)
+					isOverdue := time.Now().After(expectedReturnTime)
+					daysOverdue := 0
+					if isOverdue {
+						daysOverdue = int(time.Since(expectedReturnTime).Hours() / 24)
+					}
+
 					record := []string{
 						strconv.Itoa(int(loan.ID)),
 						loan.CreatedAt.Format("2006-01-02 15:04:05"),
@@ -678,9 +704,13 @@ func main() {
 						loan.ApprovalStatus,
 						loan.ApprovedBy,
 						formatTimePtr(loan.ApprovedAt),
+						formatTimePtr(loan.DeniedAt),
 						strconv.FormatBool(loan.ReturnRequested),
 						loan.ReturnApprovalStatus,
 						formatTimePtr(loan.ReturnRequestedAt),
+						strconv.Itoa(daysSinceBorrowed),
+						strconv.FormatBool(isOverdue),
+						strconv.Itoa(daysOverdue),
 					}
 					writer.Write(record)
 				}

@@ -38,13 +38,13 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /main .
 FROM alpine:latest AS production
 
 # Set the working directory
-WORKDIR /
+WORKDIR /app
 
 # Copy ONLY the compiled binary from the builder stage
-COPY --from=builder /main .
+COPY --from=builder /main ./main
 
 # Expose the port that our Go application listens on
 EXPOSE 8080
 
 # This is the command that will run when the container starts
-CMD ["/main"]
+CMD ["./main"]
