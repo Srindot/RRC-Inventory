@@ -585,6 +585,49 @@
         }
     }
 
+    async function deleteAdmin(adminId, adminName, adminUsername) {
+        if (!adminInfo?.is_super_admin) return;
+
+        // Prevent deleting self
+        if (adminUsername === adminInfo.username) {
+            showMessage('Cannot delete yourself', 'error');
+            return;
+        }
+
+        // Prevent deleting main super admin
+        if (adminUsername === 'Srinath') {
+            showMessage('Cannot delete the main super admin account', 'error');
+            return;
+        }
+        
+        if (!confirm(`⚠️ WARNING: This will permanently delete the admin account!\n\nAdmin: ${adminName} (@${adminUsername})\n\nThis action cannot be undone. Are you sure you want to continue?`)) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/admin/delete/${adminId}`, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    requesting_username: adminInfo.username
+                })
+            });
+
+            const result = await response.json();
+            
+            if (response.ok) {
+                showMessage(`Successfully deleted admin: ${result.deleted_admin.name}`, 'success');
+                loadAdminList(); // Reload the admin list
+            } else {
+                showMessage(result.error || 'Failed to delete admin', 'error');
+            }
+        } catch (error) {
+            showMessage('Failed to delete admin', 'error');
+        }
+    }
+
     // Reactive statements
     $: if (currentView === 'pending') {
         loadPendingLoans();
@@ -1511,6 +1554,21 @@
                                             <p class="admin-date">
                                                 Created: {new Date(admin.created_at).toLocaleDateString()}
                                             </p>
+                                        </div>
+                                        <div class="admin-actions">
+                                            {#if admin.username !== adminInfo.username && admin.username !== 'Srinath'}
+                                                <button 
+                                                    class="delete-admin-btn" 
+                                                    on:click={() => deleteAdmin(admin.id, admin.name, admin.username)}
+                                                    title="Delete this admin account"
+                                                >
+                                                    🗑️ Delete
+                                                </button>
+                                            {:else if admin.username === adminInfo.username}
+                                                <span class="current-user-badge">You</span>
+                                            {:else if admin.username === 'Srinath'}
+                                                <span class="protected-user-badge">Protected</span>
+                                            {/if}
                                         </div>
                                     </div>
                                 {/each}
@@ -2885,6 +2943,9 @@
         padding: 20px;
         border: 1px solid #45475a;
         transition: all 0.2s ease;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
     }
 
     .admin-card:hover {
@@ -2913,6 +2974,50 @@
         margin: 8px 0 0 0;
         color: #6c7086;
         font-size: 0.9rem;
+    }
+
+    .admin-actions {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        margin-top: 16px;
+        padding-top: 12px;
+        border-top: 1px solid #45475a;
+    }
+
+    .delete-admin-btn {
+        background: #f38ba8;
+        color: #1e1e2e;
+        border: none;
+        padding: 6px 12px;
+        border-radius: 6px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        font-size: 0.9rem;
+    }
+
+    .delete-admin-btn:hover {
+        background: #eba0ac;
+        transform: translateY(-1px);
+    }
+
+    .current-user-badge {
+        background: #a6e3a1;
+        color: #1e1e2e;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 0.8rem;
+        font-weight: 600;
+    }
+
+    .protected-user-badge {
+        background: #cba6f7;
+        color: #1e1e2e;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 0.8rem;
+        font-weight: 600;
     }
 
     .danger-zone {

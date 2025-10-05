@@ -64,9 +64,9 @@ type Item struct {
 
 type Admin struct {
 	gorm.Model
-	Username    string `json:"username" gorm:"unique"`
-	Password    string `json:"-"` // Don't include in JSON responses
-	Name        string `json:"name"`
+	Username     string `json:"username" gorm:"unique"`
+	Password     string `json:"-"` // Don't include in JSON responses
+	Name         string `json:"name"`
 	IsSuperAdmin bool   `json:"is_super_admin" gorm:"default:false"`
 }
 
@@ -388,10 +388,10 @@ func main() {
 				}
 
 				c.JSON(200, gin.H{
-					"message": "Login successful", 
+					"message": "Login successful",
 					"admin": gin.H{
-						"name": admin.Name, 
-						"username": admin.Username,
+						"name":           admin.Name,
+						"username":       admin.Username,
 						"is_super_admin": admin.IsSuperAdmin,
 					},
 				})
@@ -855,11 +855,11 @@ func main() {
 				var adminList []gin.H
 				for _, admin := range admins {
 					adminList = append(adminList, gin.H{
-						"id": admin.ID,
-						"username": admin.Username,
-						"name": admin.Name,
+						"id":             admin.ID,
+						"username":       admin.Username,
+						"name":           admin.Name,
 						"is_super_admin": admin.IsSuperAdmin,
-						"created_at": admin.CreatedAt,
+						"created_at":     admin.CreatedAt,
 					})
 				}
 
@@ -870,10 +870,10 @@ func main() {
 			admin.POST("/create", func(c *gin.Context) {
 				type CreateAdminRequest struct {
 					RequestingUsername string `json:"requesting_username" binding:"required"`
-					Username          string `json:"username" binding:"required"`
-					Password          string `json:"password" binding:"required"`
-					Name              string `json:"name" binding:"required"`
-					IsSuperAdmin      bool   `json:"is_super_admin"`
+					Username           string `json:"username" binding:"required"`
+					Password           string `json:"password" binding:"required"`
+					Name               string `json:"name" binding:"required"`
+					IsSuperAdmin       bool   `json:"is_super_admin"`
 				}
 
 				var req CreateAdminRequest
@@ -928,10 +928,76 @@ func main() {
 				c.JSON(200, gin.H{
 					"message": "Admin created successfully",
 					"admin": gin.H{
-						"id": newAdmin.ID,
-						"username": newAdmin.Username,
-						"name": newAdmin.Name,
+						"id":             newAdmin.ID,
+						"username":       newAdmin.Username,
+						"name":           newAdmin.Name,
 						"is_super_admin": newAdmin.IsSuperAdmin,
+					},
+				})
+			})
+
+			// Delete admin (only super admin can delete other admins, except themselves)
+			admin.DELETE("/delete/:id", func(c *gin.Context) {
+				type DeleteAdminRequest struct {
+					RequestingUsername string `json:"requesting_username" binding:"required"`
+				}
+
+				var req DeleteAdminRequest
+				if err := c.ShouldBindJSON(&req); err != nil {
+					c.JSON(400, gin.H{"error": "Invalid delete request data"})
+					return
+				}
+
+				// Get admin ID from URL parameter
+				adminId := c.Param("id")
+				if adminId == "" {
+					c.JSON(400, gin.H{"error": "Admin ID is required"})
+					return
+				}
+
+				// Check if requesting admin is super admin
+				var requestingAdmin Admin
+				if err := db.Where("username = ?", req.RequestingUsername).First(&requestingAdmin).Error; err != nil {
+					c.JSON(401, gin.H{"error": "Invalid requesting admin"})
+					return
+				}
+
+				if !requestingAdmin.IsSuperAdmin {
+					c.JSON(403, gin.H{"error": "Only super admin can delete admins"})
+					return
+				}
+
+				// Get the admin to be deleted
+				var adminToDelete Admin
+				if err := db.First(&adminToDelete, adminId).Error; err != nil {
+					c.JSON(404, gin.H{"error": "Admin not found"})
+					return
+				}
+
+				// Prevent self-deletion
+				if adminToDelete.Username == requestingAdmin.Username {
+					c.JSON(400, gin.H{"error": "Cannot delete yourself"})
+					return
+				}
+
+				// Check if trying to delete the main super admin (Srinath)
+				if adminToDelete.Username == "Srinath" {
+					c.JSON(400, gin.H{"error": "Cannot delete the main super admin account"})
+					return
+				}
+
+				// Delete the admin
+				if err := db.Delete(&adminToDelete).Error; err != nil {
+					c.JSON(500, gin.H{"error": "Failed to delete admin"})
+					return
+				}
+
+				c.JSON(200, gin.H{
+					"message": "Admin deleted successfully",
+					"deleted_admin": gin.H{
+						"id":       adminToDelete.ID,
+						"username": adminToDelete.Username,
+						"name":     adminToDelete.Name,
 					},
 				})
 			})
@@ -976,7 +1042,7 @@ func main() {
 				}
 
 				c.JSON(200, gin.H{
-					"message": "All items data deleted successfully",
+					"message":       "All items data deleted successfully",
 					"deleted_count": itemCount,
 				})
 			})
