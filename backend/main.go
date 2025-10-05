@@ -194,18 +194,21 @@ func main() {
 			var loans []Loan
 			// Include:
 			// 1. Active loans (status = 'active' AND approval_status = 'approved')
-			// 2. Items marked as not found (status = 'not_found')
-			// 3. Recently returned items (status = 'returned' AND returned_at within last 24 hours)
+			// 2. Pending loans (status = 'pending' AND approval_status = 'pending') - so they show in return list
+			// 3. Items marked as not found (status = 'not_found')
+			// 4. Recently returned items (status = 'returned' AND returned_at within last 24 hours)
 			if err := db.Where(`
 				(status = ? AND approval_status = ?) OR 
+				(status = ? AND approval_status = ?) OR
 				status = ? OR 
 				(status = ? AND returned_at > ?)
-			`, "active", "approved", "not_found", "returned", time.Now().Add(-24*time.Hour)).
+			`, "active", "approved", "pending", "pending", "not_found", "returned", time.Now().Add(-24*time.Hour)).
 				Order(`
 					CASE 
 						WHEN status = 'not_found' THEN 0 
 						WHEN status = 'returned' THEN 1
-						ELSE 2 
+						WHEN status = 'pending' AND approval_status = 'pending' THEN 2
+						ELSE 3 
 					END, created_at DESC
 				`).
 				Find(&loans).Error; err != nil {
