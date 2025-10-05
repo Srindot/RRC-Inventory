@@ -64,9 +64,10 @@ type Item struct {
 
 type Admin struct {
 	gorm.Model
-	Username string `json:"username" gorm:"unique"`
-	Password string `json:"-"` // Don't include in JSON responses
-	Name     string `json:"name"`
+	Username    string `json:"username" gorm:"unique"`
+	Password    string `json:"-"` // Don't include in JSON responses
+	Name        string `json:"name"`
+	IsSuperAdmin bool   `json:"is_super_admin" gorm:"default:false"`
 }
 
 type Loan struct {
@@ -120,7 +121,7 @@ func main() {
 		log.Printf("Warning: Could not create uploads directory: %v", err)
 	}
 
-	// Create default admin if not exists
+	// Create default super admin if not exists
 	var adminCount int64
 	db.Model(&Admin{}).Count(&adminCount)
 	if adminCount == 0 {
@@ -130,12 +131,13 @@ func main() {
 		hashedPassword := hex.EncodeToString(hasher.Sum(nil))
 
 		defaultAdmin := Admin{
-			Username: "Srinath",
-			Password: hashedPassword,
-			Name:     "Srinath (Main Admin)",
+			Username:     "Srinath",
+			Password:     hashedPassword,
+			Name:         "Srinath (Super Admin)",
+			IsSuperAdmin: true,
 		}
 		db.Create(&defaultAdmin)
-		log.Println("Default admin created: Srinath")
+		log.Println("Default super admin created: Srinath")
 	}
 
 	router := gin.Default()
@@ -385,7 +387,14 @@ func main() {
 					return
 				}
 
-				c.JSON(200, gin.H{"message": "Login successful", "admin": gin.H{"name": admin.Name, "username": admin.Username}})
+				c.JSON(200, gin.H{
+					"message": "Login successful", 
+					"admin": gin.H{
+						"name": admin.Name, 
+						"username": admin.Username,
+						"is_super_admin": admin.IsSuperAdmin,
+					},
+				})
 			})
 
 			// Get pending loan requests for approval
@@ -764,6 +773,212 @@ func main() {
 				}
 
 				c.JSON(200, gin.H{"message": "Cleanup completed", "deleted_count": result.RowsAffected})
+			})
+
+			// === NEW ADMIN MANAGEMENT ROUTES ===
+
+			// Change password for any admin
+			admin.POST("/change-password", func(c *gin.Context) {
+				type ChangePasswordRequest struct {
+					Username    string `json:"username" binding:"required"`
+					OldPassword string `json:"old_password" binding:"required"`
+					NewPassword string `json:"new_password" binding:"required"`
+				}
+
+				var req ChangePasswordRequest
+				if err := c.ShouldBindJSON(&req); err != nil {
+					c.JSON(400, gin.H{"error": "Invalid password change data"})
+					return
+				}
+
+				// Validate new password length
+				if len(req.NewPassword) < 6 {
+					c.JSON(400, gin.H{"error": "New password must be at least 6 characters long"})
+					return
+				}
+
+				// Hash the old password to verify
+				hasher := sha256.New()
+				hasher.Write([]byte(req.OldPassword))
+				hashedOldPassword := hex.EncodeToString(hasher.Sum(nil))
+
+				// Find admin with username and old password
+				var admin Admin
+				if err := db.Where("username = ? AND password = ?", req.Username, hashedOldPassword).First(&admin).Error; err != nil {
+					c.JSON(401, gin.H{"error": "Invalid username or current password"})
+					return
+				}
+
+				// Hash the new password
+				hasher.Reset()
+				hasher.Write([]byte(req.NewPassword))
+				hashedNewPassword := hex.EncodeToString(hasher.Sum(nil))
+
+				// Update password
+				if err := db.Model(&admin).Update("password", hashedNewPassword).Error; err != nil {
+					c.JSON(500, gin.H{"error": "Failed to update password"})
+					return
+				}
+
+				c.JSON(200, gin.H{"message": "Password changed successfully"})
+			})
+
+			// Get all admins (only super admin can access)
+			admin.GET("/list", func(c *gin.Context) {
+				// Get requesting admin's username from query parameter
+				requestingUsername := c.Query("requesting_username")
+				if requestingUsername == "" {
+					c.JSON(400, gin.H{"error": "Requesting username is required"})
+					return
+				}
+
+				// Check if requesting admin is super admin
+				var requestingAdmin Admin
+				if err := db.Where("username = ?", requestingUsername).First(&requestingAdmin).Error; err != nil {
+					c.JSON(401, gin.H{"error": "Invalid requesting admin"})
+					return
+				}
+
+				if !requestingAdmin.IsSuperAdmin {
+					c.JSON(403, gin.H{"error": "Only super admin can view admin list"})
+					return
+				}
+
+				// Get all admins
+				var admins []Admin
+				if err := db.Find(&admins).Error; err != nil {
+					c.JSON(500, gin.H{"error": "Failed to retrieve admins"})
+					return
+				}
+
+				// Return admins without passwords
+				var adminList []gin.H
+				for _, admin := range admins {
+					adminList = append(adminList, gin.H{
+						"id": admin.ID,
+						"username": admin.Username,
+						"name": admin.Name,
+						"is_super_admin": admin.IsSuperAdmin,
+						"created_at": admin.CreatedAt,
+					})
+				}
+
+				c.JSON(200, adminList)
+			})
+
+			// Create new admin (only super admin can create)
+			admin.POST("/create", func(c *gin.Context) {
+				type CreateAdminRequest struct {
+					RequestingUsername string `json:"requesting_username" binding:"required"`
+					Username          string `json:"username" binding:"required"`
+					Password          string `json:"password" binding:"required"`
+					Name              string `json:"name" binding:"required"`
+					IsSuperAdmin      bool   `json:"is_super_admin"`
+				}
+
+				var req CreateAdminRequest
+				if err := c.ShouldBindJSON(&req); err != nil {
+					c.JSON(400, gin.H{"error": "Invalid admin creation data"})
+					return
+				}
+
+				// Check if requesting admin is super admin
+				var requestingAdmin Admin
+				if err := db.Where("username = ?", req.RequestingUsername).First(&requestingAdmin).Error; err != nil {
+					c.JSON(401, gin.H{"error": "Invalid requesting admin"})
+					return
+				}
+
+				if !requestingAdmin.IsSuperAdmin {
+					c.JSON(403, gin.H{"error": "Only super admin can create new admins"})
+					return
+				}
+
+				// Validate password length
+				if len(req.Password) < 6 {
+					c.JSON(400, gin.H{"error": "Password must be at least 6 characters long"})
+					return
+				}
+
+				// Check if username already exists
+				var existingAdmin Admin
+				if err := db.Where("username = ?", req.Username).First(&existingAdmin).Error; err == nil {
+					c.JSON(400, gin.H{"error": "Username already exists"})
+					return
+				}
+
+				// Hash the password
+				hasher := sha256.New()
+				hasher.Write([]byte(req.Password))
+				hashedPassword := hex.EncodeToString(hasher.Sum(nil))
+
+				// Create new admin
+				newAdmin := Admin{
+					Username:     req.Username,
+					Password:     hashedPassword,
+					Name:         req.Name,
+					IsSuperAdmin: req.IsSuperAdmin,
+				}
+
+				if err := db.Create(&newAdmin).Error; err != nil {
+					c.JSON(500, gin.H{"error": "Failed to create admin"})
+					return
+				}
+
+				c.JSON(200, gin.H{
+					"message": "Admin created successfully",
+					"admin": gin.H{
+						"id": newAdmin.ID,
+						"username": newAdmin.Username,
+						"name": newAdmin.Name,
+						"is_super_admin": newAdmin.IsSuperAdmin,
+					},
+				})
+			})
+
+			// Delete all items data (only super admin can delete all data)
+			admin.DELETE("/delete-all-items", func(c *gin.Context) {
+				type DeleteAllRequest struct {
+					RequestingUsername string `json:"requesting_username" binding:"required"`
+					ConfirmDelete      bool   `json:"confirm_delete" binding:"required"`
+				}
+
+				var req DeleteAllRequest
+				if err := c.ShouldBindJSON(&req); err != nil {
+					c.JSON(400, gin.H{"error": "Invalid delete request data"})
+					return
+				}
+
+				// Check if requesting admin is super admin
+				var requestingAdmin Admin
+				if err := db.Where("username = ?", req.RequestingUsername).First(&requestingAdmin).Error; err != nil {
+					c.JSON(401, gin.H{"error": "Invalid requesting admin"})
+					return
+				}
+
+				if !requestingAdmin.IsSuperAdmin {
+					c.JSON(403, gin.H{"error": "Only super admin can delete all items data"})
+					return
+				}
+
+				if !req.ConfirmDelete {
+					c.JSON(400, gin.H{"error": "Delete confirmation is required"})
+					return
+				}
+
+				// Delete all items
+				var itemCount int64
+				db.Model(&Item{}).Count(&itemCount)
+
+				if err := db.Exec("DELETE FROM items").Error; err != nil {
+					c.JSON(500, gin.H{"error": "Failed to delete items"})
+					return
+				}
+
+				c.JSON(200, gin.H{
+					"message": "All items data deleted successfully",
+					"deleted_count": itemCount,
+				})
 			})
 		}
 	}
