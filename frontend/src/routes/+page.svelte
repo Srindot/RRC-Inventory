@@ -524,7 +524,7 @@
                         id="purpose" 
                         bind:value={borrowForm.purpose} 
                         required
-                        placeholder="Why do you need this item?"
+                        placeholder="Why do you need this item?(Please explicitly mention the project and priority of the item)"
                         rows="3"
                     ></textarea>
                 </div>
