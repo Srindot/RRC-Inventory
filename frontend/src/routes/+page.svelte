@@ -41,7 +41,48 @@
 
     // Return search
     let searchQuery = '';
-    let filteredLoans = [];
+    
+    // Computed filtered loans - reactive to both loans and searchQuery
+    $: filteredLoans = (() => {
+        if (!loans) return [];
+        
+        let loansToFilter = loans;
+        
+        if (searchQuery && searchQuery.trim()) {
+            loansToFilter = loans.filter(loan => {
+                const borrowerMatch = loan.borrower_name && loan.borrower_name.toLowerCase().includes(searchQuery.toLowerCase());
+                const itemMatch = loan.item_name && loan.item_name.toLowerCase().includes(searchQuery.toLowerCase());
+                return borrowerMatch || itemMatch;
+            });
+        }
+        
+        // Sort loans by priority: Lost -> Overdue -> Pending -> Borrowed -> Returned
+        return loansToFilter.sort((a, b) => {
+            // Helper function to check if a loan is overdue
+            const isLoanOverdue = (loan) => {
+                return loan.approval_status === 'approved' && 
+                       loan.status !== 'returned' && 
+                       new Date(loan.expected_return_date) < new Date();
+            };
+            
+            // Categorize loans with priority order
+            const getLoanPriority = (loan) => {
+                if (loan.status === 'not_found') return 1;           // Lost items
+                if (isLoanOverdue(loan)) return 2;                   // Overdue items
+                if (loan.approval_status === 'pending') return 3;    // Pending approval
+                if (loan.approval_status === 'approved' && loan.status !== 'returned') return 4; // Borrowed
+                if (loan.status === 'returned') return 5;            // Returned
+                return 6;                                            // Other
+            };
+            
+            return getLoanPriority(a) - getLoanPriority(b);
+        });
+    })();
+
+    // Clear search function
+    function clearSearch() {
+        searchQuery = '';
+    }
 
     // Load items for borrowing
     async function loadItems() {
@@ -62,8 +103,6 @@
             const response = await fetch('/api/loans/active');
             if (response.ok) {
                 loans = await response.json();
-                // Apply the same sorting logic
-                searchLoans();
             }
         } catch (e) {
             showMessage('Failed to load loans', 'error');
@@ -143,42 +182,6 @@
         } finally {
             loading = false;
         }
-    }
-
-    // Search loans
-    function searchLoans() {
-        let loansToFilter = loans;
-        
-        if (searchQuery.trim()) {
-            loansToFilter = loans.filter(loan => 
-                loan.borrower_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                loan.item_name.toLowerCase().includes(searchQuery.toLowerCase())
-            );
-        }
-        
-        // Sort loans by priority: Lost -> Overdue -> Pending -> Borrowed -> Returned
-        filteredLoans = loansToFilter.sort((a, b) => {
-            // Helper function to check if a loan is overdue
-            const isLoanOverdue = (loan) => {
-                return loan.approval_status === 'approved' && 
-                       loan.status !== 'returned' && 
-                       new Date(loan.expected_return_date) < new Date();
-            };
-            
-            // Categorize loans with priority order
-            const getLoanPriority = (loan) => {
-                if (loan.status === 'not_found') return 1;           // Lost items
-                if (isLoanOverdue(loan)) return 2;                   // Overdue
-                if (loan.approval_status === 'pending') return 3;    // Pending
-                if (loan.approval_status === 'approved' && 
-                    loan.status !== 'returned' && 
-                    loan.status !== 'not_found') return 4;           // Borrowed
-                if (loan.status === 'returned') return 5;            // Returned
-                return 6;                                            // Other/fallback
-            };
-            
-            return getLoanPriority(a) - getLoanPriority(b);
-        });
     }
 
     // Helper functions
@@ -332,11 +335,6 @@
         currentView = 'return';
         loadActiveLoans();
     }
-
-    // Reactive statement for search
-    $: if (searchQuery !== undefined) {
-        searchLoans();
-    }
 </script>
 
 <div class="container">
@@ -388,13 +386,13 @@
             
             <form on:submit|preventDefault={submitBorrow}>
                 <div class="form-group">
-                    <label for="name">Your Name *</label>
+                    <label for="name">Name *</label>
                     <input 
                         type="text" 
                         id="name" 
                         bind:value={borrowForm.borrower_name} 
                         required
-                        placeholder="Enter your full name"
+                        placeholder="Enter your name"
                     />
                 </div>
 
@@ -441,9 +439,8 @@
                         id="item" 
                         bind:value={borrowForm.item_name} 
                         required
-                        placeholder="Enter the item you want to borrow (e.g., Multimeter, Arduino board, etc.)"
+                        placeholder="Enter item name"
                     />
-                    <small class="help-text">Enter any equipment available in the lab</small>
                 </div>
 
                 <div class="form-group">
@@ -509,7 +506,7 @@
                         id="purpose" 
                         bind:value={borrowForm.purpose} 
                         required
-                        placeholder="Why do you need this item? (e.g., for project work, assignment, research, etc.)"
+                        placeholder="Why do you need this item?"
                         rows="3"
                     ></textarea>
                 </div>
@@ -547,19 +544,79 @@
             
             <div class="search-container">
                 <label for="search">Search by your name or item name:</label>
-                <input 
-                    type="text" 
-                    id="search" 
-                    bind:value={searchQuery} 
-                    placeholder="Search loans..."
-                />
+                <div class="search-input-group">
+                    <input 
+                        type="text" 
+                        id="search" 
+                        bind:value={searchQuery} 
+                        placeholder="Search loans..."
+                    />
+                    {#if searchQuery.trim()}
+                        <button class="clear-search-btn" on:click={clearSearch} title="Clear search">
+                            ✕
+                        </button>
+                    {/if}
+                </div>
             </div>
 
             {#if loading}
                 <p>Loading borrowed items...</p>
             {:else if filteredLoans.length === 0}
                 <p class="no-loans">No borrowed items found.</p>
+            {:else if searchQuery.trim()}
+                <!-- When searching, show all results in a flat list -->
+                <div class="search-results">
+                    <h3>Search Results ({filteredLoans.length} found)</h3>
+                    <div class="loans-list">
+                        {#each filteredLoans as loan}
+                            <div class="loan-card" 
+                                 class:lost={categorizeLoan(loan) === 'lost'}
+                                 class:overdue={categorizeLoan(loan) === 'overdue'}
+                                 class:pending={categorizeLoan(loan) === 'pending'}
+                                 class:borrowed={categorizeLoan(loan) === 'borrowed'}
+                                 class:returned={categorizeLoan(loan) === 'returned'}>
+                                <div class="loan-info">
+                                    <div class="loan-header">
+                                        <h4>{loan.item_name}</h4>
+                                        <span class="status-badge {categorizeLoan(loan)}">
+                                            {#if categorizeLoan(loan) === 'lost'}⚠️ Lost
+                                            {:else if categorizeLoan(loan) === 'overdue'}🔥 Overdue
+                                            {:else if categorizeLoan(loan) === 'pending'}⏳ Pending Approval
+                                            {:else if categorizeLoan(loan) === 'borrowed'}📋 Borrowed
+                                            {:else if categorizeLoan(loan) === 'returned'}✅ Returned
+                                            {/if}
+                                        </span>
+                                    </div>
+                                    <p><strong>Borrower:</strong> {loan.borrower_name}</p>
+                                    {#if !isAdmin && (loan.approval_status === 'pending')}
+                                        <p class="waiting-approval">Waiting for admin approval</p>
+                                    {:else}
+                                        <p><strong>Borrowed:</strong> {new Date(loan.borrow_date).toLocaleString()}</p>
+                                        <p><strong>Expected Return:</strong> {new Date(loan.expected_return_date).toLocaleString()}</p>
+                                        {#if loan.photo_filename}
+                                            <div class="item-image">
+                                                <img 
+                                                    src="/api/photos/{loan.photo_filename}" 
+                                                    alt="Item photo" 
+                                                    style="max-width: 200px; max-height: 150px; object-fit: cover; border-radius: 8px;"
+                                                />
+                                            </div>
+                                        {/if}
+                                        <p><strong>Purpose:</strong> {loan.purpose}</p>
+                                    {/if}
+                                </div>
+                                
+                                {#if !isAdmin && loan.approval_status === 'approved' && loan.status !== 'returned' && loan.status !== 'not_found'}
+                                    <button class="return-btn" on:click={() => returnItem(loan.id)}>
+                                        Return Item
+                                    </button>
+                                {/if}
+                            </div>
+                        {/each}
+                    </div>
+                </div>
             {:else}
+                <!-- When not searching, show categorized results -->
                 {#each Object.entries(getCategorizedLoans()) as [category, categoryLoans]}
                     {#if categoryLoans.length > 0}
                         <div class="category-section">
@@ -643,18 +700,6 @@
                                                 <div class="loan-info">
                                                     <h4>{loan.item_name}</h4>
                                                     <p><strong>Borrower:</strong> {loan.borrower_name}</p>
-                                                    <p><strong>Phone:</strong> 
-                                                        <span 
-                                                            class="clickable-phone" 
-                                                            role="button"
-                                                            tabindex="0"
-                                                            on:click={() => copyToClipboard(loan.borrower_phone)}
-                                                            on:keydown={(e) => e.key === 'Enter' && copyToClipboard(loan.borrower_phone)}
-                                                            title="Click to copy phone number"
-                                                        >
-                                                            {loan.borrower_phone}
-                                                        </span>
-                                                    </p>
                                                     <p><strong>Lab:</strong> {loan.lab_location}</p>
                                                     <p><strong>Quantity:</strong> {loan.quantity_borrowed}</p>
                                                     <p><strong>Purpose:</strong> {loan.purpose}</p>
@@ -672,27 +717,12 @@
                                             {#if loan.status === 'not_found'}
                                                 <div class="missing-actions">
                                                     <p class="missing-contact">
-                                                        Please contact {getLabContactInfo(loan.lab_location).name}: 
-                                                        {#if getLabContactInfo(loan.lab_location).phone}
-                                                            <span 
-                                                                class="clickable-phone" 
-                                                                role="button"
-                                                                tabindex="0"
-                                                                on:click={() => copyToClipboard(getLabContactInfo(loan.lab_location).phone)}
-                                                                on:keydown={(e) => e.key === 'Enter' && copyToClipboard(getLabContactInfo(loan.lab_location).phone)}
-                                                                title="Click to copy phone number"
-                                                            >
-                                                                {getLabContactInfo(loan.lab_location).phone}
-                                                            </span>
-                                                        {:else}
-                                                            {getLabContactInfo(loan.lab_location).name}
-                                                        {/if}
-                                                        if you have found this item
+                                                        Please contact the lab personnel if you have found this item
                                                     </p>
                                                 </div>
                                             {:else if loan.status === 'returned'}
                                                 <div class="returned-actions">
-                                                    <p class="returned-message">🎉 Successfully Returned</p>
+                                                    <p class="returned-message">Successfully Returned</p>
                                                 </div>
                                             {:else if loan.return_requested}
                                                 <div class="return-pending-actions">
@@ -700,7 +730,7 @@
                                                 </div>
                                             {:else if loan.approval_status === 'pending'}
                                                 <div class="pending-actions">
-                                                    <p class="pending-message">⏳ Waiting for admin approval. Return option will be available once approved.</p>
+                                                    <p class="pending-message">Waiting for admin approval</p>
                                                 </div>
                                             {:else}
                                                 <button 
@@ -1132,13 +1162,18 @@
         margin-bottom: clamp(20px, 4vw, 30px);
     }
 
+    .search-input-group {
+        position: relative;
+        margin-top: 5px;
+    }
+
     .search-container input {
         width: 100%;
         padding: clamp(12px, 3vw, 16px);
+        padding-right: 45px; /* Make room for clear button */
         border: 2px solid #313244;
         border-radius: 8px;
         font-size: clamp(0.9rem, 2vw, 1rem);
-        margin-top: 5px;
         background: #1e1e2e;
         color: #cdd6f4;
         transition: all 0.3s ease;
@@ -1149,6 +1184,78 @@
         border-color: #f2cdcd;
         outline: none;
         box-shadow: 0 0 0 3px rgba(242, 205, 205, 0.25);
+    }
+
+    .clear-search-btn {
+        position: absolute;
+        right: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        background: #f38ba8;
+        color: #1e1e2e;
+        border: none;
+        border-radius: 50%;
+        width: 24px;
+        height: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: bold;
+        transition: all 0.3s ease;
+    }
+
+    .clear-search-btn:hover {
+        background: #f2cdcd;
+        transform: translateY(-50%) scale(1.1);
+    }
+
+    /* Search Results Styles */
+    .search-results h3 {
+        color: #cdd6f4;
+        margin: 20px 0 15px 0;
+        font-size: clamp(1.1rem, 2.5vw, 1.3rem);
+        border-left: 4px solid #f38ba8;
+        padding-left: 15px;
+    }
+
+    .search-results .loan-card {
+        margin-bottom: 15px;
+    }
+
+    .search-results .status-badge {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.8rem;
+        font-weight: bold;
+        margin-left: 10px;
+    }
+
+    .search-results .status-badge.lost {
+        background: #f38ba8;
+        color: #1e1e2e;
+    }
+
+    .search-results .status-badge.overdue {
+        background: #fab387;
+        color: #1e1e2e;
+    }
+
+    .search-results .status-badge.pending {
+        background: #f9e2af;
+        color: #1e1e2e;
+    }
+
+    .search-results .status-badge.borrowed {
+        background: #89b4fa;
+        color: #1e1e2e;
+    }
+
+    .search-results .status-badge.returned {
+        background: #a6e3a1;
+        color: #1e1e2e;
     }
 
     .loans-list {
@@ -1427,18 +1534,18 @@
 
     /* Status-based loan card styles */
     .loan-card.missing {
-        border: 2px solid #f85149;
-        background: rgba(248, 81, 73, 0.1);
-    }
-
-    .loan-card.overdue {
         border: 2px solid #f38ba8;
         background: rgba(243, 139, 168, 0.1);
     }
 
+    .loan-card.overdue {
+        border: 2px solid #fab387;
+        background: rgba(250, 179, 135, 0.1);
+    }
+
     .loan-card.pending {
-        border: 2px solid #f7b955;
-        background: rgba(247, 185, 85, 0.08);
+        border: 2px solid #f9e2af;
+        background: rgba(249, 226, 175, 0.08);
     }
 
     .loan-card.approved {
@@ -1447,13 +1554,13 @@
     }
 
     .loan-card.returned {
-        border: 2px solid #94e2d5;
-        background: rgba(148, 226, 213, 0.08);
+        border: 2px solid #a6e3a1;
+        background: rgba(166, 227, 161, 0.08);
     }
 
     .loan-card.denied {
-        border: 2px solid #7c8b9a;
-        background: rgba(124, 139, 154, 0.08);
+        border: 2px solid #6c7086;
+        background: rgba(108, 112, 134, 0.08);
         opacity: 0.8;
     }
 
@@ -1474,38 +1581,38 @@
     }
 
     .status-badge.missing {
-        background: #f85149;
-        color: #1e1e2e;
+        background: #f38ba8;
+        color: #11111b;
     }
 
     .status-badge.overdue {
-        background: #f38ba8;
-        color: #1e1e2e;
+        background: #fab387;
+        color: #11111b;
     }
 
     .status-badge.pending {
-        background: #f7b955;
-        color: #1e1e2e;
+        background: #f9e2af;
+        color: #11111b;
     }
 
     .status-badge.approved {
         background: #89b4fa;
-        color: #1e1e2e;
+        color: #11111b;
     }
 
     .status-badge.returned {
-        background: #94e2d5;
-        color: #1e1e2e;
+        background: #a6e3a1;
+        color: #11111b;
     }
 
     .status-badge.denied {
-        background: #7c8b9a;
-        color: #1e1e2e;
+        background: #6c7086;
+        color: #cdd6f4;
     }
 
     .status-badge.return-pending {
         background: #fab387;
-        color: #1e1e2e;
+        color: #11111b;
     }
 
     .status-badge.return-pending {
@@ -1566,20 +1673,20 @@
     }
 
     .returned-note {
-        color: #94e2d5;
+        color: #a6e3a1;
         font-weight: 500;
         margin-top: 10px;
     }
 
     .returned-actions {
         padding: 15px;
-        background: rgba(148, 226, 213, 0.15);
+        background: rgba(166, 227, 161, 0.15);
         border-radius: 6px;
         text-align: center;
     }
 
     .returned-message {
-        color: #94e2d5;
+        color: #a6e3a1;
         font-weight: 600;
         margin: 0;
         font-size: 1.1rem;
@@ -1614,28 +1721,28 @@
     }
 
     .category-header.lost {
-        background: linear-gradient(135deg, #f85149, #ff6b5b);
-        color: #fff;
+        background: linear-gradient(135deg, #f38ba8, #eba0ac);
+        color: #11111b;
     }
 
     .category-header.overdue {
-        background: linear-gradient(135deg, #f38ba8, #ff9cb8);
-        color: #fff;
+        background: linear-gradient(135deg, #fab387, #f2cdcd);
+        color: #11111b;
     }
 
     .category-header.pending {
-        background: linear-gradient(135deg, #f7b955, #ffc865);
-        color: #1e1e2e;
+        background: linear-gradient(135deg, #f9e2af, #f2cdcd);
+        color: #11111b;
     }
 
     .category-header.borrowed {
-        background: linear-gradient(135deg, #89b4fa, #99c4ff);
-        color: #1e1e2e;
+        background: linear-gradient(135deg, #89b4fa, #b4befe);
+        color: #11111b;
     }
 
     .category-header.returned {
-        background: linear-gradient(135deg, #94e2d5, #a4f2e5);
-        color: #1e1e2e;
+        background: linear-gradient(135deg, #a6e3a1, #94e2d5);
+        color: #11111b;
     }
 
     .category-title {
@@ -1688,13 +1795,13 @@
     /* Pending actions styling */
     .pending-actions {
         padding: 15px;
-        background: rgba(247, 185, 85, 0.15);
+        background: rgba(249, 226, 175, 0.15);
         border-radius: 6px;
         text-align: center;
     }
 
     .pending-message {
-        color: #f7b955;
+        color: #f9e2af;
         font-weight: 600;
         margin: 0;
         font-size: 1rem;
