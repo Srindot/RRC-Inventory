@@ -96,8 +96,11 @@
 			const result = await response.json();
 			
 			if (response.ok) {
-				showMessage(result.message, 'success');
 				resetBorrowForm();
+				// Redirect to home view first
+				currentView = 'home';
+				// Then show the success message
+				showMessage('Request sent! Your borrow request has been submitted successfully.', 'success');
 			} else {
 				showMessage(result.error || 'Failed to submit borrow request', 'error');
 			}
@@ -222,9 +225,40 @@
         }
     }
 
-    function goHome() {
+    function getLabContactInfo(labLocation) {
+        const contacts = {
+            'Main Lab': { name: 'Tarun', phone: '9677058594' },
+            'Control Lab': { name: 'Sarthak', phone: '8849539601' }, 
+            'Mech Lab': { name: 'Abhinav', phone: '9602758064' }
+        };
+        return contacts[labLocation] || { name: 'Administration', phone: null };
+    }
+
+    async function copyToClipboard(text) {
+        try {
+            await navigator.clipboard.writeText(text);
+            showMessage(`Copied: ${text}`, 'success');
+        } catch (err) {
+            // Fallback for older browsers
+            const textArea = document.createElement('textarea');
+            textArea.value = text;
+            document.body.appendChild(textArea);
+            textArea.select();
+            try {
+                document.execCommand('copy');
+                showMessage(`Copied: ${text}`, 'success');
+            } catch (fallbackErr) {
+                showMessage('Failed to copy to clipboard', 'error');
+            }
+            document.body.removeChild(textArea);
+        }
+    }
+
+    function goHome(clearMsg = true) {
         currentView = 'home';
-        message = '';
+        if (clearMsg) {
+            message = '';
+        }
     }
 
     function goToBorrow() {
@@ -305,11 +339,36 @@
                 <div class="form-group">
                     <label for="phone">Phone Number *</label>
                     <input 
-                        type="tel" 
+                        type="text" 
                         id="phone" 
                         bind:value={borrowForm.borrower_phone} 
                         required
-                        placeholder="Enter your phone number"
+                        maxlength="10"
+                        placeholder="Enter 10-digit phone number"
+                        title="Please enter exactly 10 digits"
+                        inputmode="numeric"
+                        on:input={(e) => {
+                            // Remove any non-digit characters and update
+                            const cleaned = e.target.value.replace(/[^0-9]/g, '');
+                            borrowForm.borrower_phone = cleaned;
+                            e.target.value = cleaned;
+                            
+                            // Custom validation
+                            if (cleaned.length === 10) {
+                                e.target.setCustomValidity('');
+                            } else {
+                                e.target.setCustomValidity('Please enter exactly 10 digits');
+                            }
+                        }}
+                        on:blur={(e) => {
+                            // Validate on blur as well
+                            const cleaned = e.target.value.replace(/[^0-9]/g, '');
+                            if (cleaned.length === 10) {
+                                e.target.setCustomValidity('');
+                            } else {
+                                e.target.setCustomValidity('Please enter exactly 10 digits');
+                            }
+                        }}
                     />
                 </div>
 
@@ -448,30 +507,75 @@
                                     <span class="missing-badge">⚠️ MISSING/NOT FOUND</span>
                                 </div>
                             {/if}
-                            <div class="loan-info">
-                                <h4>{loan.item_name}</h4>
-                                <p><strong>Borrower:</strong> {loan.borrower_name}</p>
-                                <p><strong>Phone:</strong> {loan.borrower_phone}</p>
-                                <p><strong>Lab:</strong> {loan.lab_location}</p>
-                                <p><strong>Quantity:</strong> {loan.quantity_borrowed}</p>
-                                <p><strong>Purpose:</strong> {loan.purpose}</p>
-                                <p><strong>Borrowed on:</strong> {formatDate(loan.CreatedAt)}</p>
-                                <p><strong>Expected return:</strong> {formatExpectedReturn(loan.expected_return_date)}</p>
-                                {#if loan.status === 'not_found'}
-                                    <p class="missing-note"><strong>Status:</strong> This item has been marked as missing/not found by administrators</p>
-                                {:else if loan.status === 'returned'}
-                                    <p class="returned-note"><strong>Status:</strong> Recently returned and processed by admin</p>
-                                {:else if loan.return_requested}
-                                    <p class="return-pending-note"><strong>Status:</strong> Return request submitted - waiting for admin approval</p>
+                            <div class="loan-content">
+                                {#if loan.photo_filename}
+                                    <div class="item-image">
+                                        <img 
+                                            src="/api/photos/{loan.photo_filename}" 
+                                            alt="Item photo" 
+                                            class="loan-thumbnail"
+                                            loading="lazy"
+                                        />
+                                    </div>
+                                {:else}
+                                    <div class="item-image placeholder">
+                                        <span>📷</span>
+                                        <small>No photo</small>
+                                    </div>
                                 {/if}
+                                <div class="loan-info">
+                                    <h4>{loan.item_name}</h4>
+                                    <p><strong>Borrower:</strong> {loan.borrower_name}</p>
+                                    <p><strong>Phone:</strong> 
+                                        <span 
+                                            class="clickable-phone" 
+                                            role="button"
+                                            tabindex="0"
+                                            on:click={() => copyToClipboard(loan.borrower_phone)}
+                                            on:keydown={(e) => e.key === 'Enter' && copyToClipboard(loan.borrower_phone)}
+                                            title="Click to copy phone number"
+                                        >
+                                            {loan.borrower_phone}
+                                        </span>
+                                    </p>
+                                    <p><strong>Lab:</strong> {loan.lab_location}</p>
+                                    <p><strong>Quantity:</strong> {loan.quantity_borrowed}</p>
+                                    <p><strong>Purpose:</strong> {loan.purpose}</p>
+                                    <p><strong>Borrowed on:</strong> {formatDate(loan.CreatedAt)}</p>
+                                    <p><strong>Expected return:</strong> {formatExpectedReturn(loan.expected_return_date)}</p>
+                                    {#if loan.status === 'not_found'}
+                                        <p class="missing-note"><strong>Status:</strong> This item has been marked as missing/not found by administrators</p>
+                                    {:else if loan.status === 'returned'}
+                                        <p class="returned-note"><strong>Status:</strong> Recently returned and processed by admin</p>
+                                    {:else if loan.return_requested}
+                                        <p class="return-pending-note"><strong>Status:</strong> Return request submitted - waiting for admin approval</p>
+                                    {/if}
+                                </div>
                             </div>
                             {#if loan.status === 'not_found'}
                                 <div class="missing-actions">
-                                    <p class="missing-contact">Please contact administration if you have found this item</p>
+                                    <p class="missing-contact">
+                                        Please contact {getLabContactInfo(loan.lab_location).name}: 
+                                        {#if getLabContactInfo(loan.lab_location).phone}
+                                            <span 
+                                                class="clickable-phone" 
+                                                role="button"
+                                                tabindex="0"
+                                                on:click={() => copyToClipboard(getLabContactInfo(loan.lab_location).phone)}
+                                                on:keydown={(e) => e.key === 'Enter' && copyToClipboard(getLabContactInfo(loan.lab_location).phone)}
+                                                title="Click to copy phone number"
+                                            >
+                                                {getLabContactInfo(loan.lab_location).phone}
+                                            </span>
+                                        {:else}
+                                            {getLabContactInfo(loan.lab_location).name}
+                                        {/if}
+                                        if you have found this item
+                                    </p>
                                 </div>
                             {:else if loan.status === 'returned'}
                                 <div class="returned-actions">
-                                    <p class="returned-message">🎉 Successfully returned! This item will be removed from your list tomorrow.</p>
+                                    <p class="returned-message">🎉 Successfully Returned</p>
                                 </div>
                             {:else if loan.return_requested}
                                 <div class="return-pending-actions">
@@ -497,8 +601,8 @@
 
 <!-- Credits Footer -->
 <footer class="credits-footer">
-    <p>Created by <strong>Srinath</strong> • <a href="https://github.com/Srindot" target="_blank">GitHub: Srindot</a></p>
-    <p>Theme: <strong>Catppuccin Mocha</strong> • <a href="https://github.com/catppuccin/catppuccin" target="_blank">GitHub: Catppuccin</a></p>
+    <p>Created by <a href="https://github.com/Srindot" target="_blank"><strong>Srinath</strong></a></p>
+    <p>Theme: <a href="https://github.com/catppuccin/catppuccin" target="_blank"><strong>Catppuccin Mocha</strong></a></p>
 </footer>
 
 <style>
@@ -967,6 +1071,71 @@
         color: #cdd6f4;
     }
 
+    .clickable-phone {
+        color: #89b4fa;
+        cursor: pointer;
+        text-decoration: underline;
+        text-decoration-style: dotted;
+        transition: all 0.2s ease;
+        padding: 2px 4px;
+        border-radius: 3px;
+    }
+
+    .clickable-phone:hover {
+        color: #b4befe;
+        background-color: #313244;
+        text-decoration-style: solid;
+    }
+
+    .clickable-phone:focus {
+        outline: 2px solid #f2cdcd;
+        outline-offset: 2px;
+        background-color: #313244;
+    }
+
+    .loan-content {
+        display: flex;
+        align-items: flex-start;
+        gap: 15px;
+        width: 100%;
+    }
+
+    .item-image {
+        flex-shrink: 0;
+        width: 80px;
+        height: 80px;
+        border-radius: 8px;
+        overflow: hidden;
+        background: #181825;
+        border: 2px solid #313244;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .item-image img.loan-thumbnail {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        transition: transform 0.2s ease;
+    }
+
+    .item-image:hover img.loan-thumbnail {
+        transform: scale(1.05);
+    }
+
+    .item-image.placeholder {
+        flex-direction: column;
+        color: #6c7086;
+        font-size: 24px;
+        text-align: center;
+    }
+
+    .item-image.placeholder small {
+        font-size: 10px;
+        margin-top: 2px;
+    }
+
     .return-btn-action {
         background: linear-gradient(135deg, #f38ba8, #eba0ac);
         color: #11111b;
@@ -1040,9 +1209,21 @@
             padding: 20px;
         }
 
+        .loan-content {
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .item-image {
+            width: 100px;
+            height: 100px;
+        }
+
         .loan-info {
             width: 100%;
             margin-bottom: 15px;
+            text-align: center;
         }
 
         .return-btn-action {

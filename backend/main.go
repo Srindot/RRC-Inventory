@@ -644,10 +644,17 @@ func main() {
 				c.JSON(200, loans)
 			})
 
-			// Get lost/missing items (not found + pending returns)
+			// Get lost/missing items (not found + pending returns, but exclude overdue items)
 			admin.GET("/loans/lost-missing", func(c *gin.Context) {
 				var loans []Loan
-				if err := db.Where("status = ? OR (return_requested = ? AND return_approval_status = ?)", "not_found", true, "pending").Find(&loans).Error; err != nil {
+				// Include:
+				// 1. Items marked as not_found
+				// 2. Items with pending return requests that are NOT overdue
+				if err := db.Where(`
+					status = ? OR 
+					(return_requested = ? AND return_approval_status = ? AND 
+					 NOT (approval_status = ? AND status = ? AND expected_return_date::date < CURRENT_DATE))
+				`, "not_found", true, "pending", "approved", "active").Find(&loans).Error; err != nil {
 					c.JSON(500, gin.H{"error": "Failed to retrieve lost/missing items"})
 					return
 				}
@@ -660,6 +667,17 @@ func main() {
 				var loans []Loan
 				if err := db.Where("status = ? AND updated_at <= ?", "returned", twoWeeksAgo).Order("updated_at DESC").Find(&loans).Error; err != nil {
 					c.JSON(500, gin.H{"error": "Failed to retrieve archived items"})
+					return
+				}
+				c.JSON(200, loans)
+			})
+
+			// Get complete item history - all items chronologically
+			admin.GET("/loans/history", func(c *gin.Context) {
+				var loans []Loan
+				// Get all loans ordered by latest activity (updated_at DESC, then created_at DESC)
+				if err := db.Order("CASE WHEN updated_at > created_at THEN updated_at ELSE created_at END DESC").Find(&loans).Error; err != nil {
+					c.JSON(500, gin.H{"error": "Failed to retrieve item history"})
 					return
 				}
 				c.JSON(200, loans)

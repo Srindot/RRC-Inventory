@@ -12,7 +12,7 @@
     };
     
     // Current view
-    let currentView = 'login'; // login, dashboard, pending, pending-returns, lost-missing, archived, lab-view
+    let currentView = 'login'; // login, dashboard, pending, pending-returns, lost-missing, history, lab-view
     let selectedLab = '';
     let selectedFilter = 'all'; // all, borrowed, rejected, returned, pending, not_found
     
@@ -20,7 +20,7 @@
     let pendingLoans = [];
     let pendingReturns = [];
     let lostMissingItems = [];
-    let archivedItems = [];
+    let historyItems = [];
     let labLoans = [];
     let loading = false;
     let message = '';
@@ -136,18 +136,18 @@
         }
     }
 
-    // Load archived items (returned > 2 weeks ago)
-    async function loadArchivedItems() {
+    // Load complete item history (all items chronologically)
+    async function loadHistoryItems() {
         loading = true;
         try {
-            const response = await fetch('/api/admin/loans/archived');
+            const response = await fetch('/api/admin/loans/history');
             if (response.ok) {
-                archivedItems = await response.json();
+                historyItems = await response.json();
             } else {
-                showMessage('Failed to load archived items', 'error');
+                showMessage('Failed to load item history', 'error');
             }
         } catch (e) {
-            showMessage('Failed to load archived items', 'error');
+            showMessage('Failed to load item history', 'error');
         } finally {
             loading = false;
         }
@@ -396,6 +396,26 @@
         return new Date(returnDate) < new Date();
     }
 
+    async function copyToClipboard(text) {
+        try {
+            await navigator.clipboard.writeText(text);
+            showMessage(`Copied: ${text}`, 'success');
+        } catch (err) {
+            // Fallback for older browsers
+            const textArea = document.createElement('textarea');
+            textArea.value = text;
+            document.body.appendChild(textArea);
+            textArea.select();
+            try {
+                document.execCommand('copy');
+                showMessage(`Copied: ${text}`, 'success');
+            } catch (fallbackErr) {
+                showMessage('Failed to copy to clipboard', 'error');
+            }
+            document.body.removeChild(textArea);
+        }
+    }
+
     function showPendingLoans() {
         currentView = 'pending';
         loadPendingLoans();
@@ -411,9 +431,9 @@
         loadLostMissingItems();
     }
 
-    function showArchivedItems() {
-        currentView = 'archived';
-        loadArchivedItems();
+    function showItemHistory() {
+        currentView = 'history';
+        loadHistoryItems();
     }
 
     function showLabView(lab) {
@@ -539,16 +559,6 @@
                         <span class="badge">{lostMissingItems.length}</span>
                     {/if}
                 </button>
-                <button 
-                    class="tab-btn" 
-                    class:active={currentView === 'archived'}
-                    on:click={showArchivedItems}
-                >
-                    📦 Archived Items
-                    {#if archivedItems.length > 0}
-                        <span class="badge">{archivedItems.length}</span>
-                    {/if}
-                </button>
                 {#each labs as lab}
                     <button 
                         class="tab-btn" 
@@ -558,6 +568,13 @@
                         {lab}
                     </button>
                 {/each}
+                <button 
+                    class="tab-btn" 
+                    class:active={currentView === 'history'}
+                    on:click={showItemHistory}
+                >
+                    📚 Item History
+                </button>
             </div>
 
             <!-- Dashboard View -->
@@ -634,7 +651,18 @@
                                     </div>
                                     <div class="loan-details">
                                         <p><strong>Borrower:</strong> {loan.borrower_name}</p>
-                                        <p><strong>Phone:</strong> {loan.borrower_phone}</p>
+                                        <p><strong>Phone:</strong> 
+                                            <span 
+                                                class="clickable-phone" 
+                                                role="button"
+                                                tabindex="0"
+                                                on:click={() => copyToClipboard(loan.borrower_phone)}
+                                                on:keydown={(e) => e.key === 'Enter' && copyToClipboard(loan.borrower_phone)}
+                                                title="Click to copy phone number"
+                                            >
+                                                {loan.borrower_phone}
+                                            </span>
+                                        </p>
                                         <p><strong>Lab:</strong> {loan.lab_location}</p>
                                         <p><strong>Quantity:</strong> {loan.quantity_borrowed}</p>
                                         <p><strong>Purpose:</strong> {loan.purpose}</p>
@@ -699,7 +727,18 @@
                                     </div>
                                     <div class="loan-details">
                                         <p><strong>Borrower:</strong> {loan.borrower_name}</p>
-                                        <p><strong>Phone:</strong> {loan.borrower_phone}</p>
+                                        <p><strong>Phone:</strong> 
+                                            <span 
+                                                class="clickable-phone" 
+                                                role="button"
+                                                tabindex="0"
+                                                on:click={() => copyToClipboard(loan.borrower_phone)}
+                                                on:keydown={(e) => e.key === 'Enter' && copyToClipboard(loan.borrower_phone)}
+                                                title="Click to copy phone number"
+                                            >
+                                                {loan.borrower_phone}
+                                            </span>
+                                        </p>
                                         <p><strong>Lab:</strong> {loan.lab_location}</p>
                                         <p><strong>Quantity:</strong> {loan.quantity_borrowed}</p>
                                         <p><strong>Expected Return:</strong> {formatExpectedReturn(loan.expected_return_date)}</p>
@@ -771,7 +810,18 @@
                                     </div>
                                     <div class="loan-details">
                                         <p><strong>Borrower:</strong> {loan.borrower_name}</p>
-                                        <p><strong>Phone:</strong> {loan.borrower_phone}</p>
+                                        <p><strong>Phone:</strong> 
+                                            <span 
+                                                class="clickable-phone" 
+                                                role="button"
+                                                tabindex="0"
+                                                on:click={() => copyToClipboard(loan.borrower_phone)}
+                                                on:keydown={(e) => e.key === 'Enter' && copyToClipboard(loan.borrower_phone)}
+                                                title="Click to copy phone number"
+                                            >
+                                                {loan.borrower_phone}
+                                            </span>
+                                        </p>
                                         <p><strong>Lab:</strong> {loan.lab_location}</p>
                                         <p><strong>Quantity:</strong> {loan.quantity_borrowed}</p>
                                         <p><strong>Expected Return:</strong> {formatExpectedReturn(loan.expected_return_date)}</p>
@@ -824,47 +874,128 @@
                 </div>
             {/if}
 
-            <!-- Archived Items View -->
-            {#if currentView === 'archived'}
+            <!-- Item History View -->
+            {#if currentView === 'history'}
                 <div class="loans-content">
-                    <h2>📦 Archived Items</h2>
-                    <p class="subtitle-text">Items returned more than 2 weeks ago (archived automatically)</p>
+                    <h2>� Complete Item History</h2>
+                    <p class="subtitle-text">Chronological history of all items - borrowed, returned, lost, and found</p>
                     {#if loading}
-                        <p>Loading archived items...</p>
-                    {:else if archivedItems.length === 0}
-                        <p class="no-items">No archived items found.</p>
+                        <p>Loading item history...</p>
+                    {:else if historyItems.length === 0}
+                        <p class="no-items">No history found.</p>
                     {:else}
-                        <div class="loans-grid">
-                            {#each archivedItems as loan}
-                                <div class="loan-card archived">
-                                    <div class="loan-header">
-                                        <div class="loan-title-section">
-                                            <h3>{loan.item_name}</h3>
-                                            {#if loan.photo_filename}
-                                                <div class="item-image">
-                                                    <img 
-                                                        src="/api/photos/{loan.photo_filename}" 
-                                                        alt="{loan.item_name}"
-                                                        on:error={(e) => e.target.style.display = 'none'}
-                                                    />
-                                                </div>
-                                            {:else}
-                                                <div class="item-image placeholder">
-                                                    <span>📷</span>
-                                                </div>
-                                            {/if}
-                                        </div>
-                                        <div class="status-badges">
-                                            <span class="status-badge archived">Archived</span>
-                                        </div>
+                        <div class="history-list">
+                            {#each historyItems as item}
+                                <div class="history-item {item.status}" data-status="{item.status}">
+                                    <div class="history-timeline">
+                                        <div class="timeline-dot {item.status}"></div>
+                                        <div class="timeline-line"></div>
                                     </div>
-                                    <div class="loan-details">
-                                        <p><strong>Borrower:</strong> {loan.borrower_name}</p>
-                                        <p><strong>Phone:</strong> {loan.borrower_phone}</p>
-                                        <p><strong>Lab:</strong> {loan.lab_location}</p>
-                                        <p><strong>Quantity:</strong> {loan.quantity_borrowed}</p>
-                                        <p><strong>Borrowed:</strong> {formatDate(loan.CreatedAt)}</p>
-                                        <p><strong>Returned:</strong> {formatDate(loan.return_approved_at)}</p>
+                                    <div class="history-content">
+                                        <div class="history-header">
+                                            <div class="history-title-section">
+                                                <h3>{item.item_name}</h3>
+                                                {#if item.photo_filename}
+                                                    <div class="item-image">
+                                                        <img 
+                                                            src="/api/photos/{item.photo_filename}" 
+                                                            alt="{item.item_name}"
+                                                            on:error={(e) => e.target.style.display = 'none'}
+                                                        />
+                                                    </div>
+                                                {:else}
+                                                    <div class="item-image placeholder">
+                                                        <span>📷</span>
+                                                    </div>
+                                                {/if}
+                                            </div>
+                                            <div class="history-status-badges">
+                                                <span class="status-badge {item.status}">
+                                                    {#if item.status === 'approved'}
+                                                        📋 Borrowed
+                                                    {:else if item.status === 'returned'}
+                                                        ✅ Returned
+                                                    {:else if item.status === 'not_found'}
+                                                        ❌ Lost/Missing
+                                                    {:else if item.status === 'denied'}
+                                                        ❌ Denied
+                                                    {:else if item.status === 'pending'}
+                                                        ⏳ Pending
+                                                    {:else}
+                                                        {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
+                                                    {/if}
+                                                </span>
+                                                {#if item.status === 'approved' && isOverdue(item.expected_return_date) && item.status !== 'returned'}
+                                                    <span class="overdue-badge">OVERDUE</span>
+                                                {/if}
+                                            </div>
+                                            <div class="history-date">
+                                                <span class="date-label">
+                                                    {#if item.status === 'returned'}
+                                                        Returned:
+                                                    {:else if item.status === 'not_found'}
+                                                        Marked Lost:
+                                                    {:else if item.status === 'denied'}
+                                                        Denied:
+                                                    {:else if item.approved_at}
+                                                        Approved:
+                                                    {:else}
+                                                        Requested:
+                                                    {/if}
+                                                </span>
+                                                <span class="date-value">
+                                                    {#if item.status === 'returned' && item.return_approved_at}
+                                                        {formatDate(item.return_approved_at)}
+                                                    {:else if item.approved_at}
+                                                        {formatDate(item.approved_at)}
+                                                    {:else}
+                                                        {formatDate(item.CreatedAt)}
+                                                    {/if}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div class="history-details">
+                                            <div class="detail-row">
+                                                <div class="detail-group">
+                                                    <p><strong>Borrower:</strong> {item.borrower_name}</p>
+                                                    <p><strong>Phone:</strong> 
+                                                        <span 
+                                                            class="clickable-phone" 
+                                                            role="button"
+                                                            tabindex="0"
+                                                            on:click={() => copyToClipboard(item.borrower_phone)}
+                                                            on:keydown={(e) => e.key === 'Enter' && copyToClipboard(item.borrower_phone)}
+                                                            title="Click to copy phone number"
+                                                        >
+                                                            {item.borrower_phone}
+                                                        </span>
+                                                    </p>
+                                                    <p><strong>Lab:</strong> {item.lab_location}</p>
+                                                </div>
+                                                <div class="detail-group">
+                                                    <p><strong>Quantity:</strong> {item.quantity_borrowed}</p>
+                                                    <p><strong>Purpose:</strong> {item.purpose}</p>
+                                                    {#if item.approved_by}
+                                                        <p><strong>Approved by:</strong> {item.approved_by}</p>
+                                                    {/if}
+                                                </div>
+                                                <div class="detail-group">
+                                                    <p><strong>Requested:</strong> {formatDate(item.CreatedAt)}</p>
+                                                    {#if item.expected_return_date}
+                                                        <p><strong>Expected Return:</strong> {formatExpectedReturn(item.expected_return_date)}</p>
+                                                    {/if}
+                                                    {#if item.return_requested_at}
+                                                        <p><strong>Return Requested:</strong> {formatDate(item.return_requested_at)}</p>
+                                                    {/if}
+                                                    {#if item.status === 'returned' && item.return_approved_at}
+                                                        <p><strong>Return Date:</strong> {formatDate(item.return_approved_at)}</p>
+                                                    {/if}
+                                                    {#if item.status === 'returned' && isOverdue(item.expected_return_date)}
+                                                        <p><strong>Return Status:</strong> <span class="overdue-mark">⚠️ Returned Overdue</span></p>
+                                                    {/if}
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             {/each}
@@ -877,7 +1008,7 @@
             {#if currentView === 'lab-view'}
                 <div class="loans-content">
                     <h2>🏭 {selectedLab} - Borrowed Items</h2>
-                    <p class="subtitle-text">Items returned more than 2 weeks ago are automatically archived. View archived items in the "📦 Archived Items" tab.</p>
+                    <p class="subtitle-text">Items returned more than 2 weeks ago are automatically archived. View complete history in the "� Item History" tab.</p>
                     
                     <!-- Status Filters -->
                     <div class="status-filters">
@@ -934,7 +1065,7 @@
                             {#each labLoans as loan}
                                 <div 
                                     class="loan-card" 
-                                    class:overdue={isOverdue(loan.expected_return_date) && loan.approval_status === 'approved'}
+                                    class:overdue={isOverdue(loan.expected_return_date) && loan.approval_status === 'approved' && loan.status !== 'returned'}
                                     class:rejected={loan.approval_status === 'denied'}
                                 >
                                     <div class="loan-header">
@@ -958,14 +1089,25 @@
                                             <span class="status-badge {loan.approval_status}">
                                                 {loan.approval_status.charAt(0).toUpperCase() + loan.approval_status.slice(1)}
                                             </span>
-                                            {#if isOverdue(loan.expected_return_date) && loan.approval_status === 'approved'}
+                                            {#if isOverdue(loan.expected_return_date) && loan.approval_status === 'approved' && loan.status !== 'returned'}
                                                 <span class="overdue-badge">OVERDUE</span>
                                             {/if}
                                         </div>
                                     </div>
                                     <div class="loan-details">
                                         <p><strong>Borrower:</strong> {loan.borrower_name}</p>
-                                        <p><strong>Phone:</strong> {loan.borrower_phone}</p>
+                                        <p><strong>Phone:</strong> 
+                                            <span 
+                                                class="clickable-phone" 
+                                                role="button"
+                                                tabindex="0"
+                                                on:click={() => copyToClipboard(loan.borrower_phone)}
+                                                on:keydown={(e) => e.key === 'Enter' && copyToClipboard(loan.borrower_phone)}
+                                                title="Click to copy phone number"
+                                            >
+                                                {loan.borrower_phone}
+                                            </span>
+                                        </p>
                                         <p><strong>Quantity:</strong> {loan.quantity_borrowed}</p>
                                         <p><strong>Purpose:</strong> {loan.purpose}</p>
                                         <p><strong>Expected Return:</strong> {formatExpectedReturn(loan.expected_return_date)}</p>
@@ -1035,6 +1177,12 @@
                                     {:else if loan.return_requested && loan.return_approval_status === 'approved'}
                                         <div class="return-section">
                                             <p class="return-status approved">✅ Return approved - Item returned</p>
+                                            {#if loan.return_approved_at}
+                                                <p class="return-date"><strong>Return Date:</strong> {formatDate(loan.return_approved_at)}</p>
+                                            {/if}
+                                            {#if isOverdue(loan.expected_return_date)}
+                                                <p class="overdue-returned"><strong>Status:</strong> <span class="overdue-mark">⚠️ Returned Overdue</span></p>
+                                            {/if}
                                         </div>
                                     {:else if loan.return_requested && loan.return_approval_status === 'not_found'}
                                         <div class="return-section">
@@ -1496,6 +1644,190 @@
         opacity: 0.9;
     }
 
+    /* History View Styles */
+    .history-list {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        margin-top: 20px;
+        position: relative;
+    }
+
+    .history-item {
+        display: flex;
+        background: #11111b;
+        border-radius: 12px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        border: 1px solid #313244;
+        transition: all 0.3s ease;
+        position: relative;
+    }
+
+    .history-item:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+        border-color: #f2cdcd;
+    }
+
+    .history-item.approved {
+        border-left: 5px solid #a6e3a1;
+    }
+
+    .history-item.returned {
+        border-left: 5px solid #94e2d5;
+    }
+
+    .history-item.not_found {
+        border-left: 5px solid #f38ba8;
+    }
+
+    .history-item.denied {
+        border-left: 5px solid #6c7086;
+    }
+
+    .history-item.pending {
+        border-left: 5px solid #f7b955;
+    }
+
+    .history-timeline {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 60px;
+        min-height: 100%;
+        padding: 20px 0;
+        position: relative;
+    }
+
+    .timeline-dot {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        border: 3px solid #313244;
+        z-index: 2;
+        margin-top: 5px;
+    }
+
+    .timeline-dot.approved {
+        background: #a6e3a1;
+        border-color: #a6e3a1;
+    }
+
+    .timeline-dot.returned {
+        background: #94e2d5;
+        border-color: #94e2d5;
+    }
+
+    .timeline-dot.not_found {
+        background: #f38ba8;
+        border-color: #f38ba8;
+    }
+
+    .timeline-dot.denied {
+        background: #6c7086;
+        border-color: #6c7086;
+    }
+
+    .timeline-dot.pending {
+        background: #f7b955;
+        border-color: #f7b955;
+        animation: pulse 2s infinite;
+    }
+
+    .timeline-line {
+        width: 2px;
+        flex: 1;
+        background: #313244;
+        margin-top: 10px;
+    }
+
+    .history-item:last-child .timeline-line {
+        display: none;
+    }
+
+    .history-content {
+        flex: 1;
+        padding: 20px 25px;
+    }
+
+    .history-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 20px;
+        gap: 15px;
+        flex-wrap: wrap;
+    }
+
+    .history-title-section {
+        display: flex;
+        align-items: flex-start;
+        gap: 15px;
+        flex: 1;
+    }
+
+    .history-title-section h3 {
+        color: #cdd6f4;
+        margin: 0;
+        font-size: clamp(1.1rem, 2.5vw, 1.3rem);
+        font-weight: 600;
+        line-height: 1.2;
+    }
+
+    .history-status-badges {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
+    .history-date {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        text-align: right;
+        min-width: 120px;
+    }
+
+    .date-label {
+        font-size: 0.8rem;
+        color: #a6adc8;
+        font-weight: 500;
+    }
+
+    .date-value {
+        font-size: 0.9rem;
+        color: #cdd6f4;
+        font-weight: 600;
+        margin-top: 2px;
+    }
+
+    .history-details {
+        margin-top: 15px;
+    }
+
+    .detail-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 20px;
+    }
+
+    .detail-group {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .detail-group p {
+        margin: 0;
+        color: #a6adc8;
+        font-size: clamp(0.85rem, 1.8vw, 0.95rem);
+    }
+
+    .detail-group strong {
+        color: #cdd6f4;
+        font-weight: 600;
+    }
+
     .loan-header {
         display: flex;
         justify-content: space-between;
@@ -1596,6 +1928,28 @@
     .loan-details strong {
         color: #cdd6f4;
         font-weight: 600;
+    }
+
+    .clickable-phone {
+        color: #89b4fa;
+        cursor: pointer;
+        text-decoration: underline;
+        text-decoration-style: dotted;
+        transition: all 0.2s ease;
+        padding: 2px 4px;
+        border-radius: 3px;
+    }
+
+    .clickable-phone:hover {
+        color: #b4befe;
+        background-color: #313244;
+        text-decoration-style: solid;
+    }
+
+    .clickable-phone:focus {
+        outline: 2px solid #f2cdcd;
+        outline-offset: 2px;
+        background-color: #313244;
     }
 
     .photo-section {
@@ -1798,6 +2152,25 @@
     .overdue-text {
         color: #f85149;
         font-weight: 600;
+    }
+
+    .return-date {
+        color: #94e2d5;
+        font-weight: 500;
+        margin: 8px 0;
+    }
+
+    .overdue-returned {
+        margin: 8px 0;
+    }
+
+    .overdue-mark {
+        color: #f7b955;
+        font-weight: 600;
+        background: rgba(247, 185, 85, 0.15);
+        padding: 2px 6px;
+        border-radius: 4px;
+        border: 1px solid rgba(247, 185, 85, 0.3);
     }
 
     .admin-actions {
