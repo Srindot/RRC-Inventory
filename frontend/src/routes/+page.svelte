@@ -248,7 +248,9 @@
         <div class="header">
             <div class="header-main">
                 <div class="logo-title">
-                    <img src="/rrc_logo.png" alt="RRC Logo" class="logo" />
+                    <button class="logo-button" on:click={() => currentView = 'home'} aria-label="Go to home page">
+                        <img src="/rrc_logo.png" alt="RRC Logo" class="logo clickable-logo" />
+                    </button>
                     <div class="title-section">
                         <h1>Robotics Research Centre</h1>
                         <p class="subtitle">Lab Equipment Management System</p>
@@ -457,6 +459,8 @@
                                 <p><strong>Expected return:</strong> {formatExpectedReturn(loan.expected_return_date)}</p>
                                 {#if loan.status === 'not_found'}
                                     <p class="missing-note"><strong>Status:</strong> This item has been marked as missing/not found by administrators</p>
+                                {:else if loan.status === 'returned'}
+                                    <p class="returned-note"><strong>Status:</strong> Recently returned and processed by admin</p>
                                 {:else if loan.return_requested}
                                     <p class="return-pending-note"><strong>Status:</strong> Return request submitted - waiting for admin approval</p>
                                 {/if}
@@ -464,6 +468,10 @@
                             {#if loan.status === 'not_found'}
                                 <div class="missing-actions">
                                     <p class="missing-contact">Please contact administration if you have found this item</p>
+                                </div>
+                            {:else if loan.status === 'returned'}
+                                <div class="returned-actions">
+                                    <p class="returned-message">🎉 Successfully returned! This item will be removed from your list tomorrow.</p>
                                 </div>
                             {:else if loan.return_requested}
                                 <div class="return-pending-actions">
@@ -552,6 +560,27 @@
         width: auto;
         border-radius: 8px;
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    }
+
+    .logo-button {
+        background: none;
+        border: none;
+        padding: 0;
+        cursor: pointer;
+        border-radius: 8px;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .logo-button:hover {
+        transform: scale(1.05);
+    }
+
+    .logo-button:hover .logo {
+        box-shadow: 0 6px 16px rgba(137, 180, 250, 0.3);
+    }
+
+    .clickable-logo {
+        transition: box-shadow 0.2s ease;
     }
 
     .title-section {
@@ -1143,6 +1172,26 @@
 
     .return-pending-message {
         color: #a6e3a1;
+        font-weight: 600;
+        margin: 0;
+        font-size: 1.1rem;
+    }
+
+    .returned-note {
+        color: #94e2d5;
+        font-weight: 500;
+        margin-top: 10px;
+    }
+
+    .returned-actions {
+        padding: 15px;
+        background: rgba(148, 226, 213, 0.15);
+        border-radius: 6px;
+        text-align: center;
+    }
+
+    .returned-message {
+        color: #94e2d5;
         font-weight: 600;
         margin: 0;
         font-size: 1.1rem;

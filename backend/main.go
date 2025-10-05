@@ -87,6 +87,7 @@ type Loan struct {
 	ReturnRequested      bool       `json:"return_requested" gorm:"default:false"`
 	ReturnApprovalStatus string     `json:"return_approval_status" gorm:"default:'not_requested'"` // not_requested, pending, approved, not_found
 	ReturnRequestedAt    *time.Time `json:"return_requested_at"`
+	ReturnedAt           *time.Time `json:"returned_at"`
 }
 
 // Helper function to format time pointers for CSV
@@ -191,9 +192,22 @@ func main() {
 		// Get a list of all active loans (for the dashboard)
 		api.GET("/loans/active", func(c *gin.Context) {
 			var loans []Loan
-			// Include both active loans and items marked as not found (to show at top of list)
-			if err := db.Where("(status = ? AND approval_status = ?) OR status = ?", "active", "approved", "not_found").
-				Order("CASE WHEN status = 'not_found' THEN 0 ELSE 1 END, created_at DESC").
+			// Include:
+			// 1. Active loans (status = 'active' AND approval_status = 'approved')
+			// 2. Items marked as not found (status = 'not_found')
+			// 3. Recently returned items (status = 'returned' AND returned_at within last 24 hours)
+			if err := db.Where(`
+				(status = ? AND approval_status = ?) OR 
+				status = ? OR 
+				(status = ? AND returned_at > ?)
+			`, "active", "approved", "not_found", "returned", time.Now().Add(-24*time.Hour)).
+				Order(`
+					CASE 
+						WHEN status = 'not_found' THEN 0 
+						WHEN status = 'returned' THEN 1
+						ELSE 2 
+					END, created_at DESC
+				`).
 				Find(&loans).Error; err != nil {
 				c.JSON(500, gin.H{"error": "Failed to retrieve active loans"})
 				return
@@ -562,6 +576,7 @@ func main() {
 				if req.Action == "approved" {
 					loan.ReturnApprovalStatus = "approved"
 					loan.Status = "returned"
+					loan.ReturnedAt = &now
 				} else if req.Action == "not_found" {
 					loan.ReturnApprovalStatus = "not_found"
 					loan.Status = "not_found"
