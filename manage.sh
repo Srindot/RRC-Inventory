@@ -24,7 +24,7 @@ show_help() {
 
 dev_start() {
     echo "🚀 Starting development environment..."
-    docker-compose -f docker-compose.dev.yml up -d
+    docker-compose up -d
     echo "✅ Development environment started!"
     echo "📱 Frontend: http://localhost"
     echo "🔧 Backend API: http://localhost/api"
@@ -33,15 +33,15 @@ dev_start() {
 
 dev_stop() {
     echo "🛑 Stopping development environment..."
-    docker-compose -f docker-compose.dev.yml down
+    docker-compose down
     echo "✅ Development environment stopped!"
 }
 
 dev_logs() {
     if [ -n "$2" ]; then
-        docker-compose -f docker-compose.dev.yml logs -f "$2"
+        docker-compose logs -f "$2"
     else
-        docker-compose -f docker-compose.dev.yml logs -f
+        docker-compose logs -f
     fi
 }
 
@@ -74,7 +74,6 @@ build_all() {
 
 clean_all() {
     echo "🧹 Cleaning up containers and images..."
-    docker-compose -f docker-compose.dev.yml down -v --remove-orphans
     docker-compose down -v --remove-orphans
     docker system prune -f
     echo "✅ Cleanup complete!"

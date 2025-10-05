@@ -1,4 +1,0 @@
-# In docker-compose.yml
-volumes:
-  - ./Caddyfile:/etc/caddy/Caddyfile 
-  # ^ This line requires the local file to be named Caddyfile

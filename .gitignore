@@ -1,3 +1,7 @@
+# Logs
+*.log
+backend.log
+
 # Docker
 .dockerignore
 
@@ -16,6 +20,15 @@ frontend/package-lock.json
 .env
 .env.local
 .env.production
+
+# Uploads and temporary files
+backend/uploads/*
+!backend/uploads/.gitkeep
+temp_uploads/
+
+# Database
+*.db
+*.sqlite
 
 # IDE
 .vscode/

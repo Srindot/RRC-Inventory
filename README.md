@@ -1,13 +1,13 @@
-# RRC Inventory Management System
+# 🤖 RRC Inventory Management System
 
-A modern web application for managing lab equipment inventory built with Go, SvelteKit, PostgreSQL, and Caddy.
+A modern web application for managing Robotics Research Centre lab equipment inventory built with Go, SvelteKit, PostgreSQL, and Caddy.
 
 ## 🏗️ Architecture
 
 - **Backend**: Go with Gin framework
-- **Frontend**: SvelteKit (static build)
-- **Database**: PostgreSQL
-- **Reverse Proxy**: Caddy (automatic HTTPS)
+- **Frontend**: SvelteKit with development server
+- **Database**: PostgreSQL 16
+- **Reverse Proxy**: Caddy v2 (automatic HTTPS)
 - **Orchestration**: Docker Compose
 
 ## 🚀 Quick Start
@@ -18,15 +18,26 @@ A modern web application for managing lab equipment inventory built with Go, Sve
 
 ### Development Environment
 
-1. **Start the development environment:**
+1. **Clone the repository:**
+   ```bash
+   git clone <repository-url>
+   cd rrc-inventory
+   ```
+
+2. **Start the development environment:**
    ```bash
    ./manage.sh dev-start
    ```
 
-2. **Access the application:**
-   - Frontend: http://localhost
-   - Backend API: http://localhost/api
-   - Database: localhost:5432
+3. **Access the application:**
+   - 🌐 **Frontend**: http://localhost
+   - 🔧 **Backend API**: http://localhost/api
+   - 🗄️ **Database**: localhost:5432
+   - 👨‍💼 **Admin Panel**: http://localhost/admin
+
+### Default Admin Login
+- **Username**: `Srinath`
+- **Password**: `rrc@srinath`
 
 3. **View logs:**
    ```bash
