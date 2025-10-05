@@ -1,2 +1,7 @@
 # Keep this directory in git
 # This directory is used for storing uploaded images
+
+**.jpg
+**.jpeg 
+**.png
+**.gif
