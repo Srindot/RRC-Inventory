@@ -41,23 +41,30 @@
 
     // Return search
     let searchQuery = '';
+    let filteredLoans = [];
+
+    // Simple reactive statement that explicitly depends on both variables
+    $: updateFilteredLoans(loans, searchQuery);
     
-    // Computed filtered loans - reactive to both loans and searchQuery
-    $: filteredLoans = (() => {
-        if (!loans) return [];
+    function updateFilteredLoans(currentLoans, currentSearchQuery) {
+        if (!currentLoans) {
+            filteredLoans = [];
+            return;
+        }
         
-        let loansToFilter = loans;
+        let loansToFilter = [...currentLoans]; // Create a copy
         
-        if (searchQuery && searchQuery.trim()) {
-            loansToFilter = loans.filter(loan => {
-                const borrowerMatch = loan.borrower_name && loan.borrower_name.toLowerCase().includes(searchQuery.toLowerCase());
-                const itemMatch = loan.item_name && loan.item_name.toLowerCase().includes(searchQuery.toLowerCase());
-                return borrowerMatch || itemMatch;
+        if (currentSearchQuery && currentSearchQuery.trim()) {
+            const query = currentSearchQuery.toLowerCase().trim();
+            loansToFilter = currentLoans.filter(loan => {
+                const borrowerName = (loan.borrower_name || '').toLowerCase();
+                const itemName = (loan.item_name || '').toLowerCase();
+                return borrowerName.includes(query) || itemName.includes(query);
             });
         }
         
         // Sort loans by priority: Lost -> Overdue -> Pending -> Borrowed -> Returned
-        return loansToFilter.sort((a, b) => {
+        filteredLoans = loansToFilter.sort((a, b) => {
             // Helper function to check if a loan is overdue
             const isLoanOverdue = (loan) => {
                 return loan.approval_status === 'approved' && 
@@ -77,11 +84,22 @@
             
             return getLoanPriority(a) - getLoanPriority(b);
         });
-    })();
+    }
 
     // Clear search function
-    function clearSearch() {
+    function clearSearch(event) {
+        if (event) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
         searchQuery = '';
+        // Focus back on the search input after clearing
+        setTimeout(() => {
+            const searchInput = document.getElementById('search');
+            if (searchInput) {
+                searchInput.focus();
+            }
+        }, 50);
     }
 
     // Load items for borrowing
@@ -548,11 +566,19 @@
                     <input 
                         type="text" 
                         id="search" 
-                        bind:value={searchQuery} 
+                        bind:value={searchQuery}
+                        on:input={(e) => searchQuery = e.target.value}
                         placeholder="Search loans..."
+                        autocomplete="off"
                     />
-                    {#if searchQuery.trim()}
-                        <button class="clear-search-btn" on:click={clearSearch} title="Clear search">
+                    {#if searchQuery && searchQuery.trim()}
+                        <button 
+                            class="clear-search-btn" 
+                            on:click={clearSearch} 
+                            on:mousedown|preventDefault={clearSearch}
+                            title="Clear search"
+                            type="button"
+                        >
                             ✕
                         </button>
                     {/if}
@@ -1170,7 +1196,7 @@
     .search-container input {
         width: 100%;
         padding: clamp(12px, 3vw, 16px);
-        padding-right: 45px; /* Make room for clear button */
+        padding-right: 50px; /* Make room for clear button */
         border: 2px solid #313244;
         border-radius: 8px;
         font-size: clamp(0.9rem, 2vw, 1rem);
@@ -1178,32 +1204,38 @@
         color: #cdd6f4;
         transition: all 0.3s ease;
         box-sizing: border-box;
+        z-index: 1;
+        position: relative;
     }
 
     .search-container input:focus {
         border-color: #f2cdcd;
         outline: none;
         box-shadow: 0 0 0 3px rgba(242, 205, 205, 0.25);
+        z-index: 2;
     }
 
     .clear-search-btn {
         position: absolute;
-        right: 10px;
+        right: 12px;
         top: 50%;
         transform: translateY(-50%);
         background: #f38ba8;
         color: #1e1e2e;
         border: none;
         border-radius: 50%;
-        width: 24px;
-        height: 24px;
+        width: 26px;
+        height: 26px;
         display: flex;
         align-items: center;
         justify-content: center;
         cursor: pointer;
-        font-size: 12px;
+        font-size: 14px;
         font-weight: bold;
         transition: all 0.3s ease;
+        z-index: 3;
+        user-select: none;
+        flex-shrink: 0;
     }
 
     .clear-search-btn:hover {
