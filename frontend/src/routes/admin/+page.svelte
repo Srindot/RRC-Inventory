@@ -12,7 +12,7 @@
     };
     
     // Current view
-    let currentView = 'login'; // login, dashboard, pending, pending-returns, lost-missing, history, lab-view
+    let currentView = 'login'; // login, dashboard, pending, pending-returns, lost-missing, history, lab-view, admin-management, change-password
     let selectedLab = '';
     let selectedFilter = 'all'; // all, borrowed, rejected, returned, pending, not_found
     
@@ -25,6 +25,21 @@
     let loading = false;
     let message = '';
     let messageType = '';
+
+    // Admin Management
+    let adminList = [];
+    let showCreateAdminForm = false;
+    let createAdminForm = {
+        username: '',
+        password: '',
+        name: '',
+        is_super_admin: false
+    };
+    let changePasswordForm = {
+        old_password: '',
+        new_password: '',
+        confirm_password: ''
+    };
 
     // Lab options
     const labs = ['Main Lab', 'Mech Lab', 'Control Lab'];
@@ -451,6 +466,125 @@
         currentView = 'dashboard';
     }
 
+    // Admin Management Functions
+    function showAdminManagement() {
+        currentView = 'admin-management';
+        loadAdminList();
+    }
+
+    function showChangePasswordView() {
+        currentView = 'change-password';
+    }
+
+    async function loadAdminList() {
+        if (!adminInfo?.is_super_admin) return;
+        
+        try {
+            const response = await fetch(`/api/admin/list?requesting_username=${adminInfo.username}`);
+            if (response.ok) {
+                adminList = await response.json();
+            } else {
+                showMessage('Failed to load admin list', 'error');
+            }
+        } catch (error) {
+            showMessage('Failed to load admin list', 'error');
+        }
+    }
+
+    async function createAdmin() {
+        if (!adminInfo?.is_super_admin) return;
+        
+        try {
+            const response = await fetch('/api/admin/create', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    requesting_username: adminInfo.username,
+                    ...createAdminForm
+                })
+            });
+
+            const result = await response.json();
+            
+            if (response.ok) {
+                showMessage('Admin created successfully', 'success');
+                showCreateAdminForm = false;
+                createAdminForm = { username: '', password: '', name: '', is_super_admin: false };
+                loadAdminList();
+            } else {
+                showMessage(result.error || 'Failed to create admin', 'error');
+            }
+        } catch (error) {
+            showMessage('Failed to create admin', 'error');
+        }
+    }
+
+    async function changePassword() {
+        if (changePasswordForm.new_password !== changePasswordForm.confirm_password) {
+            showMessage('New passwords do not match', 'error');
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/admin/change-password', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    username: adminInfo.username,
+                    old_password: changePasswordForm.old_password,
+                    new_password: changePasswordForm.new_password
+                })
+            });
+
+            const result = await response.json();
+            
+            if (response.ok) {
+                showMessage('Password changed successfully', 'success');
+                changePasswordForm = { old_password: '', new_password: '', confirm_password: '' };
+                currentView = 'dashboard';
+            } else {
+                showMessage(result.error || 'Failed to change password', 'error');
+            }
+        } catch (error) {
+            showMessage('Failed to change password', 'error');
+        }
+    }
+
+    async function deleteAllItems() {
+        if (!adminInfo?.is_super_admin) return;
+        
+        if (!confirm('⚠️ WARNING: This will permanently delete ALL items data!\n\nThis action cannot be undone. Are you sure you want to continue?')) {
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/admin/delete-all-items', {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    requesting_username: adminInfo.username,
+                    confirm_delete: true
+                })
+            });
+
+            const result = await response.json();
+            
+            if (response.ok) {
+                showMessage(`Successfully deleted ${result.deleted_count} items`, 'success');
+            } else {
+                showMessage(result.error || 'Failed to delete items', 'error');
+            }
+        } catch (error) {
+            showMessage('Failed to delete items', 'error');
+        }
+    }
+
     // Reactive statements
     $: if (currentView === 'pending') {
         loadPendingLoans();
@@ -575,6 +709,22 @@
                 >
                     📚 Item History
                 </button>
+                <button 
+                    class="tab-btn" 
+                    class:active={currentView === 'change-password'}
+                    on:click={showChangePasswordView}
+                >
+                    🔑 Change Password
+                </button>
+                {#if adminInfo?.is_super_admin}
+                    <button 
+                        class="tab-btn" 
+                        class:active={currentView === 'admin-management'}
+                        on:click={showAdminManagement}
+                    >
+                        👥 Admin Management
+                    </button>
+                {/if}
             </div>
 
             <!-- Dashboard View -->
@@ -1211,6 +1361,182 @@
                             {/each}
                         </div>
                     {/if}
+                </div>
+            {/if}
+
+            <!-- Change Password View -->
+            {#if currentView === 'change-password'}
+                <div class="form-container">
+                    <h2>🔑 Change Password</h2>
+                    <div class="form-card">
+                        <form on:submit|preventDefault={changePassword}>
+                            <div class="form-group">
+                                <label for="old_password">Current Password</label>
+                                <input 
+                                    type="password" 
+                                    id="old_password" 
+                                    bind:value={changePasswordForm.old_password} 
+                                    required
+                                    placeholder="Enter current password"
+                                />
+                            </div>
+                            <div class="form-group">
+                                <label for="new_password">New Password</label>
+                                <input 
+                                    type="password" 
+                                    id="new_password" 
+                                    bind:value={changePasswordForm.new_password} 
+                                    required
+                                    minlength="6"
+                                    placeholder="Enter new password (min 6 characters)"
+                                />
+                            </div>
+                            <div class="form-group">
+                                <label for="confirm_password">Confirm New Password</label>
+                                <input 
+                                    type="password" 
+                                    id="confirm_password" 
+                                    bind:value={changePasswordForm.confirm_password} 
+                                    required
+                                    minlength="6"
+                                    placeholder="Confirm new password"
+                                />
+                            </div>
+                            <div class="form-actions">
+                                <button type="submit" class="submit-btn" disabled={loading}>
+                                    {loading ? 'Changing...' : 'Change Password'}
+                                </button>
+                                <button type="button" class="cancel-btn" on:click={goToDashboard}>
+                                    Cancel
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            {/if}
+
+            <!-- Admin Management View (Super Admin Only) -->
+            {#if currentView === 'admin-management' && adminInfo?.is_super_admin}
+                <div class="admin-management-container">
+                    <h2>👥 Admin Management</h2>
+                    
+                    <!-- Create Admin Section -->
+                    <div class="management-section">
+                        <div class="section-header">
+                            <h3>Create New Admin</h3>
+                            <button 
+                                class="toggle-btn" 
+                                on:click={() => showCreateAdminForm = !showCreateAdminForm}
+                            >
+                                {showCreateAdminForm ? '− Hide Form' : '+ Add Admin'}
+                            </button>
+                        </div>
+                        
+                        {#if showCreateAdminForm}
+                            <div class="form-card">
+                                <form on:submit|preventDefault={createAdmin}>
+                                    <div class="form-group">
+                                        <label for="create_username">Username</label>
+                                        <input 
+                                            type="text" 
+                                            id="create_username" 
+                                            bind:value={createAdminForm.username} 
+                                            required
+                                            placeholder="Enter username"
+                                        />
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="create_password">Password</label>
+                                        <input 
+                                            type="password" 
+                                            id="create_password" 
+                                            bind:value={createAdminForm.password} 
+                                            required
+                                            minlength="6"
+                                            placeholder="Enter password (min 6 characters)"
+                                        />
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="create_name">Full Name</label>
+                                        <input 
+                                            type="text" 
+                                            id="create_name" 
+                                            bind:value={createAdminForm.name} 
+                                            required
+                                            placeholder="Enter full name"
+                                        />
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="checkbox-label">
+                                            <input 
+                                                type="checkbox" 
+                                                bind:checked={createAdminForm.is_super_admin}
+                                            />
+                                            Super Admin (can manage other admins)
+                                        </label>
+                                    </div>
+                                    <div class="form-actions">
+                                        <button type="submit" class="submit-btn" disabled={loading}>
+                                            {loading ? 'Creating...' : 'Create Admin'}
+                                        </button>
+                                        <button type="button" class="cancel-btn" on:click={() => {
+                                            showCreateAdminForm = false;
+                                            createAdminForm = { username: '', password: '', name: '', is_super_admin: false };
+                                        }}>
+                                            Cancel
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        {/if}
+                    </div>
+
+                    <!-- Admin List Section -->
+                    <div class="management-section">
+                        <div class="section-header">
+                            <h3>Current Admins</h3>
+                            <button class="refresh-btn" on:click={loadAdminList}>🔄 Refresh</button>
+                        </div>
+                        
+                        {#if adminList.length > 0}
+                            <div class="admin-list">
+                                {#each adminList as admin}
+                                    <div class="admin-card">
+                                        <div class="admin-info">
+                                            <h4>{admin.name}</h4>
+                                            <p class="admin-username">@{admin.username}</p>
+                                            <p class="admin-role">
+                                                {admin.is_super_admin ? '👑 Super Admin' : '👤 Admin'}
+                                            </p>
+                                            <p class="admin-date">
+                                                Created: {new Date(admin.created_at).toLocaleDateString()}
+                                            </p>
+                                        </div>
+                                    </div>
+                                {/each}
+                            </div>
+                        {:else}
+                            <p class="no-data">No admins found. <button class="link-btn" on:click={loadAdminList}>Refresh</button></p>
+                        {/if}
+                    </div>
+
+                    <!-- Danger Zone -->
+                    <div class="management-section danger-zone">
+                        <div class="section-header">
+                            <h3>⚠️ Danger Zone</h3>
+                        </div>
+                        <div class="danger-actions">
+                            <div class="danger-item">
+                                <div class="danger-info">
+                                    <h4>Delete All Items Data</h4>
+                                    <p>Permanently delete all inventory items. This action cannot be undone.</p>
+                                </div>
+                                <button class="danger-btn" on:click={deleteAllItems}>
+                                    🗑️ Delete All Items
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             {/if}
         </div>
@@ -2382,6 +2708,316 @@
 
         .loans-grid {
             grid-template-columns: repeat(auto-fill, minmax(550px, 1fr));
+        }
+    }
+
+    /* Admin Management Styles */
+    .form-container {
+        padding: 20px;
+        max-width: 600px;
+        margin: 0 auto;
+    }
+
+    .form-card {
+        background: #313244;
+        border-radius: 12px;
+        padding: 24px;
+        border: 1px solid #45475a;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+
+    .form-group {
+        margin-bottom: 20px;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: 500;
+        color: #cdd6f4;
+    }
+
+    .form-group input[type="text"],
+    .form-group input[type="password"] {
+        width: 100%;
+        padding: 12px 16px;
+        background: #1e1e2e;
+        border: 2px solid #45475a;
+        border-radius: 8px;
+        color: #cdd6f4;
+        font-size: 1rem;
+        transition: all 0.2s ease;
+        box-sizing: border-box;
+    }
+
+    .form-group input[type="text"]:focus,
+    .form-group input[type="password"]:focus {
+        outline: none;
+        border-color: #89b4fa;
+        box-shadow: 0 0 0 3px rgba(137, 180, 250, 0.1);
+    }
+
+    .checkbox-label {
+        display: flex !important;
+        align-items: center;
+        gap: 12px;
+        cursor: pointer;
+    }
+
+    .checkbox-label input[type="checkbox"] {
+        width: auto !important;
+        margin: 0;
+    }
+
+    .form-actions {
+        display: flex;
+        gap: 12px;
+        margin-top: 24px;
+    }
+
+    .submit-btn {
+        background: linear-gradient(135deg, #89b4fa, #74c7ec);
+        color: #1e1e2e;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 8px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        flex: 1;
+    }
+
+    .submit-btn:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(137, 180, 250, 0.3);
+    }
+
+    .submit-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        transform: none;
+    }
+
+    .cancel-btn {
+        background: #6c7086;
+        color: #cdd6f4;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 8px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .cancel-btn:hover {
+        background: #7c7f93;
+        transform: translateY(-1px);
+    }
+
+    .admin-management-container {
+        padding: 20px;
+        max-width: 1000px;
+        margin: 0 auto;
+    }
+
+    .management-section {
+        background: #313244;
+        border-radius: 12px;
+        padding: 24px;
+        margin-bottom: 24px;
+        border: 1px solid #45475a;
+    }
+
+    .section-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+    }
+
+    .section-header h3 {
+        margin: 0;
+        color: #cdd6f4;
+        font-size: 1.2rem;
+    }
+
+    .toggle-btn {
+        background: #89b4fa;
+        color: #1e1e2e;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 6px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .toggle-btn:hover {
+        background: #74c7ec;
+        transform: translateY(-1px);
+    }
+
+    .refresh-btn {
+        background: #a6e3a1;
+        color: #1e1e2e;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 6px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .refresh-btn:hover {
+        background: #94e2d5;
+        transform: translateY(-1px);
+    }
+
+    .admin-list {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 16px;
+    }
+
+    .admin-card {
+        background: #1e1e2e;
+        border-radius: 8px;
+        padding: 20px;
+        border: 1px solid #45475a;
+        transition: all 0.2s ease;
+    }
+
+    .admin-card:hover {
+        border-color: #89b4fa;
+        box-shadow: 0 4px 12px rgba(137, 180, 250, 0.1);
+    }
+
+    .admin-info h4 {
+        margin: 0 0 8px 0;
+        color: #cdd6f4;
+        font-size: 1.1rem;
+    }
+
+    .admin-username {
+        margin: 4px 0;
+        color: #89b4fa;
+        font-weight: 500;
+    }
+
+    .admin-role {
+        margin: 8px 0;
+        font-weight: 600;
+    }
+
+    .admin-date {
+        margin: 8px 0 0 0;
+        color: #6c7086;
+        font-size: 0.9rem;
+    }
+
+    .danger-zone {
+        border-color: #f38ba8 !important;
+        background: rgba(243, 139, 168, 0.1);
+    }
+
+    .danger-zone .section-header h3 {
+        color: #f38ba8;
+    }
+
+    .danger-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    .danger-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px;
+        background: #1e1e2e;
+        border-radius: 8px;
+        border: 1px solid #45475a;
+    }
+
+    .danger-info h4 {
+        margin: 0 0 4px 0;
+        color: #f38ba8;
+    }
+
+    .danger-info p {
+        margin: 0;
+        color: #cdd6f4;
+        font-size: 0.9rem;
+    }
+
+    .danger-btn {
+        background: #f38ba8;
+        color: #1e1e2e;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 6px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        white-space: nowrap;
+        margin-left: 16px;
+    }
+
+    .danger-btn:hover {
+        background: #eba0ac;
+        transform: translateY(-1px);
+    }
+
+    .link-btn {
+        background: none;
+        border: none;
+        color: #89b4fa;
+        cursor: pointer;
+        text-decoration: underline;
+        font-size: inherit;
+    }
+
+    .link-btn:hover {
+        color: #74c7ec;
+    }
+
+    .no-data {
+        text-align: center;
+        color: #6c7086;
+        padding: 20px;
+    }
+
+    /* Responsive styles for admin management */
+    @media (max-width: 768px) {
+        .form-container,
+        .admin-management-container {
+            padding: 16px;
+        }
+
+        .form-actions {
+            flex-direction: column;
+        }
+
+        .admin-list {
+            grid-template-columns: 1fr;
+        }
+
+        .danger-item {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 12px;
+        }
+
+        .danger-btn {
+            margin-left: 0;
+            align-self: stretch;
+        }
+
+        .section-header {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 12px;
         }
     }
 </style>
