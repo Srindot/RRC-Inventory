@@ -53,7 +53,8 @@
             const response = await fetch('/api/loans/active');
             if (response.ok) {
                 loans = await response.json();
-                filteredLoans = loans;
+                // Apply the same sorting logic
+                searchLoans();
             }
         } catch (e) {
             showMessage('Failed to load loans', 'error');
@@ -137,14 +138,38 @@
 
     // Search loans
     function searchLoans() {
-        if (!searchQuery.trim()) {
-            filteredLoans = loans;
-        } else {
-            filteredLoans = loans.filter(loan => 
+        let loansToFilter = loans;
+        
+        if (searchQuery.trim()) {
+            loansToFilter = loans.filter(loan => 
                 loan.borrower_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                 loan.item_name.toLowerCase().includes(searchQuery.toLowerCase())
             );
         }
+        
+        // Sort loans by priority: Lost -> Overdue -> Pending -> Borrowed -> Returned
+        filteredLoans = loansToFilter.sort((a, b) => {
+            // Helper function to check if a loan is overdue
+            const isLoanOverdue = (loan) => {
+                return loan.approval_status === 'approved' && 
+                       loan.status !== 'returned' && 
+                       new Date(loan.expected_return_date) < new Date();
+            };
+            
+            // Categorize loans with priority order
+            const getLoanPriority = (loan) => {
+                if (loan.status === 'not_found') return 1;           // Lost items
+                if (isLoanOverdue(loan)) return 2;                   // Overdue
+                if (loan.approval_status === 'pending') return 3;    // Pending
+                if (loan.approval_status === 'approved' && 
+                    loan.status !== 'returned' && 
+                    loan.status !== 'not_found') return 4;           // Borrowed
+                if (loan.status === 'returned') return 5;            // Returned
+                return 6;                                            // Other/fallback
+            };
+            
+            return getLoanPriority(a) - getLoanPriority(b);
+        });
     }
 
     // Helper functions
@@ -155,6 +180,30 @@
             message = '';
             messageType = '';
         }, 5000);
+    }
+
+    function isOverdue(returnDate) {
+        return new Date(returnDate) < new Date();
+    }
+
+    function formatDate(dateString) {
+        return new Date(dateString).toLocaleDateString();
+    }
+
+    function formatExpectedReturn(dateString) {
+        const expectedDate = new Date(dateString);
+        const now = new Date();
+        const diffMs = expectedDate.getTime() - now.getTime();
+        const diffHours = Math.ceil(diffMs / (1000 * 60 * 60));
+        const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
+        if (diffMs < 0) {
+            return `Overdue (${formatDate(dateString)})`;
+        } else if (diffHours <= 24) {
+            return `${diffHours} hour${diffHours !== 1 ? 's' : ''} (${expectedDate.toLocaleString()})`;
+        } else {
+            return `${diffDays} day${diffDays !== 1 ? 's' : ''} (${expectedDate.toLocaleString()})`;
+        }
     }
 
     function handlePhotoUpload(event) {
@@ -202,26 +251,6 @@
         const photoInput = document.getElementById('photo');
         if (photoInput) {
             photoInput.value = '';
-        }
-    }
-
-    function formatDate(dateString) {
-        return new Date(dateString).toLocaleDateString();
-    }
-
-    function formatExpectedReturn(dateString) {
-        const expectedDate = new Date(dateString);
-        const now = new Date();
-        const diffMs = expectedDate.getTime() - now.getTime();
-        const diffHours = Math.ceil(diffMs / (1000 * 60 * 60));
-        const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-
-        if (diffMs < 0) {
-            return `Overdue (${formatDate(dateString)})`;
-        } else if (diffHours <= 24) {
-            return `${diffHours} hour${diffHours !== 1 ? 's' : ''} (${expectedDate.toLocaleString()})`;
-        } else {
-            return `${diffDays} day${diffDays !== 1 ? 's' : ''} (${expectedDate.toLocaleString()})`;
         }
     }
 
@@ -501,12 +530,31 @@
                 <div class="loans-list">
                     <h3>Borrowed Items:</h3>
                     {#each filteredLoans as loan}
-                        <div class="loan-card" class:missing={loan.status === 'not_found'}>
-                            {#if loan.status === 'not_found'}
-                                <div class="missing-header">
-                                    <span class="missing-badge">⚠️ MISSING/NOT FOUND</span>
-                                </div>
-                            {/if}
+                        <div class="loan-card" 
+                             class:missing={loan.status === 'not_found'}
+                             class:overdue={loan.approval_status === 'approved' && loan.status !== 'returned' && loan.status !== 'not_found' && isOverdue(loan.expected_return_date)}
+                             class:pending={loan.approval_status === 'pending'}
+                             class:approved={loan.approval_status === 'approved' && loan.status !== 'returned' && loan.status !== 'not_found' && !isOverdue(loan.expected_return_date)}
+                             class:returned={loan.status === 'returned'}
+                             class:denied={loan.approval_status === 'denied'}>
+                            <!-- Status header with badges -->
+                            <div class="status-header">
+                                {#if loan.status === 'not_found'}
+                                    <span class="status-badge missing">⚠️ MISSING/NOT FOUND</span>
+                                {:else if loan.approval_status === 'approved' && loan.status !== 'returned' && loan.status !== 'not_found' && isOverdue(loan.expected_return_date)}
+                                    <span class="status-badge overdue">🔥 OVERDUE</span>
+                                {:else if loan.approval_status === 'pending'}
+                                    <span class="status-badge pending">⏳ PENDING APPROVAL</span>
+                                {:else if loan.status === 'returned'}
+                                    <span class="status-badge returned">✅ RETURNED</span>
+                                {:else if loan.approval_status === 'denied'}
+                                    <span class="status-badge denied">❌ REJECTED</span>
+                                {:else if loan.return_requested}
+                                    <span class="status-badge return-pending">🔄 RETURN PENDING</span>
+                                {:else if loan.approval_status === 'approved'}
+                                    <span class="status-badge approved">📋 BORROWED</span>
+                                {/if}
+                            </div>
                             <div class="loan-content">
                                 {#if loan.photo_filename}
                                     <div class="item-image">
@@ -1300,10 +1348,92 @@
         }
     }
 
-    /* Missing item styles */
+    /* Status-based loan card styles */
     .loan-card.missing {
+        border: 2px solid #f85149;
+        background: rgba(248, 81, 73, 0.1);
+    }
+
+    .loan-card.overdue {
         border: 2px solid #f38ba8;
         background: rgba(243, 139, 168, 0.1);
+    }
+
+    .loan-card.pending {
+        border: 2px solid #f7b955;
+        background: rgba(247, 185, 85, 0.08);
+    }
+
+    .loan-card.approved {
+        border: 2px solid #89b4fa;
+        background: rgba(137, 180, 250, 0.08);
+    }
+
+    .loan-card.returned {
+        border: 2px solid #94e2d5;
+        background: rgba(148, 226, 213, 0.08);
+    }
+
+    .loan-card.denied {
+        border: 2px solid #7c8b9a;
+        background: rgba(124, 139, 154, 0.08);
+        opacity: 0.8;
+    }
+
+    /* Status header and badges */
+    .status-header {
+        margin-bottom: 15px;
+        display: flex;
+        justify-content: flex-start;
+    }
+
+    .status-badge {
+        padding: 6px 12px;
+        border-radius: 6px;
+        font-weight: bold;
+        font-size: clamp(0.8rem, 1.8vw, 0.9rem);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .status-badge.missing {
+        background: #f85149;
+        color: #1e1e2e;
+    }
+
+    .status-badge.overdue {
+        background: #f38ba8;
+        color: #1e1e2e;
+    }
+
+    .status-badge.pending {
+        background: #f7b955;
+        color: #1e1e2e;
+    }
+
+    .status-badge.approved {
+        background: #89b4fa;
+        color: #1e1e2e;
+    }
+
+    .status-badge.returned {
+        background: #94e2d5;
+        color: #1e1e2e;
+    }
+
+    .status-badge.denied {
+        background: #7c8b9a;
+        color: #1e1e2e;
+    }
+
+    .status-badge.return-pending {
+        background: #fab387;
+        color: #1e1e2e;
+    }
+
+    .status-badge.return-pending {
+        background: #fab387;
+        color: #1e1e2e;
     }
 
     .missing-header {

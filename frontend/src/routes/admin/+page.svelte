@@ -1615,6 +1615,8 @@
 
     .loan-card.pending {
         border-left-color: #f7b955;
+        background: rgba(247, 185, 85, 0.08);
+        border: 1px solid rgba(247, 185, 85, 0.2);
     }
 
     .loan-card.overdue {
