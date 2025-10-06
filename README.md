@@ -5,8 +5,8 @@
 </div>
 
 <div align="center">
-  <h3>🎯 Simple and Modern Lab Equipment Management</h3>
-  <p style="color: #f2cdcd;">A web application for managing Robotics Research Centre lab equipment inventory</p>
+  <h3> Simple Lab Equipment Management</h3>
+  <p style="color: #f2cdcd;">A web application for managing lab equipment inventory of Robotics Research Centre</p>
 </div>
 
 <div align="center">
@@ -40,20 +40,16 @@
    ./start.sh
    ```
 
-2. **Access the system:**
+2. **Access the system from other devices:**
    - **Main Application**: [Link](http://10.2.131.214)
 
 
 > **🌐 Network Access Note:** This website is hosted locally on a server. To access it, you need to be connected to **wifi@iiith** or use **OpenVPN** to connect to the IIIT network.
 
-3. **Stop the application:**
+3. **Stop the application in the server:**
    ```bash
    ./stop.sh
    ```
-
-<div align="center" style="background: linear-gradient(135deg, #f2cdcd, #f5c2e7); color: #11111b; padding: 10px; border-radius: 8px; margin: 20px 0;">
-  <strong>🎉 That's it! The system is now ready to use.</strong>
-</div>
 
 ---
 
@@ -78,12 +74,12 @@
 
 ## ✨ Features
 
-### 📚 For Students & Staff
+### 👥 For Students & Staff
 - **Borrow Equipment**: Submit requests with photos and details
 - **Return Items**: Mark items as returned when done
 - **Track Status**: View all your borrowed items and their status
 
-### 👑 For Administrators
+### 🛡️ For Administrators
 - **Approve Requests**: Review and approve/deny borrow requests
 - **Manage Returns**: Process return requests and mark items as found/missing
 - **View History**: Complete searchable history of all equipment
