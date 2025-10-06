@@ -20,6 +20,15 @@
 
 ---
 
+## 📸 Preview
+
+<div align="center">
+  <img src="preview.png" alt="RRC Inventory System Preview" width="80%" style="border-radius: 12px; box-shadow: 0 8px 32px rgba(242, 205, 205, 0.3);">
+  <p><em>Clean and modern interface for lab equipment management</em></p>
+</div>
+
+---
+
 ## 🚀 Quick Start
 
 ### Prerequisites
@@ -33,8 +42,10 @@
    ```
 
 2. **Access the system:**
-   - **Main Application**: [http://localhost](http://localhost)
+   - **Main Application**: http://localhost
    - **Admin Login**: Username: `Srinath`, Password: `rrc@srinath`
+
+> **🌐 Network Access Note:** This website is hosted locally on a server. To access it, you need to be connected to **wifi@iiith** or use **OpenVPN** to connect to the IIIT network.
 
 3. **Stop the application:**
    ```bash
@@ -83,9 +94,11 @@
 
 ## 📖 Usage
 
-1. **Visit** [http://localhost](http://localhost) in your web browser
+1. **Visit** http://localhost in your web browser
 2. **Students**: Use the main interface to borrow and return equipment
 3. **Admins**: Click the admin button and login to manage the system
+
+> **🔗 Access Requirements:** Make sure you are connected to **wifi@iiith** or have **OpenVPN** configured to access the IIIT network before using the system.
 
 ---
 
