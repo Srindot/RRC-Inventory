@@ -659,10 +659,19 @@
                                         <p class="status-message missing">⚠️ This item has been marked as missing. Please contact lab personnel if found.</p>
                                     {:else if itemCategory === 'returned'}
                                         <p class="status-message returned">✅ Successfully returned and processed by admin.</p>
-                                    {:else if itemCategory === 'pending'}
-                                        <p class="status-message pending">⏳ Waiting for admin approval of borrow request.</p>
                                     {:else if loan.return_requested}
                                         <p class="status-message return-pending">🔄 Return request submitted. Waiting for admin approval.</p>
+                                    {:else if itemCategory === 'pending'}
+                                        <div class="pending-actions">
+                                            <p class="status-message pending">⏳ Waiting for admin approval of borrow request.</p>
+                                            <button 
+                                                class="return-action-btn cancel-btn" 
+                                                on:click={() => returnItem(loan.ID)}
+                                                disabled={loading}
+                                            >
+                                                ❌ Cancel Request
+                                            </button>
+                                        </div>
                                     {:else if itemCategory === 'borrowed'}
                                         <button 
                                             class="return-action-btn" 
@@ -1991,6 +2000,24 @@
         cursor: not-allowed;
         transform: none;
         box-shadow: none;
+    }
+
+    .pending-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 15px;
+        align-items: center;
+    }
+
+    .cancel-btn {
+        background: linear-gradient(135deg, #f38ba8, #eba0ac) !important;
+        color: #11111b !important;
+    }
+
+    .cancel-btn:hover {
+        background: linear-gradient(135deg, #eba0ac, #f9e2af) !important;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(243, 139, 168, 0.3);
     }
 
     /* Responsive adjustments for new design */

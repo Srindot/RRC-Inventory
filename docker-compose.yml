@@ -16,7 +16,9 @@ services:
 
   # Go Backend API
   backend:
-    build: ./backend
+    build:
+      context: ./backend
+      target: production
     restart: always
     environment:
       DATABASE_URL: postgresql://user:password@db:5432/mydatabase
@@ -29,12 +31,10 @@ services:
   frontend:
     build:
       context: ./frontend
-      target: development
+      target: production
     restart: always
-    environment:
-      - NODE_ENV=development
     ports:
-      - "5173:5173"
+      - "5173:80"
 
   # Caddy Reverse Proxy
   caddy:
@@ -44,7 +44,7 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./Caddyfile.dev:/etc/caddy/Caddyfile:ro
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:

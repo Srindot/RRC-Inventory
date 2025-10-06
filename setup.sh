@@ -78,14 +78,39 @@ chmod +x stop.sh 2>/dev/null || true
 chmod +x logs.sh 2>/dev/null || true
 
 print_success "Setup completed successfully!"
+
+# Setup auto-start on system reboot
+print_status "Setting up auto-start on system reboot..."
+SERVICE_FILE="/etc/systemd/system/rrc-inventory.service"
+
+if sudo cp rrc-inventory.service "$SERVICE_FILE" 2>/dev/null; then
+    sudo systemctl daemon-reload
+    sudo systemctl enable rrc-inventory.service
+    print_success "Auto-start configured! RRC Inventory will start automatically on system reboot."
+else
+    print_warning "Could not set up auto-start. You can set it up manually later with:"
+    print_warning "  sudo cp rrc-inventory.service /etc/systemd/system/"
+    print_warning "  sudo systemctl daemon-reload"
+    print_warning "  sudo systemctl enable rrc-inventory.service"
+fi
+
 echo ""
 echo "================================================"
 echo -e "${GREEN}🎉 RRC Inventory System is ready!${NC}"
 echo ""
-echo "Next steps:"
-echo -e "  1. Run ${BLUE}./start.sh${NC} to start the system"
-echo -e "  2. Visit ${BLUE}http://localhost${NC} in your browser"
-echo -e "  3. Use admin login - Username: ${BLUE}Srinath${NC}, Password: ${BLUE}rrc@srinath${NC}"
+echo "System Management:"
+echo -e "  📦 Start system:     ${BLUE}./start.sh${NC}"
+echo -e "  🛑 Stop system:      ${BLUE}./stop.sh${NC}"
+echo -e "  📊 View logs:        ${BLUE}./logs.sh${NC}"
+echo -e "  🔄 Auto-start:       ${GREEN}✅ Enabled${NC} (starts on reboot)"
+echo ""
+echo "Access URLs:"
+echo -e "  🌐 Web Interface:    ${BLUE}http://localhost${NC}"
+echo -e "  📱 Mobile/Remote:    ${BLUE}http://$(hostname -I | awk '{print $1}')${NC}"
+echo ""
+echo "Admin Credentials:"
+echo -e "  👤 Username:         ${BLUE}Srinath${NC}"
+echo -e "  🔑 Password:         ${BLUE}rrc@srinath${NC}"
 echo ""
 echo -e "${YELLOW}📡 Network Note:${NC} Make sure you're connected to wifi@iiith or using OpenVPN"
 echo "================================================"

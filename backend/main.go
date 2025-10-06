@@ -338,8 +338,9 @@ func main() {
 					return fmt.Errorf("return request already submitted for this item")
 				}
 
-				if loan.ApprovalStatus != "approved" {
-					return fmt.Errorf("cannot return item that hasn't been approved for borrowing")
+				// Allow return for both pending and approved items
+				if loan.ApprovalStatus != "approved" && loan.ApprovalStatus != "pending" {
+					return fmt.Errorf("cannot return item with approval status: %s", loan.ApprovalStatus)
 				}
 
 				now := time.Now()
@@ -357,7 +358,7 @@ func main() {
 				return
 			}
 
-			c.JSON(200, gin.H{"message": "Return request submitted! Please wait for admin approval before physically returning the item."})
+			c.JSON(200, gin.H{"message": "Return request submitted! Please wait for admin approval."})
 		})
 
 		// --- ADMIN ROUTES ---
@@ -1032,18 +1033,29 @@ func main() {
 					return
 				}
 
-				// Delete all items
-				var itemCount int64
-				db.Model(&Item{}).Count(&itemCount)
+				// Count total loans before deletion
+				var loanCount int64
+				db.Model(&Loan{}).Count(&loanCount)
 
-				if err := db.Exec("DELETE FROM items").Error; err != nil {
-					c.JSON(500, gin.H{"error": "Failed to delete items"})
+				// Delete all loan records (this is what contains the "items" data)
+				if err := db.Exec("DELETE FROM loans").Error; err != nil {
+					c.JSON(500, gin.H{"error": "Failed to delete loan records"})
 					return
 				}
 
+				// Also delete any orphaned photos
+				photoDir := "./uploads"
+				if files, err := os.ReadDir(photoDir); err == nil {
+					for _, file := range files {
+						if !file.IsDir() {
+							os.Remove(filepath.Join(photoDir, file.Name()))
+						}
+					}
+				}
+
 				c.JSON(200, gin.H{
-					"message":       "All items data deleted successfully",
-					"deleted_count": itemCount,
+					"message":       "All loan records deleted successfully",
+					"deleted_count": loanCount,
 				})
 			})
 		}

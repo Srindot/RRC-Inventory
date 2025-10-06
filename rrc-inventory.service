@@ -1,0 +1,19 @@
+[Unit]
+Description=RRC Inventory Management System
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/home/sriney/projects/rrc-inventory
+ExecStart=/home/sriney/projects/rrc-inventory/start.sh
+ExecStop=/home/sriney/projects/rrc-inventory/stop.sh
+TimeoutStartSec=300
+User=sriney
+Group=sriney
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+[Install]
+WantedBy=multi-user.target

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Simple Start Script for RRC Inventory
+# Start Script for RRC Inventory Management System
 echo "🚀 Starting RRC Inventory..."
 echo "📋 This will start all services in the background"
 
@@ -19,8 +19,9 @@ if [ $? -eq 0 ]; then
     echo "✅ RRC Inventory started successfully!"
     echo ""
     echo "🌐 Access your application at:"
-    echo "   Frontend: http://localhost"
-    echo "   Backend API: http://localhost/api"
+    echo "   🖥️  Local:        http://localhost"
+    echo "   📱 Remote/Mobile: http://$(hostname -I | awk '{print $1}')"
+    echo "   🔌 Backend API:   http://localhost/api"
     echo ""
     echo "📊 To view logs: ./logs.sh"
     echo "🛑 To stop: ./stop.sh"
