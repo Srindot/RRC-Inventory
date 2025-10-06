@@ -10,15 +10,6 @@
     let message = '';
     let messageType = ''; // 'success' or 'error'
 
-    // Collapsible sections state
-    let collapsedSections = {
-        lost: false,
-        overdue: false,
-        pending: false,
-        borrowed: false,
-        returned: false
-    };
-
     // Borrow form data
     let borrowForm = {
         borrower_name: '',
@@ -59,30 +50,31 @@
             loansToFilter = currentLoans.filter(loan => {
                 const borrowerName = (loan.borrower_name || '').toLowerCase();
                 const itemName = (loan.item_name || '').toLowerCase();
-                return borrowerName.includes(query) || itemName.includes(query);
+                const borrowerPhone = (loan.borrower_phone || '').toLowerCase();
+                return borrowerName.includes(query) || itemName.includes(query) || borrowerPhone.includes(query);
             });
         }
         
-        // Sort loans by priority: Lost -> Overdue -> Pending -> Borrowed -> Returned
+        // Sort loans by priority: Missing -> Borrowed -> Pending Borrow -> Returned
         filteredLoans = loansToFilter.sort((a, b) => {
-            // Helper function to check if a loan is overdue
-            const isLoanOverdue = (loan) => {
-                return loan.approval_status === 'approved' && 
-                       loan.status !== 'returned' && 
-                       new Date(loan.expected_return_date) < new Date();
-            };
-            
             // Categorize loans with priority order
             const getLoanPriority = (loan) => {
-                if (loan.status === 'not_found') return 1;           // Lost items
-                if (isLoanOverdue(loan)) return 2;                   // Overdue items
-                if (loan.approval_status === 'pending') return 3;    // Pending approval
-                if (loan.approval_status === 'approved' && loan.status !== 'returned') return 4; // Borrowed
-                if (loan.status === 'returned') return 5;            // Returned
-                return 6;                                            // Other
+                if (loan.status === 'not_found') return 1;           // Missing items (highest priority)
+                if (loan.approval_status === 'approved' && loan.status !== 'returned') return 2; // Borrowed items
+                if (loan.approval_status === 'pending') return 3;    // Pending borrow requests
+                if (loan.status === 'returned') return 4;            // Returned items (lowest priority)
+                return 5;                                            // Other
             };
             
-            return getLoanPriority(a) - getLoanPriority(b);
+            const priorityA = getLoanPriority(a);
+            const priorityB = getLoanPriority(b);
+            
+            if (priorityA !== priorityB) {
+                return priorityA - priorityB;
+            }
+            
+            // Within same priority, sort by date (newest first)
+            return new Date(b.CreatedAt) - new Date(a.CreatedAt);
         });
     }
 
@@ -214,30 +206,6 @@
 
     function isOverdue(returnDate) {
         return new Date(returnDate) < new Date();
-    }
-
-    // Helper functions to categorize loans
-    function categorizeLoan(loan) {
-        if (loan.status === 'not_found') return 'lost';
-        if (loan.approval_status === 'approved' && loan.status !== 'returned' && loan.status !== 'not_found' && isOverdue(loan.expected_return_date)) return 'overdue';
-        if (loan.approval_status === 'pending') return 'pending';
-        if (loan.approval_status === 'approved' && loan.status !== 'returned' && loan.status !== 'not_found' && !isOverdue(loan.expected_return_date)) return 'borrowed';
-        if (loan.status === 'returned') return 'returned';
-        return 'other';
-    }
-
-    function getCategorizedLoans() {
-        return {
-            lost: filteredLoans.filter(loan => categorizeLoan(loan) === 'lost'),
-            overdue: filteredLoans.filter(loan => categorizeLoan(loan) === 'overdue'),
-            pending: filteredLoans.filter(loan => categorizeLoan(loan) === 'pending'),
-            borrowed: filteredLoans.filter(loan => categorizeLoan(loan) === 'borrowed'),
-            returned: filteredLoans.filter(loan => categorizeLoan(loan) === 'returned')
-        };
-    }
-
-    function toggleSection(section) {
-        collapsedSections[section] = !collapsedSections[section];
     }
 
     function formatDate(dateString) {
@@ -561,21 +529,19 @@
             <button class="back-btn" on:click={goHome}>← Back to Home</button>
             
             <div class="search-container">
-                <label for="search">Search by your name or item name:</label>
+                <label for="search">Search by name, item, or phone number:</label>
                 <div class="search-input-group">
                     <input 
                         type="text" 
                         id="search" 
                         bind:value={searchQuery}
-                        on:input={(e) => searchQuery = e.target.value}
-                        placeholder="Search loans..."
+                        placeholder="Enter name, item name, or phone number..."
                         autocomplete="off"
                     />
                     {#if searchQuery && searchQuery.trim()}
                         <button 
                             class="clear-search-btn" 
                             on:click={clearSearch} 
-                            on:mousedown|preventDefault={clearSearch}
                             title="Clear search"
                             type="button"
                         >
@@ -586,194 +552,131 @@
             </div>
 
             {#if loading}
-                <p>Loading borrowed items...</p>
+                <div class="loading-state">
+                    <p>🔄 Loading items...</p>
+                </div>
             {:else if filteredLoans.length === 0}
-                <p class="no-loans">No borrowed items found.</p>
-            {:else if searchQuery.trim()}
-                <!-- When searching, show all results in a flat list -->
-                <div class="search-results">
-                    <h3>Search Results ({filteredLoans.length} found)</h3>
-                    <div class="loans-list">
-                        {#each filteredLoans as loan}
-                            <div class="loan-card" 
-                                 class:lost={categorizeLoan(loan) === 'lost'}
-                                 class:overdue={categorizeLoan(loan) === 'overdue'}
-                                 class:pending={categorizeLoan(loan) === 'pending'}
-                                 class:borrowed={categorizeLoan(loan) === 'borrowed'}
-                                 class:returned={categorizeLoan(loan) === 'returned'}>
-                                <div class="loan-info">
-                                    <div class="loan-header">
-                                        <h4>{loan.item_name}</h4>
-                                        <span class="status-badge {categorizeLoan(loan)}">
-                                            {#if categorizeLoan(loan) === 'lost'}⚠️ Lost
-                                            {:else if categorizeLoan(loan) === 'overdue'}🔥 Overdue
-                                            {:else if categorizeLoan(loan) === 'pending'}⏳ Pending Approval
-                                            {:else if categorizeLoan(loan) === 'borrowed'}📋 Borrowed
-                                            {:else if categorizeLoan(loan) === 'returned'}✅ Returned
-                                            {/if}
-                                        </span>
-                                    </div>
-                                    <p><strong>Borrower:</strong> {loan.borrower_name}</p>
-                                    {#if !isAdmin && (loan.approval_status === 'pending')}
-                                        <p class="waiting-approval">Waiting for admin approval</p>
-                                    {:else}
-                                        <p><strong>Borrowed:</strong> {new Date(loan.borrow_date).toLocaleString()}</p>
-                                        <p><strong>Expected Return:</strong> {new Date(loan.expected_return_date).toLocaleString()}</p>
-                                        {#if loan.photo_filename}
-                                            <div class="item-image">
-                                                <img 
-                                                    src="/api/photos/{loan.photo_filename}" 
-                                                    alt="Item photo" 
-                                                    style="max-width: 200px; max-height: 150px; object-fit: cover; border-radius: 8px;"
-                                                />
-                                            </div>
-                                        {/if}
-                                        <p><strong>Purpose:</strong> {loan.purpose}</p>
-                                    {/if}
-                                </div>
-                                
-                                {#if !isAdmin && loan.approval_status === 'approved' && loan.status !== 'returned' && loan.status !== 'not_found'}
-                                    <button class="return-btn" on:click={() => returnItem(loan.id)}>
-                                        Return Item
-                                    </button>
-                                {/if}
-                            </div>
-                        {/each}
-                    </div>
+                <div class="no-items-state">
+                    <p>📭 No items found.</p>
+                    {#if searchQuery.trim()}
+                        <p class="search-suggestion">Try different search terms or clear the search to see all items.</p>
+                    {:else}
+                        <p class="search-suggestion">No borrowed items available.</p>
+                    {/if}
                 </div>
             {:else}
-                <!-- When not searching, show categorized results -->
-                {#each Object.entries(getCategorizedLoans()) as [category, categoryLoans]}
-                    {#if categoryLoans.length > 0}
-                        <div class="category-section">
-                            <button 
-                                class="category-header" 
-                                class:lost={category === 'lost'}
-                                class:overdue={category === 'overdue'}
-                                class:pending={category === 'pending'}
-                                class:borrowed={category === 'borrowed'}
-                                class:returned={category === 'returned'}
-                                on:click={() => toggleSection(category)}
-                            >
-                                <div class="category-title">
-                                    <span class="category-icon">
-                                        {#if category === 'lost'}⚠️
-                                        {:else if category === 'overdue'}🔥
-                                        {:else if category === 'pending'}⏳
-                                        {:else if category === 'borrowed'}📋
-                                        {:else if category === 'returned'}✅
-                                        {/if}
-                                    </span>
-                                    <span class="category-name">
-                                        {#if category === 'lost'}Lost Items
-                                        {:else if category === 'overdue'}Overdue Items
-                                        {:else if category === 'pending'}Pending Approval
-                                        {:else if category === 'borrowed'}Borrowed Items
-                                        {:else if category === 'returned'}Returned Items
-                                        {/if}
-                                    </span>
-                                    <span class="category-count">({categoryLoans.length})</span>
-                                </div>
-                                <span class="collapse-icon" class:collapsed={collapsedSections[category]}>
-                                    {collapsedSections[category] ? '▶' : '▼'}
-                                </span>
-                            </button>
-                            
-                            {#if !collapsedSections[category]}
-                                <div class="category-content">
-                                    {#each categoryLoans as loan}
-                                        <div class="loan-card" 
-                                             class:missing={loan.status === 'not_found'}
-                                             class:overdue={loan.approval_status === 'approved' && loan.status !== 'returned' && loan.status !== 'not_found' && isOverdue(loan.expected_return_date)}
-                                             class:pending={loan.approval_status === 'pending'}
-                                             class:approved={loan.approval_status === 'approved' && loan.status !== 'returned' && loan.status !== 'not_found' && !isOverdue(loan.expected_return_date)}
-                                             class:returned={loan.status === 'returned'}
-                                             class:denied={loan.approval_status === 'denied'}>
-                                            <!-- Status header with badges -->
-                                            <div class="status-header">
-                                                {#if loan.status === 'not_found'}
-                                                    <span class="status-badge missing">⚠️ MISSING/NOT FOUND</span>
-                                                {:else if loan.approval_status === 'approved' && loan.status !== 'returned' && loan.status !== 'not_found' && isOverdue(loan.expected_return_date)}
-                                                    <span class="status-badge overdue">🔥 OVERDUE</span>
-                                                {:else if loan.approval_status === 'pending'}
-                                                    <span class="status-badge pending">⏳ PENDING APPROVAL</span>
-                                                {:else if loan.status === 'returned'}
-                                                    <span class="status-badge returned">✅ RETURNED</span>
-                                                {:else if loan.approval_status === 'denied'}
-                                                    <span class="status-badge denied">❌ REJECTED</span>
-                                                {:else if loan.return_requested}
-                                                    <span class="status-badge return-pending">🔄 RETURN PENDING</span>
-                                                {:else if loan.approval_status === 'approved'}
-                                                    <span class="status-badge approved">📋 BORROWED</span>
-                                                {/if}
-                                            </div>
-                                            <div class="loan-content">
-                                                {#if loan.photo_filename}
-                                                    <div class="item-image">
-                                                        <img 
-                                                            src="/api/photos/{loan.photo_filename}" 
-                                                            alt="Item photo" 
-                                                            class="loan-thumbnail"
-                                                            loading="lazy"
-                                                        />
-                                                    </div>
-                                                {:else}
-                                                    <div class="item-image placeholder">
-                                                        <span>📷</span>
-                                                        <small>No photo</small>
-                                                    </div>
-                                                {/if}
-                                                <div class="loan-info">
-                                                    <h4>{loan.item_name}</h4>
-                                                    <p><strong>Borrower:</strong> {loan.borrower_name}</p>
-                                                    <p><strong>Lab:</strong> {loan.lab_location}</p>
-                                                    <p><strong>Quantity:</strong> {loan.quantity_borrowed}</p>
-                                                    <p><strong>Purpose:</strong> {loan.purpose}</p>
-                                                    <p><strong>Borrowed on:</strong> {formatDate(loan.CreatedAt)}</p>
-                                                    <p><strong>Expected return:</strong> {formatExpectedReturn(loan.expected_return_date)}</p>
-                                                    {#if loan.status === 'not_found'}
-                                                        <p class="missing-note"><strong>Status:</strong> This item has been marked as missing/not found by administrators</p>
-                                                    {:else if loan.status === 'returned'}
-                                                        <p class="returned-note"><strong>Status:</strong> Recently returned and processed by admin</p>
-                                                    {:else if loan.return_requested}
-                                                        <p class="return-pending-note"><strong>Status:</strong> Return request submitted - waiting for admin approval</p>
-                                                    {/if}
-                                                </div>
-                                            </div>
-                                            {#if loan.status === 'not_found'}
-                                                <div class="missing-actions">
-                                                    <p class="missing-contact">
-                                                        Please contact the lab personnel if you have found this item
-                                                    </p>
-                                                </div>
-                                            {:else if loan.status === 'returned'}
-                                                <div class="returned-actions">
-                                                    <p class="returned-message">Successfully Returned</p>
-                                                </div>
-                                            {:else if loan.return_requested}
-                                                <div class="return-pending-actions">
-                                                    <p class="return-pending-message">✅ Return request submitted! Waiting for admin approval.</p>
-                                                </div>
-                                            {:else if loan.approval_status === 'pending'}
-                                                <div class="pending-actions">
-                                                    <p class="pending-message">Waiting for admin approval</p>
-                                                </div>
-                                            {:else}
-                                                <button 
-                                                    class="return-btn-action" 
-                                                    on:click={() => returnItem(loan.ID)}
-                                                    disabled={loading}
-                                                >
-                                                    ✅ Mark as Returned
-                                                </button>
-                                            {/if}
-                                        </div>
-                                    {/each}
-                                </div>
-                            {/if}
-                        </div>
+                <!-- Simple list with category tags -->
+                <div class="items-list">
+                    {#if searchQuery.trim()}
+                        <h3 class="results-header">Search Results ({filteredLoans.length} found)</h3>
+                    {:else}
+                        <h3 class="results-header">All Items ({filteredLoans.length} total)</h3>
                     {/if}
-                {/each}
+                    
+                    {#each filteredLoans as loan (loan.ID)}
+                        {@const itemCategory = loan.status === 'not_found' ? 'missing' : 
+                                              loan.approval_status === 'approved' && loan.status !== 'returned' ? 'borrowed' :
+                                              loan.approval_status === 'pending' ? 'pending' : 'returned'}
+                        
+                        <div class="item-card {itemCategory}">
+                            <!-- Category Tag -->
+                            <div class="category-tag {itemCategory}">
+                                {#if itemCategory === 'missing'}
+                                    <span class="tag-icon">⚠️</span>
+                                    <span class="tag-text">Missing Item</span>
+                                {:else if itemCategory === 'borrowed'}
+                                    <span class="tag-icon">📋</span>
+                                    <span class="tag-text">Borrowed Item</span>
+                                {:else if itemCategory === 'pending'}
+                                    <span class="tag-icon">⏳</span>
+                                    <span class="tag-text">Pending Borrow Request</span>
+                                {:else if itemCategory === 'returned'}
+                                    <span class="tag-icon">✅</span>
+                                    <span class="tag-text">Returned Item</span>
+                                {/if}
+                            </div>
+
+                            <!-- Item Content -->
+                            <div class="item-content">
+                                <div class="item-header">
+                                    <h4 class="item-name">{loan.item_name}</h4>
+                                    {#if loan.return_requested}
+                                        <span class="return-pending-badge">🔄 Return Pending</span>
+                                    {/if}
+                                </div>
+
+                                <div class="item-details">
+                                    <div class="detail-row">
+                                        <div class="detail-item">
+                                            <strong>Borrower:</strong> {loan.borrower_name}
+                                        </div>
+                                        <div class="detail-item">
+                                            <strong>Lab:</strong> {loan.lab_location}
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="detail-row">
+                                        <div class="detail-item">
+                                            <strong>Quantity:</strong> {loan.quantity_borrowed}
+                                        </div>
+                                        <div class="detail-item">
+                                            <strong>Phone:</strong> {loan.borrower_phone}
+                                        </div>
+                                    </div>
+
+                                    <div class="detail-row">
+                                        <div class="detail-item">
+                                            <strong>Purpose:</strong> {loan.purpose}
+                                        </div>
+                                    </div>
+
+                                    <div class="detail-row">
+                                        <div class="detail-item">
+                                            <strong>Requested:</strong> {formatDate(loan.CreatedAt)}
+                                        </div>
+                                        {#if loan.expected_return_date}
+                                            <div class="detail-item">
+                                                <strong>Expected Return:</strong> {formatExpectedReturn(loan.expected_return_date)}
+                                            </div>
+                                        {/if}
+                                    </div>
+
+                                    {#if loan.photo_filename}
+                                        <div class="item-photo">
+                                            <img 
+                                                src="/api/photos/{loan.photo_filename}" 
+                                                alt="{loan.item_name}"
+                                                class="photo-thumbnail"
+                                                loading="lazy"
+                                            />
+                                        </div>
+                                    {/if}
+                                </div>
+
+                                <!-- Action Section -->
+                                <div class="item-actions">
+                                    {#if itemCategory === 'missing'}
+                                        <p class="status-message missing">⚠️ This item has been marked as missing. Please contact lab personnel if found.</p>
+                                    {:else if itemCategory === 'returned'}
+                                        <p class="status-message returned">✅ Successfully returned and processed by admin.</p>
+                                    {:else if itemCategory === 'pending'}
+                                        <p class="status-message pending">⏳ Waiting for admin approval of borrow request.</p>
+                                    {:else if loan.return_requested}
+                                        <p class="status-message return-pending">🔄 Return request submitted. Waiting for admin approval.</p>
+                                    {:else if itemCategory === 'borrowed'}
+                                        <button 
+                                            class="return-action-btn" 
+                                            on:click={() => returnItem(loan.ID)}
+                                            disabled={loading}
+                                        >
+                                            ✅ Mark as Returned
+                                        </button>
+                                    {/if}
+                                </div>
+                            </div>
+                        </div>
+                    {/each}
+                </div>
             {/if}
         </div>
     {/if}
@@ -1837,5 +1740,283 @@
         font-weight: 600;
         margin: 0;
         font-size: 1rem;
+    }
+
+    /* New Simple List Styles */
+    .loading-state, .no-items-state {
+        text-align: center;
+        padding: 40px 20px;
+        background: #11111b;
+        border-radius: 12px;
+        margin-top: 20px;
+        border: 1px solid #313244;
+    }
+
+    .loading-state p, .no-items-state p {
+        font-size: 1.2rem;
+        margin: 0;
+        color: #cdd6f4;
+    }
+
+    .search-suggestion {
+        color: #a6adc8 !important;
+        font-size: 1rem !important;
+        margin-top: 10px !important;
+    }
+
+    .items-list {
+        margin-top: 20px;
+    }
+
+    .results-header {
+        background: #11111b;
+        padding: 15px 20px;
+        margin: 0 0 15px 0;
+        border-radius: 8px;
+        border: 1px solid #313244;
+        color: #cdd6f4;
+        font-size: 1.1rem;
+        font-weight: 600;
+    }
+
+    .item-card {
+        background: #11111b;
+        border: 1px solid #313244;
+        border-radius: 12px;
+        margin-bottom: 15px;
+        overflow: hidden;
+        transition: all 0.3s ease;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    }
+
+    .item-card:hover {
+        border-color: #f2cdcd;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+    }
+
+    .item-card.missing {
+        border-left: 4px solid #f38ba8;
+    }
+
+    .item-card.borrowed {
+        border-left: 4px solid #89b4fa;
+    }
+
+    .item-card.pending {
+        border-left: 4px solid #f9e2af;
+    }
+
+    .item-card.returned {
+        border-left: 4px solid #a6e3a1;
+    }
+
+    .category-tag {
+        padding: 8px 15px;
+        font-weight: 600;
+        font-size: 0.9rem;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .category-tag.missing {
+        background: rgba(243, 139, 168, 0.15);
+        color: #f38ba8;
+    }
+
+    .category-tag.borrowed {
+        background: rgba(137, 180, 250, 0.15);
+        color: #89b4fa;
+    }
+
+    .category-tag.pending {
+        background: rgba(249, 226, 175, 0.15);
+        color: #f9e2af;
+    }
+
+    .category-tag.returned {
+        background: rgba(166, 227, 161, 0.15);
+        color: #a6e3a1;
+    }
+
+    .tag-icon {
+        font-size: 1rem;
+    }
+
+    .tag-text {
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .item-content {
+        padding: 20px;
+    }
+
+    .item-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 15px;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+
+    .item-name {
+        margin: 0;
+        color: #cdd6f4;
+        font-size: 1.3rem;
+        font-weight: 600;
+        flex: 1;
+        min-width: 200px;
+    }
+
+    .return-pending-badge {
+        background: rgba(116, 199, 236, 0.15);
+        color: #74c7ec;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+
+    .item-details {
+        margin-bottom: 20px;
+    }
+
+    .detail-row {
+        display: flex;
+        gap: 20px;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+    }
+
+    .detail-item {
+        flex: 1;
+        min-width: 200px;
+        color: #a6adc8;
+        font-size: 0.95rem;
+    }
+
+    .detail-item strong {
+        color: #cdd6f4;
+        font-weight: 600;
+    }
+
+    .item-photo {
+        margin-top: 15px;
+        text-align: center;
+    }
+
+    .photo-thumbnail {
+        max-width: 300px;
+        max-height: 200px;
+        width: auto;
+        height: auto;
+        object-fit: cover;
+        border-radius: 8px;
+        border: 2px solid #313244;
+        transition: transform 0.2s ease;
+    }
+
+    .photo-thumbnail:hover {
+        transform: scale(1.05);
+        border-color: #f2cdcd;
+    }
+
+    .item-actions {
+        padding-top: 15px;
+        border-top: 1px solid #313244;
+        text-align: center;
+    }
+
+    .status-message {
+        margin: 0;
+        padding: 12px;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 1rem;
+    }
+
+    .status-message.missing {
+        background: rgba(243, 139, 168, 0.15);
+        color: #f38ba8;
+        border: 1px solid rgba(243, 139, 168, 0.3);
+    }
+
+    .status-message.returned {
+        background: rgba(166, 227, 161, 0.15);
+        color: #a6e3a1;
+        border: 1px solid rgba(166, 227, 161, 0.3);
+    }
+
+    .status-message.pending {
+        background: rgba(249, 226, 175, 0.15);
+        color: #f9e2af;
+        border: 1px solid rgba(249, 226, 175, 0.3);
+    }
+
+    .status-message.return-pending {
+        background: rgba(116, 199, 236, 0.15);
+        color: #74c7ec;
+        border: 1px solid rgba(116, 199, 236, 0.3);
+    }
+
+    .return-action-btn {
+        background: linear-gradient(135deg, #a6e3a1, #94e2d5);
+        color: #11111b;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 8px;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .return-action-btn:hover {
+        background: linear-gradient(135deg, #94e2d5, #89dceb);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(166, 227, 161, 0.3);
+    }
+
+    .return-action-btn:disabled {
+        background: #45475a;
+        color: #6c7086;
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
+    }
+
+    /* Responsive adjustments for new design */
+    @media (max-width: 768px) {
+        .item-header {
+            flex-direction: column;
+            align-items: stretch;
+        }
+
+        .item-name {
+            min-width: auto;
+            margin-bottom: 8px;
+        }
+
+        .detail-row {
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .detail-item {
+            min-width: auto;
+        }
+
+        .photo-thumbnail {
+            max-width: 100%;
+            max-height: 150px;
+        }
     }
 </style>

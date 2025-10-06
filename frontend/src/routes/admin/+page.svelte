@@ -26,6 +26,61 @@
     let message = '';
     let messageType = '';
 
+    // Search functionality for history
+    let historySearchQuery = '';
+    let filteredHistoryItems = [];
+
+    // Simple reactive statement for history search
+    $: updateFilteredHistoryItems(historyItems, historySearchQuery);
+    
+    function updateFilteredHistoryItems(currentHistoryItems, currentSearchQuery) {
+        if (!currentHistoryItems) {
+            filteredHistoryItems = [];
+            return;
+        }
+        
+        let itemsToFilter = [...currentHistoryItems]; // Create a copy
+        
+        if (currentSearchQuery && currentSearchQuery.trim()) {
+            const query = currentSearchQuery.toLowerCase().trim();
+            itemsToFilter = currentHistoryItems.filter(item => {
+                const borrowerName = (item.borrower_name || '').toLowerCase();
+                const itemName = (item.item_name || '').toLowerCase();
+                const borrowerPhone = (item.borrower_phone || '').toLowerCase();
+                const labLocation = (item.lab_location || '').toLowerCase();
+                const purpose = (item.purpose || '').toLowerCase();
+                const status = (item.status || '').toLowerCase();
+                const approvedBy = (item.approved_by || '').toLowerCase();
+                
+                return borrowerName.includes(query) || 
+                       itemName.includes(query) || 
+                       borrowerPhone.includes(query) ||
+                       labLocation.includes(query) ||
+                       purpose.includes(query) ||
+                       status.includes(query) ||
+                       approvedBy.includes(query);
+            });
+        }
+        
+        filteredHistoryItems = itemsToFilter;
+    }
+
+    // Clear history search function
+    function clearHistorySearch(event) {
+        if (event) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+        historySearchQuery = '';
+        // Focus back on the search input after clearing
+        setTimeout(() => {
+            const searchInput = document.getElementById('history-search');
+            if (searchInput) {
+                searchInput.focus();
+            }
+        }, 50);
+    }
+
     // Admin Management
     let adminList = [];
     let showCreateAdminForm = false;
@@ -711,7 +766,7 @@
                     class:active={currentView === 'pending'}
                     on:click={showPendingLoans}
                 >
-                    Pending Requests
+                    Borrow Pending Requests
                     {#if pendingLoans.length > 0}
                         <span class="badge">{pendingLoans.length}</span>
                     {/if}
@@ -721,7 +776,7 @@
                     class:active={currentView === 'pending-returns'}
                     on:click={showPendingReturns}
                 >
-                    Pending Returns
+                    Return Pending Requests
                     {#if pendingReturns.length > 0}
                         <span class="badge">{pendingReturns.length}</span>
                     {/if}
@@ -1070,15 +1125,53 @@
             <!-- Item History View -->
             {#if currentView === 'history'}
                 <div class="loans-content">
-                    <h2>� Complete Item History</h2>
+                    <h2>📚 Complete Item History</h2>
                     <p class="subtitle-text">Chronological history of all items - borrowed, returned, lost, and found</p>
+                    
+                    <!-- Search functionality for history -->
+                    <div class="history-search-container">
+                        <label for="history-search">Search history by name, item, phone, lab, purpose, status, or admin:</label>
+                        <div class="search-input-group">
+                            <input 
+                                type="text" 
+                                id="history-search" 
+                                bind:value={historySearchQuery}
+                                placeholder="Search through all history records..."
+                                autocomplete="off"
+                                class="history-search-input"
+                            />
+                            {#if historySearchQuery && historySearchQuery.trim()}
+                                <button 
+                                    class="clear-search-btn" 
+                                    on:click={clearHistorySearch} 
+                                    title="Clear search"
+                                    type="button"
+                                >
+                                    ✕
+                                </button>
+                            {/if}
+                        </div>
+                        {#if historySearchQuery.trim()}
+                            <p class="search-results-info">
+                                Showing {filteredHistoryItems.length} of {historyItems.length} history records
+                            </p>
+                        {/if}
+                    </div>
+
                     {#if loading}
                         <p>Loading item history...</p>
                     {:else if historyItems.length === 0}
                         <p class="no-items">No history found.</p>
+                    {:else if filteredHistoryItems.length === 0 && historySearchQuery.trim()}
+                        <div class="no-search-results">
+                            <p>No history records match your search for "{historySearchQuery}"</p>
+                            <button class="clear-search-btn-large" on:click={clearHistorySearch}>
+                                Clear Search
+                            </button>
+                        </div>
                     {:else}
                         <div class="history-list">
-                            {#each historyItems as item}
+                            {#each filteredHistoryItems as item}
                                 <div class="history-item {item.status}" data-status="{item.status}">
                                     <div class="history-timeline">
                                         <div class="timeline-dot {item.status}"></div>
@@ -2031,6 +2124,81 @@
     }
 
     /* History View Styles */
+    .history-search-container {
+        background: #11111b;
+        padding: 20px;
+        border-radius: 12px;
+        margin-bottom: 20px;
+        border: 1px solid #313244;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    }
+
+    .history-search-container label {
+        display: block;
+        margin-bottom: 10px;
+        font-weight: 600;
+        color: #cdd6f4;
+        font-size: 1rem;
+    }
+
+    .history-search-input {
+        width: 100%;
+        padding: 12px 16px;
+        border: 2px solid #313244;
+        border-radius: 8px;
+        font-size: 1rem;
+        box-sizing: border-box;
+        background: #1e1e2e;
+        color: #cdd6f4;
+        transition: all 0.3s ease;
+    }
+
+    .history-search-input:focus {
+        border-color: #f2cdcd;
+        outline: none;
+        box-shadow: 0 0 0 3px rgba(242, 205, 205, 0.25);
+    }
+
+    .search-results-info {
+        margin-top: 10px;
+        color: #a6adc8;
+        font-size: 0.9rem;
+        font-style: italic;
+    }
+
+    .no-search-results {
+        text-align: center;
+        padding: 40px 20px;
+        background: #11111b;
+        border-radius: 12px;
+        border: 1px solid #313244;
+        margin-top: 20px;
+    }
+
+    .no-search-results p {
+        color: #cdd6f4;
+        font-size: 1.1rem;
+        margin-bottom: 15px;
+    }
+
+    .clear-search-btn-large {
+        background: linear-gradient(135deg, #74c7ec, #89b4fa);
+        color: #11111b;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 8px;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+
+    .clear-search-btn-large:hover {
+        background: linear-gradient(135deg, #89b4fa, #b4befe);
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(116, 199, 236, 0.3);
+    }
+
     .history-list {
         display: flex;
         flex-direction: column;
