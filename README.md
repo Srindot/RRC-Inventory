@@ -24,7 +24,6 @@
 
 <div align="center">
   <img src="preview.png" alt="RRC Inventory System Preview" width="80%" style="border-radius: 12px; box-shadow: 0 8px 32px rgba(242, 205, 205, 0.3);">
-  <p><em>Clean and modern interface for lab equipment management</em></p>
 </div>
 
 ---
