@@ -35,18 +35,23 @@
 
 ### Getting Started
 
-1. **Start the application in server:**
+1. **First-time setup (run once):**
+   ```bash
+   ./setup.sh
+   ```
+
+2. **Start the application in server:**
    ```bash
    ./start.sh
    ```
 
-2. **Access the system from other devices:**
+3. **Access the system from other devices:**
    - **Main Application**: [Link](http://10.2.131.214)
 
 
 > **🌐 Network Access Note:** This website is hosted locally on a server. To access it, you need to be connected to **wifi@iiith** or use **OpenVPN** to connect to the IIIT network.
 
-3. **Stop the application in the server:**
+4. **Stop the application in the server:**
    ```bash
    ./stop.sh
    ```
@@ -100,6 +105,7 @@
 ## 🔧 Management Commands
 
 ```bash
+./setup.sh      # First-time setup (builds Docker images)
 ./start.sh      # Start all services
 ./stop.sh       # Stop all services  
 ./logs.sh       # View system logs
