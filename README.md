@@ -35,14 +35,14 @@
 
 ### Getting Started
 
-1. **Start the application:**
+1. **Start the application in server:**
    ```bash
    ./start.sh
    ```
 
 2. **Access the system:**
-   - **Main Application**: http://localhost
-   - **Admin Login**: Username: `Srinath`, Password: `rrc@srinath`
+   - **Main Application**: [Link](http://10.2.131.214)
+
 
 > **🌐 Network Access Note:** This website is hosted locally on a server. To access it, you need to be connected to **wifi@iiith** or use **OpenVPN** to connect to the IIIT network.
 
@@ -93,7 +93,7 @@
 
 ## 📖 Usage
 
-1. **Visit** http://localhost in your web browser
+1. **Visit** [link](http://10.2.131.214) in your web browser
 2. **Students**: Use the main interface to borrow and return equipment
 3. **Admins**: Click the admin button and login to manage the system
 
