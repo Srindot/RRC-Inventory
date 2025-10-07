@@ -41,26 +41,46 @@ fi
 
 # Check if Docker Compose is installed
 print_status "Checking Docker Compose installation..."
-if ! command -v docker-compose &> /dev/null; then
+if ! docker compose version &> /dev/null; then
     print_error "Docker Compose is not installed. Please install Docker Compose first."
     exit 1
 fi
 
 print_success "Docker and Docker Compose are installed."
 
+# Check Docker permissions
+print_status "Checking Docker permissions..."
+if ! docker ps &> /dev/null; then
+    print_warning "Docker permission issue detected. Trying to fix..."
+    if groups $USER | grep -q docker; then
+        print_status "User is in docker group, but session needs refresh."
+        print_status "Using sudo for Docker commands..."
+        DOCKER_CMD="sudo docker"
+        DOCKER_COMPOSE_CMD="sudo docker compose"
+    else
+        print_error "User is not in docker group. Please run: sudo usermod -aG docker \$USER"
+        print_error "Then log out and log back in, or restart your system."
+        exit 1
+    fi
+else
+    print_success "Docker permissions are correct."
+    DOCKER_CMD="docker"
+    DOCKER_COMPOSE_CMD="docker compose"
+fi
+
 # Stop any running containers
 print_status "Stopping any existing containers..."
-docker-compose down 2>/dev/null || true
+$DOCKER_COMPOSE_CMD down 2>/dev/null || true
 
 # Clean up any existing images (optional)
 print_status "Cleaning up old Docker images..."
-docker system prune -f --volumes 2>/dev/null || true
+$DOCKER_CMD system prune -f --volumes 2>/dev/null || true
 
 # Build all services
 print_status "Building Docker images..."
 print_status "This may take a few minutes on first run..."
 
-if docker-compose build --no-cache; then
+if $DOCKER_COMPOSE_CMD build --no-cache; then
     print_success "Docker images built successfully!"
 else
     print_error "Failed to build Docker images."
