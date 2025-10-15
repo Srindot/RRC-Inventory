@@ -1,0 +1,12 @@
+[Unit]
+Description=Publish rrc-inventory.local via mDNS (Avahi)
+After=network-online.target avahi-daemon.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /home/sriney/projects/rrc-inventory/scripts/mdns_publish.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

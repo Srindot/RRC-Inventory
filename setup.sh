@@ -39,9 +39,13 @@ if ! command -v docker &> /dev/null; then
     exit 1
 fi
 
-# Check if Docker Compose is installed
+# Check if Docker Compose is installed (support both v1 and v2)
 print_status "Checking Docker Compose installation..."
-if ! docker compose version &> /dev/null; then
+if docker compose version &> /dev/null; then
+    COMPOSE_CMD="docker compose"
+elif docker-compose --version &> /dev/null; then
+    COMPOSE_CMD="docker-compose"
+else
     print_error "Docker Compose is not installed. Please install Docker Compose first."
     exit 1
 fi
@@ -56,7 +60,11 @@ if ! docker ps &> /dev/null; then
         print_status "User is in docker group, but session needs refresh."
         print_status "Using sudo for Docker commands..."
         DOCKER_CMD="sudo docker"
-        DOCKER_COMPOSE_CMD="sudo docker compose"
+        if [[ "$COMPOSE_CMD" == "docker compose" ]]; then
+            DOCKER_COMPOSE_CMD="sudo docker compose"
+        else
+            DOCKER_COMPOSE_CMD="sudo docker-compose"
+        fi
     else
         print_error "User is not in docker group. Please run: sudo usermod -aG docker \$USER"
         print_error "Then log out and log back in, or restart your system."
@@ -65,7 +73,7 @@ if ! docker ps &> /dev/null; then
 else
     print_success "Docker permissions are correct."
     DOCKER_CMD="docker"
-    DOCKER_COMPOSE_CMD="docker compose"
+    DOCKER_COMPOSE_CMD="$COMPOSE_CMD"
 fi
 
 # Stop any running containers
@@ -114,6 +122,29 @@ else
     print_warning "  sudo systemctl enable rrc-inventory.service"
 fi
 
+# Setup mDNS for easy network access
+echo ""
+print_status "Setting up mDNS for network discovery..."
+if [ -f "scripts/mdns_setup.sh" ]; then
+    if sudo bash scripts/mdns_setup.sh; then
+        # Also setup mDNS auto-update service
+        MDNS_SERVICE_FILE="/etc/systemd/system/rrc-inventory-mdns.service"
+        if sudo cp rrc-inventory-mdns.service "$MDNS_SERVICE_FILE" 2>/dev/null; then
+            sudo systemctl daemon-reload
+            sudo systemctl enable rrc-inventory-mdns.service
+            sudo systemctl start rrc-inventory-mdns.service
+            print_success "mDNS configured! You can access the system at: http://rrc-inventory.local"
+        else
+            print_warning "mDNS service auto-start not configured"
+        fi
+    else
+        print_warning "mDNS setup encountered an issue (this is optional)"
+        print_warning "You can set it up manually later with: sudo ./scripts/mdns_setup.sh"
+    fi
+else
+    print_warning "mDNS setup script not found (optional feature)"
+fi
+
 echo ""
 echo "================================================"
 echo -e "${GREEN}🎉 RRC Inventory System is ready!${NC}"
@@ -125,12 +156,14 @@ echo -e "  📊 View logs:        ${BLUE}./logs.sh${NC}"
 echo -e "  🔄 Auto-start:       ${GREEN}✅ Enabled${NC} (starts on reboot)"
 echo ""
 echo "Access URLs:"
-echo -e "  🌐 Web Interface:    ${BLUE}http://localhost${NC}"
-echo -e "  📱 Mobile/Remote:    ${BLUE}http://$(hostname -I | awk '{print $1}')${NC}"
+echo -e "  🌐 Local:            ${BLUE}http://localhost${NC}"
+echo -e "  🌐 Network (mDNS):   ${GREEN}http://rrc-inventory.local${NC}"
+echo -e "  📱 Network (IP):     ${BLUE}http://$(hostname -I | awk '{print $1}')${NC}"
 echo ""
 echo "Admin Credentials:"
 echo -e "  👤 Username:         ${BLUE}Srinath${NC}"
 echo -e "  🔑 Password:         ${BLUE}rrc@srinath${NC}"
 echo ""
 echo -e "${YELLOW}📡 Network Note:${NC} Make sure you're connected to wifi@iiith or using OpenVPN"
+echo -e "${GREEN}✨ mDNS Tip:${NC} Use ${GREEN}http://rrc-inventory.local${NC} from any device on the network!"
 echo "================================================"

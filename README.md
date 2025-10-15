@@ -45,13 +45,24 @@
    ./start.sh
    ```
 
-3. **Access the system:**
-   - **Application URL**: http://rrc-inventory.local
+3. **Enable mDNS (optional, for easy access):**
+   ```bash
+   sudo ./scripts/mdns_setup.sh
+   sudo cp rrc-inventory-mdns.service /etc/systemd/system/
+   sudo systemctl daemon-reload
+   sudo systemctl enable --now rrc-inventory-mdns.service
+   ```
+   This allows access via `http://rrc-inventory.local` from any device on the network (no IP needed).
+
+4. **Access the system:**
+   - **Local Access**: http://localhost
+   - **Network Access** (with mDNS): http://rrc-inventory.local
+   - **Network Access** (via IP): http://[SERVER-IP]
    - **Admin Login**: Username: `Srinath`, Password: `rrc@srinath`
 
 > **🌐 Network Access Note:** This website is hosted locally on a server. To access it, you need to be connected to **wifi@iiith** or use **OpenVPN** to connect to the IIIT network.
 
-4. **Stop the application:**
+5. **Stop the application:**
    ```bash
    ./stop.sh
    ```
@@ -94,11 +105,25 @@
 
 ## 📖 Usage
 
-1. **Visit** http://10.2.131.214 in your web browser
+1. **Visit** http://rrc-inventory.local (with mDNS) or http://[SERVER-IP] in your web browser
 2. **Students**: Use the main interface to borrow and return equipment
 3. **Admins**: Click the admin button and login to manage the system
 
 > **🔗 Access Requirements:** Make sure you are connected to **wifi@iiith** or have **OpenVPN** configured to access the IIIT network before using the system.
+
+### 🌐 About mDNS Access
+
+mDNS (multicast DNS) allows devices on your local network to access the system using a friendly hostname instead of remembering IP addresses. Once configured:
+
+- ✅ Access from **any device** on the same network using `http://rrc-inventory.local`
+- ✅ **No manual configuration** needed on client devices (works automatically)
+- ✅ **Survives IP changes** - hostname stays the same even if server IP changes
+- ✅ Works with **most modern devices** (Linux, macOS, Windows 10+, iOS, Android)
+
+**Requirements:**
+- Avahi daemon on server (installed by setup script)
+- Devices on the same local network
+- Firewall allows mDNS (UDP port 5353)
 
 ---
 
