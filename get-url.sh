@@ -26,8 +26,7 @@ fi
 if grep -qi microsoft /proc/version; then
     echo "⚠️  Note: Running in WSL2"
     echo ""
-    echo "   mDNS (rrc-inventory.local) won't work from other devices"
-    echo "   due to WSL2's virtual networking."
+    echo "   mDNS may not work from other devices due to WSL2's virtual networking."
     echo ""
     echo "📖 For alternatives, see: MDNS_WSL2_TROUBLESHOOTING.md"
     echo ""

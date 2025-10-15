@@ -1,5 +1,5 @@
 # Development Caddyfile for RRC Inventory Application
-:80, rrc-inventory.local:80 {
+:80 {
     # Handle API requests - proxy to Go backend
     handle /api/* {
         reverse_proxy backend:8080

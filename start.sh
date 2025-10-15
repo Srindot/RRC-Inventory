@@ -42,11 +42,6 @@ if [ $? -eq 0 ]; then
     echo "🌐 Access your application at:"
     echo "   🖥️  Local:        http://localhost"
     
-    # Check if mDNS is configured
-    if grep -q "rrc-inventory.local" /etc/avahi/hosts 2>/dev/null; then
-        echo "   🌍 Network (mDNS): http://rrc-inventory.local"
-    fi
-    
     echo "   📱 Network (IP):   http://$(hostname -I | awk '{print $1}')"
     echo "   🔌 Backend API:    http://localhost/api"
     echo ""
