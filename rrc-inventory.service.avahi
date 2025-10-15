@@ -13,4 +13,6 @@
     <type>_https._tcp</type>
     <port>443</port>
   </service>
+  <!-- CNAME alias for easier access -->
+  <subtype>rrc-inventory._sub._http._tcp</subtype>
 </service-group>
