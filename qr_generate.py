@@ -1,23 +1,14 @@
 import segno
 
-MOCHA_BASE = '#1e1e2e'    
-MOCHA_TEXT = '#cdd6f4'    
-MOCHA_FLAMINGO = '#f2cdcd'
-
+# Create the QR code data
 qrcode = segno.make_qr("http://10.2.36.243", error='h')
 
+# Save the QR code as a black and white PNG file
 qrcode.save(
-    "catppuccin_mocha_qrcode.png",
-    scale=10, 
-    
-
-    light=MOCHA_BASE,
-    
-
-    dark=MOCHA_TEXT,
-    
-
-    data_dark=MOCHA_FLAMINGO,
+    "black_and_white_qrcode.png",
+    scale=10,
+    light='white',  # Sets the background color to white
+    dark='black'    # Sets the QR code modules to black
 )
 
-print("generated")
+print("Generated black and white QR code.")
