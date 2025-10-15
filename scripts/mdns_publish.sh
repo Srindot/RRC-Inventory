@@ -9,14 +9,15 @@ HOSTNAME_LABEL="rrc-inventory.local"
 AVAHI_HOSTS="/etc/avahi/hosts"
 
 get_ip() {
-  # Try to get IP from eth0 first (main network interface)
-  local eth0_ip=$(ip -4 addr show eth0 2>/dev/null | awk '/inet / {print $2}' | cut -d/ -f1 | head -n1)
-  if [[ -n "$eth0_ip" ]]; then
-    echo "$eth0_ip"
+  # Preferred method: ask kernel which source IP would be used to reach the public internet.
+  # This works across different interface naming schemes (eth0, enp0s3, wlan0, etc.).
+  local ipv=$(ip route get 8.8.8.8 2>/dev/null | awk '/src/ {for(i=1;i<=NF;i++){if($i=="src"){print $(i+1); exit}}}')
+  if [[ -n "$ipv" ]]; then
+    echo "$ipv"
     return
   fi
-  
-  # Fallback: Get first non-loopback, non-docker IP
+
+  # Fallback: get first non-loopback, non-docker IPv4 address
   ip -4 addr show | awk '/inet / && $2 !~ /^127\./ && $2 !~ /^172\.(1[7-9]|2[0-9]|3[0-1])\./ {print $2}' | head -n1 | cut -d/ -f1
 }
 
