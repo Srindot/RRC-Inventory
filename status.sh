@@ -49,17 +49,8 @@ else
     echo "   ❌ Backend API: http://localhost/api (not accessible)"
 fi
 
-# Check mDNS status
-if grep -q "rrc-inventory.local" /etc/avahi/hosts 2>/dev/null; then
-    echo "   ✅ mDNS: http://rrc-inventory.local (configured)"
-    if systemctl is-active avahi-daemon &>/dev/null; then
-        echo "      ✅ Avahi daemon: Running"
-    else
-        echo "      ⚠️  Avahi daemon: Not running"
-    fi
-else
-    echo "   ⚠️  mDNS: Not configured (optional)"
-fi
+# mDNS support removed from this distribution. Access using server IP instead.
+echo "   ℹ️  mDNS support removed. Use the server IP (http://<server-ip>) to access the app."
 
 echo ""
 echo "🔄 Auto-start Status:"
@@ -73,12 +64,8 @@ else
     echo "   ❌ Auto-start: Not enabled"
 fi
 
-# Check mDNS auto-start
-if systemctl is-enabled rrc-inventory-mdns.service &>/dev/null; then
-    echo "   ✅ mDNS auto-update: Enabled"
-else
-    echo "   ⚠️  mDNS auto-update: Not enabled (optional)"
-fi
+# mDNS auto-update removed
+echo "   ℹ️  mDNS auto-update service removed from instructions"
 
 echo ""
 echo "🔧 Management Commands:"

@@ -4,7 +4,7 @@ MOCHA_BASE = '#1e1e2e'
 MOCHA_TEXT = '#cdd6f4'    
 MOCHA_FLAMINGO = '#f2cdcd'
 
-qrcode = segno.make_qr("http://rrc-inventory.local", error='h')
+qrcode = segno.make_qr("http://<SERVER_IP>", error='h')
 
 qrcode.save(
     "catppuccin_mocha_qrcode.png",

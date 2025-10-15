@@ -2,7 +2,7 @@
 # This configuration routes API requests to Go backend and serves SvelteKit static files
 
 # For local network access (multiple interfaces)
-:80, rrc-inventory.local:80 {
+:80 {
     # Handle API requests - proxy to Go backend
     handle /api/* {
         reverse_proxy backend:8080

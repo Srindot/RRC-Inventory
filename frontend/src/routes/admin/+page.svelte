@@ -145,7 +145,7 @@
             }
         } catch (e) {
             // Network error (could be mDNS/name resolution). Offer IP fallback.
-            showMessage('Login failed (network). If you are using rrc-inventory.local, mDNS may not be resolving — try the host IP below.', 'error');
+            showMessage('Login failed (network). If name resolution fails, try the server IP below.', 'error');
             showIpFallback = true;
         } finally {
             loading = false;

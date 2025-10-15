@@ -104,7 +104,7 @@
 
 > **🔗 Access Requirements:** Make sure you are connected to **wifi@iiith** or have **OpenVPN** configured to access the IIIT network before using the system.
 
-Note: this project previously included mDNS setup instructions (rrc-inventory.local). mDNS/Bonjour can be unreliable across networks, so the recommended access method is using the server IP address.
+Note: mDNS/Bonjour references have been removed. Use the server IP address to access the application.
 
 ---
 
