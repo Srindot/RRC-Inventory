@@ -10,6 +10,10 @@
         username: '',
         password: ''
     };
+    // Fallback: allow entering server IP when mDNS/name resolution fails
+    let showIpFallback = false;
+    let altHost = '';
+    let ipLoading = false;
     
     // Current view
     let currentView = 'login'; // login, dashboard, pending, pending-returns, lost-missing, history, lab-view, admin-management, change-password
@@ -140,9 +144,51 @@
                 showMessage(error.error || 'Login failed', 'error');
             }
         } catch (e) {
-            showMessage('Login failed. Please try again.', 'error');
+            // Network error (could be mDNS/name resolution). Offer IP fallback.
+            showMessage('Login failed (network). If name resolution fails, try the server IP below.', 'error');
+            showIpFallback = true;
         } finally {
             loading = false;
+        }
+    }
+
+    // Try login by supplying an explicit host/IP (e.g. 10.2.36.243)
+    async function tryIpLogin() {
+        if (!altHost) {
+            showMessage('Please enter the server IP (e.g. 10.2.36.243)', 'error');
+            return;
+        }
+        ipLoading = true;
+        try {
+            // Trim possible http(s) prefix
+            const hostOnly = altHost.replace(/^https?:\/\//, '').replace(/\/.*/, '');
+            const url = `http://${hostOnly}/api/admin/login`;
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(loginForm)
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                adminInfo = data.admin;
+                localStorage.setItem('adminInfo', JSON.stringify(adminInfo));
+                isLoggedIn = true;
+                currentView = 'dashboard';
+                showMessage('Login successful (via IP)!', 'success');
+                loginForm = { username: '', password: '' };
+                // Load initial data
+                loadPendingLoans();
+                loadPendingReturns();
+                loadLostMissingItems();
+            } else {
+                const error = await response.json().catch(() => ({}));
+                showMessage(error.error || `Login failed (HTTP ${response.status})`, 'error');
+            }
+        } catch (err) {
+            showMessage('Failed to contact server at that IP. Check network or try another IP.', 'error');
+        } finally {
+            ipLoading = false;
         }
     }
 
@@ -732,6 +778,15 @@
                     <button type="submit" class="login-btn" disabled={loading}>
                         {loading ? 'Logging in...' : 'Login'}
                     </button>
+                    {#if showIpFallback}
+                        <div class="ip-fallback" style="margin-top:12px;">
+                            <label for="altHost">Server IP (fallback):</label>
+                            <div style="display:flex;gap:8px;margin-top:6px;align-items:center;">
+                                <input id="altHost" type="text" bind:value={altHost} placeholder="10.2.36.243" />
+                                <button type="button" class="login-btn" on:click={tryIpLogin} disabled={ipLoading}>{ipLoading ? 'Trying...' : 'Login via IP'}</button>
+                            </div>
+                        </div>
+                    {/if}
                 </form>
             </div>
         </div>

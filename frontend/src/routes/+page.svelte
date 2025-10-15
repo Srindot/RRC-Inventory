@@ -2,7 +2,7 @@
     import { onMount } from 'svelte';
 
     // State management
-    let currentView = 'home'; // 'home', 'borrow', 'return'
+    let currentView = 'home'; // 'home', 'borrow', 'return', 'printer-guide'
     let items = [];
     let loans = [];
     let loading = false;
@@ -321,6 +321,10 @@
         currentView = 'return';
         loadActiveLoans();
     }
+
+    function goToPrinterGuide() {
+        currentView = 'printer-guide';
+    }
 </script>
 
 <div class="container">
@@ -347,7 +351,7 @@
         </div>
     {/if}
 
-    <!-- Home View - Two Main Options -->
+    <!-- Home View - Three Main Options -->
     {#if currentView === 'home'}
         <div class="home-options">
             <h2>What would you like to do?</h2>
@@ -359,6 +363,10 @@
                 <button class="option-btn return-btn" on:click={goToReturn}>
                     ↩️ Return Item
                     <p>Return borrowed equipment</p>
+                </button>
+                <button class="option-btn printer-btn" on:click={goToPrinterGuide}>
+                    🖨️ Printer Guidelines
+                    <p>Bambu Labs printer instructions</p>
                 </button>
             </div>
         </div>
@@ -689,6 +697,122 @@
             {/if}
         </div>
     {/if}
+
+    <!-- Printer Guidelines View -->
+    {#if currentView === 'printer-guide'}
+        <div class="printer-guide-container">
+            <h2>🖨️ Bambu Labs Printer Guidelines</h2>
+            <button class="back-btn" on:click={goHome}>← Back to Home</button>
+            
+            <div class="guide-content">
+                <!-- Official Documentation Links -->
+                <section class="guide-section">
+                    <h3>📚 Official Documentation</h3>
+                    <div class="link-grid">
+                        <a href="https://wiki.bambulab.com/en/p1/manual/loading-filament" target="_blank" rel="noopener noreferrer" class="guide-link">
+                            <span class="link-icon">📥</span>
+                            <div class="link-content">
+                                <strong>Loading Filament</strong>
+                                <p>Step-by-step guide to load filament into the printer</p>
+                            </div>
+                        </a>
+                        
+                        <a href="https://wiki.bambulab.com/en/p1/manual" target="_blank" rel="noopener noreferrer" class="guide-link">
+                            <span class="link-icon">🔄</span>
+                            <div class="link-content">
+                                <strong>Replacing Filament</strong>
+                                <p>How to change and replace filament during printing</p>
+                            </div>
+                        </a>
+                        
+                        <a href="https://wiki.bambulab.com/en/p1/manual/print-from-bambu-studio" target="_blank" rel="noopener noreferrer" class="guide-link">
+                            <span class="link-icon">🚀</span>
+                            <div class="link-content">
+                                <strong>Sending Print Jobs</strong>
+                                <p>Learn how to send print jobs from Bambu Studio</p>
+                            </div>
+                        </a>
+                        
+                        <a href="https://wiki.bambulab.com/en/general/filament-guide-material-table" target="_blank" rel="noopener noreferrer" class="guide-link">
+                            <span class="link-icon">📖</span>
+                            <div class="link-content">
+                                <strong>Filament Guide</strong>
+                                <p>Complete material table and filament reference</p>
+                            </div>
+                        </a>
+                    </div>
+                </section>
+
+                <!-- Important Safety Guidelines -->
+                <section class="guide-section warning-section">
+                    <h3>⚠️ Important Safety Guidelines</h3>
+                    <p class="section-intro">If you notice any of these issues during a print, <strong>STOP THE PRINT IMMEDIATELY</strong> and inform lab personnel:</p>
+                    
+                    <div class="warning-list">
+                        <div class="warning-item">
+                            <span class="warning-icon">🚫</span>
+                            <div class="warning-content">
+                                <strong>Nozzle Blockage</strong>
+                                <p>If the nozzle appears blocked or no filament is extruding:</p>
+                                <ul>
+                                    <li>Stop the print immediately</li>
+                                    <li>Do NOT attempt to clear it yourself</li>
+                                    <li>Inform lab personnel right away</li>
+                                </ul>
+                            </div>
+                        </div>
+                        
+                        <div class="warning-item">
+                            <span class="warning-icon">🌀</span>
+                            <div class="warning-content">
+                                <strong>Tangled Filament / Printing in Air</strong>
+                                <p>If the filament is tangled or the printer is printing in mid-air:</p>
+                                <ul>
+                                    <li>Stop the print immediately</li>
+                                    <li>Do NOT touch the hot nozzle or bed</li>
+                                    <li>Report the issue to lab personnel</li>
+                                </ul>
+                            </div>
+                        </div>
+                        
+                        <div class="warning-item">
+                            <span class="warning-icon">❌</span>
+                            <div class="warning-content">
+                                <strong>Print Failure / Messed Up Print</strong>
+                                <p>If the print quality is poor or the print is failing:</p>
+                                <ul>
+                                    <li>Stop the print to avoid wasting material</li>
+                                    <li>Take a photo of the issue if possible</li>
+                                    <li>Notify lab personnel for assistance</li>
+                                </ul>
+                            </div>
+                        </div>
+                        
+                        <div class="warning-item community-item">
+                            <span class="warning-icon">👥</span>
+                            <div class="warning-content">
+                                <strong>Community Responsibility</strong>
+                                <p><strong>Anyone can and should stop problematic prints!</strong></p>
+                                <ul>
+                                    <li>If you notice any issues on ANY print, take action</li>
+                                    <li>It's everyone's responsibility to maintain the equipment</li>
+                                    <li>Report stopped prints to lab personnel immediately</li>
+                                    <li>Better to stop early than damage the printer</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Emergency Contact -->
+                <section class="guide-section contact-section">
+                    <h3>📞 Need Help?</h3>
+                    <p>If you encounter any issues or have questions, contact the lab personnel immediately.</p>
+                    <p><strong>Remember:</strong> It's always better to stop a print and ask for help than to damage the equipment!</p>
+                </section>
+            </div>
+        </div>
+    {/if}
     </main>
 </div>
 
@@ -929,6 +1053,16 @@
     .return-btn:hover {
         background: linear-gradient(135deg, #89b4fa, #b4befe);
         border-color: #74c7ec;
+    }
+
+    .printer-btn {
+        background: linear-gradient(135deg, #a6e3a1, #94e2d5);
+        color: #11111b;
+    }
+
+    .printer-btn:hover {
+        background: linear-gradient(135deg, #94e2d5, #89dceb);
+        border-color: #a6e3a1;
     }
 
     .option-btn p {
@@ -2044,6 +2178,196 @@
         .photo-thumbnail {
             max-width: 100%;
             max-height: 150px;
+        }
+    }
+
+    /* Printer Guide Styles */
+    .printer-guide-container {
+        background: #11111b;
+        padding: clamp(15px, 3vw, 25px);
+        border-radius: 12px;
+        margin-top: 15px;
+        border: 1px solid #313244;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        max-width: 1200px;
+        margin-left: auto;
+        margin-right: auto;
+    }
+
+    .guide-content {
+        margin-top: 25px;
+    }
+
+    .guide-section {
+        background: #181825;
+        padding: clamp(18px, 3.5vw, 28px);
+        border-radius: 10px;
+        margin-bottom: 25px;
+        border: 1px solid #313244;
+    }
+
+    .guide-section h3 {
+        color: #f2cdcd;
+        margin-bottom: 20px;
+        font-size: clamp(1.2rem, 2.5vw, 1.5rem);
+    }
+
+    .section-intro {
+        color: #cdd6f4;
+        margin-bottom: 20px;
+        font-size: clamp(0.95rem, 2vw, 1.05rem);
+        line-height: 1.6;
+    }
+
+    .link-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 15px;
+    }
+
+    .guide-link {
+        display: flex;
+        align-items: flex-start;
+        gap: 15px;
+        padding: 18px;
+        background: #1e1e2e;
+        border: 2px solid #313244;
+        border-radius: 8px;
+        text-decoration: none;
+        color: #cdd6f4;
+        transition: all 0.3s ease;
+    }
+
+    .guide-link:hover {
+        border-color: #a6e3a1;
+        background: #262637;
+        transform: translateY(-3px);
+        box-shadow: 0 8px 16px rgba(166, 227, 161, 0.2);
+    }
+
+    .link-icon {
+        font-size: 2rem;
+        flex-shrink: 0;
+    }
+
+    .link-content strong {
+        color: #a6e3a1;
+        font-size: clamp(1rem, 2.2vw, 1.1rem);
+        display: block;
+        margin-bottom: 6px;
+    }
+
+    .link-content p {
+        color: #a6adc8;
+        font-size: clamp(0.85rem, 1.8vw, 0.95rem);
+        line-height: 1.4;
+        margin: 0;
+    }
+
+    .warning-section {
+        border: 2px solid #f38ba8;
+        background: linear-gradient(135deg, rgba(243, 139, 168, 0.08), rgba(235, 160, 172, 0.05));
+    }
+
+    .warning-section h3 {
+        color: #f38ba8;
+    }
+
+    .warning-list {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+    }
+
+    .warning-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 18px;
+        padding: 20px;
+        background: #1e1e2e;
+        border-left: 4px solid #f38ba8;
+        border-radius: 8px;
+    }
+
+    .community-item {
+        border-left-color: #a6e3a1;
+        background: rgba(166, 227, 161, 0.08);
+    }
+
+    .warning-icon {
+        font-size: 2.5rem;
+        flex-shrink: 0;
+        line-height: 1;
+    }
+
+    .warning-content strong {
+        color: #f2cdcd;
+        font-size: clamp(1.05rem, 2.3vw, 1.15rem);
+        display: block;
+        margin-bottom: 10px;
+    }
+
+    .community-item .warning-content strong {
+        color: #a6e3a1;
+    }
+
+    .warning-content p {
+        color: #cdd6f4;
+        margin: 8px 0;
+        line-height: 1.6;
+        font-size: clamp(0.9rem, 1.9vw, 1rem);
+    }
+
+    .warning-content ul {
+        margin: 12px 0 0 20px;
+        padding: 0;
+        color: #a6adc8;
+    }
+
+    .warning-content li {
+        margin-bottom: 8px;
+        line-height: 1.5;
+        font-size: clamp(0.85rem, 1.8vw, 0.95rem);
+    }
+
+    .contact-section {
+        background: linear-gradient(135deg, rgba(137, 180, 250, 0.1), rgba(180, 190, 254, 0.08));
+        border: 2px solid #89b4fa;
+        text-align: center;
+    }
+
+    .contact-section h3 {
+        color: #89b4fa;
+    }
+
+    .contact-section p {
+        color: #cdd6f4;
+        font-size: clamp(0.95rem, 2vw, 1.05rem);
+        line-height: 1.7;
+        margin: 10px 0;
+    }
+
+    .contact-section strong {
+        color: #f2cdcd;
+    }
+
+    @media (max-width: 768px) {
+        .link-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .guide-link {
+            padding: 15px;
+        }
+
+        .warning-item {
+            flex-direction: column;
+            gap: 12px;
+            padding: 15px;
+        }
+
+        .warning-icon {
+            font-size: 2rem;
         }
     }
 </style>

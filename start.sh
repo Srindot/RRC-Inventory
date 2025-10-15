@@ -4,8 +4,12 @@
 echo "🚀 Starting RRC Inventory..."
 echo "📋 This will start all services in the background"
 
-# Check if docker-compose is available
-if ! docker compose version &> /dev/null; then
+# Check if docker-compose is available (support both v1 and v2)
+if docker compose version &> /dev/null; then
+    COMPOSE_CMD="docker compose"
+elif docker-compose --version &> /dev/null; then
+    COMPOSE_CMD="docker-compose"
+else
     echo "❌ docker compose is not installed. Please install it first."
     exit 1
 fi
@@ -14,13 +18,17 @@ fi
 if ! docker ps &> /dev/null; then
     if groups $USER | grep -q docker; then
         echo "⚠️  Using sudo for Docker commands (session needs refresh)"
-        DOCKER_COMPOSE_CMD="sudo docker compose"
+        if [[ "$COMPOSE_CMD" == "docker compose" ]]; then
+            DOCKER_COMPOSE_CMD="sudo docker compose"
+        else
+            DOCKER_COMPOSE_CMD="sudo docker-compose"
+        fi
     else
         echo "❌ Docker permission error. Please run: sudo usermod -aG docker \$USER"
         exit 1
     fi
 else
-    DOCKER_COMPOSE_CMD="docker compose"
+    DOCKER_COMPOSE_CMD="$COMPOSE_CMD"
 fi
 
 # Start the services
@@ -33,8 +41,9 @@ if [ $? -eq 0 ]; then
     echo ""
     echo "🌐 Access your application at:"
     echo "   🖥️  Local:        http://localhost"
-    echo "   📱 Remote/Mobile: http://$(hostname -I | awk '{print $1}')"
-    echo "   🔌 Backend API:   http://localhost/api"
+    
+    echo "   📱 Network (IP):   http://$(hostname -I | awk '{print $1}')"
+    echo "   🔌 Backend API:    http://localhost/api"
     echo ""
     echo "📊 To view logs: ./logs.sh"
     echo "🛑 To stop: ./stop.sh"

@@ -4,8 +4,12 @@
 echo "📊 RRC Inventory System Status"
 echo "================================"
 
-# Check if docker-compose is available
-if ! docker compose version &> /dev/null; then
+# Check if docker-compose is available (support both v1 and v2)
+if docker compose version &> /dev/null; then
+    COMPOSE_CMD="docker compose"
+elif docker-compose --version &> /dev/null; then
+    COMPOSE_CMD="docker-compose"
+else
     echo "❌ docker compose is not installed."
     exit 1
 fi
@@ -14,13 +18,17 @@ fi
 if ! docker ps &> /dev/null; then
     if groups $USER | grep -q docker; then
         echo "⚠️  Using sudo for Docker commands (session needs refresh)"
-        DOCKER_COMPOSE_CMD="sudo docker compose"
+        if [[ "$COMPOSE_CMD" == "docker compose" ]]; then
+            DOCKER_COMPOSE_CMD="sudo docker compose"
+        else
+            DOCKER_COMPOSE_CMD="sudo docker-compose"
+        fi
     else
         echo "❌ Docker permission error. Please run: sudo usermod -aG docker \$USER"
         exit 1
     fi
 else
-    DOCKER_COMPOSE_CMD="docker compose"
+    DOCKER_COMPOSE_CMD="$COMPOSE_CMD"
 fi
 
 # Check service status
@@ -41,6 +49,9 @@ else
     echo "   ❌ Backend API: http://localhost/api (not accessible)"
 fi
 
+# mDNS support removed from this distribution. Access using server IP instead.
+echo "   ℹ️  mDNS support removed. Use the server IP (http://<server-ip>) to access the app."
+
 echo ""
 echo "🔄 Auto-start Status:"
 if systemctl is-enabled rrc-inventory.service &>/dev/null; then
@@ -52,6 +63,9 @@ if systemctl is-enabled rrc-inventory.service &>/dev/null; then
 else
     echo "   ❌ Auto-start: Not enabled"
 fi
+
+# mDNS auto-update removed
+echo "   ℹ️  mDNS auto-update service removed from instructions"
 
 echo ""
 echo "🔧 Management Commands:"

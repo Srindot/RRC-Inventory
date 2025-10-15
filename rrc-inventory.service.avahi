@@ -1,0 +1,18 @@
+<?xml version="1.0" standalone='no'?><!--*-nxml-*-->
+<!DOCTYPE service-group SYSTEM "avahi-service.dtd">
+
+<!-- Avahi service configuration for RRC Inventory -->
+<service-group>
+  <name replace-wildcards="yes">RRC Inventory Management System</name>
+  <service>
+    <type>_http._tcp</type>
+    <port>80</port>
+    <txt-record>path=/</txt-record>
+  </service>
+  <service>
+    <type>_https._tcp</type>
+    <port>443</port>
+  </service>
+  <!-- CNAME alias for easier access -->
+  <subtype>rrc-inventory._sub._http._tcp</subtype>
+</service-group>

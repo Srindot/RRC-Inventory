@@ -45,13 +45,17 @@
    ./start.sh
    ```
 
-3. **Access the system:**
-   - **Application URL**: http://rrc-inventory.local
+3. **Network access (host IP)**
+  If mDNS/Bonjour is not working on your network, use the server IP to access the application. The repository includes optional mDNS helper scripts, but they are known to be fragile across networks and environments.
+
+4. **Access the system:**
+  - **Local Access**: http://localhost
+  - **Network Access** (via IP): http://[SERVER-IP]
    - **Admin Login**: Username: `Srinath`, Password: `rrc@srinath`
 
 > **🌐 Network Access Note:** This website is hosted locally on a server. To access it, you need to be connected to **wifi@iiith** or use **OpenVPN** to connect to the IIIT network.
 
-4. **Stop the application:**
+5. **Stop the application:**
    ```bash
    ./stop.sh
    ```
@@ -94,11 +98,13 @@
 
 ## 📖 Usage
 
-1. **Visit** http://10.2.131.214 in your web browser
+1. **Visit** http://[SERVER-IP] in your web browser (replace [SERVER-IP] with your server's LAN IP)
 2. **Students**: Use the main interface to borrow and return equipment
 3. **Admins**: Click the admin button and login to manage the system
 
 > **🔗 Access Requirements:** Make sure you are connected to **wifi@iiith** or have **OpenVPN** configured to access the IIIT network before using the system.
+
+Note: mDNS/Bonjour references have been removed. Use the server IP address to access the application.
 
 ---
 
