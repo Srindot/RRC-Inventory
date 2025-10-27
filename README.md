@@ -46,7 +46,7 @@
    ```
 
 3. **Network access (host IP)**
-  If mDNS/Bonjour is not working on your network, use the server IP to access the application. The repository includes optional mDNS helper scripts, but they are known to be fragile across networks and environments.
+  Use the server IP to access the application. mDNS/Bonjour support has been removed from this distribution; IP access is more reliable across networks and environments.
 
 4. **Access the system:**
   - **Local Access**: http://localhost
