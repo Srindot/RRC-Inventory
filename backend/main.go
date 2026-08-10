@@ -186,6 +186,17 @@ type Loan struct {
 	ReturnedAt           *time.Time `json:"returned_at"`
 }
 
+// Booking is a reservation of the Motion Capture Lab. No approval needed -
+// a slot is either free or taken.
+type Booking struct {
+	gorm.Model
+	BookedBy string `json:"booked_by"`
+	Phone    string `json:"phone"`
+	Purpose  string `json:"purpose"`
+	StartTime time.Time `json:"start_time"`
+	EndTime   time.Time `json:"end_time"`
+}
+
 // Helper function to format time pointers for CSV
 func formatTimePtr(t *time.Time) string {
 	if t == nil {
@@ -208,7 +219,7 @@ func main() {
 	}
 
 	log.Println("Running database migrations...")
-	db.AutoMigrate(&Item{}, &Loan{}, &Admin{})
+	db.AutoMigrate(&Item{}, &Loan{}, &Admin{}, &Booking{})
 
 	// Approvals were removed. Bring records created under the old flow into the
 	// new states so nothing is stranded in a status the app no longer uses.
@@ -523,6 +534,136 @@ func main() {
 			c.JSON(200, gin.H{"message": "Item marked as returned. Thank you!"})
 		})
 
+		// --- MOTION CAPTURE LAB BOOKINGS ---
+
+		// List bookings in a time range (defaults to the next 8 weeks)
+		api.GET("/bookings", func(c *gin.Context) {
+			from := time.Now().AddDate(0, 0, -14)
+			to := time.Now().AddDate(0, 0, 56)
+
+			if v := c.Query("from"); v != "" {
+				if t, err := time.Parse(time.RFC3339, v); err == nil {
+					from = t
+				}
+			}
+			if v := c.Query("to"); v != "" {
+				if t, err := time.Parse(time.RFC3339, v); err == nil {
+					to = t
+				}
+			}
+
+			var bookings []Booking
+			if err := db.Where("start_time < ? AND end_time > ?", to, from).
+				Order("start_time ASC").Find(&bookings).Error; err != nil {
+				c.JSON(500, gin.H{"error": "Failed to retrieve bookings"})
+				return
+			}
+			c.JSON(200, bookings)
+		})
+
+		// Book the lab. No approval - the slot just has to be free.
+		api.POST("/bookings", func(c *gin.Context) {
+			type BookingRequest struct {
+				BookedBy  string `json:"booked_by" binding:"required"`
+				Phone     string `json:"phone" binding:"required"`
+				Purpose   string `json:"purpose" binding:"required"`
+				StartTime string `json:"start_time" binding:"required"`
+				EndTime   string `json:"end_time" binding:"required"`
+			}
+
+			var req BookingRequest
+			if err := c.ShouldBindJSON(&req); err != nil {
+				c.JSON(400, gin.H{"error": "All fields are required"})
+				return
+			}
+
+			start, err := time.Parse(time.RFC3339, req.StartTime)
+			if err != nil {
+				c.JSON(400, gin.H{"error": "Invalid start time"})
+				return
+			}
+			end, err := time.Parse(time.RFC3339, req.EndTime)
+			if err != nil {
+				c.JSON(400, gin.H{"error": "Invalid end time"})
+				return
+			}
+
+			if !end.After(start) {
+				c.JSON(400, gin.H{"error": "End time must be after the start time"})
+				return
+			}
+			if end.Sub(start) > 12*time.Hour {
+				c.JSON(400, gin.H{"error": "A single booking cannot be longer than 12 hours"})
+				return
+			}
+			if start.Before(time.Now().Add(-1 * time.Hour)) {
+				c.JSON(400, gin.H{"error": "Cannot book a slot in the past"})
+				return
+			}
+
+			newBooking := Booking{
+				BookedBy:  strings.TrimSpace(req.BookedBy),
+				Phone:     strings.TrimSpace(req.Phone),
+				Purpose:   strings.TrimSpace(req.Purpose),
+				StartTime: start,
+				EndTime:   end,
+			}
+
+			// Reject overlaps, checked inside the transaction that inserts the row.
+			err = db.Transaction(func(tx *gorm.DB) error {
+				var clash Booking
+				err := tx.Where("start_time < ? AND end_time > ?", end, start).First(&clash).Error
+				if err == nil {
+					return fmt.Errorf("that slot overlaps an existing booking by %s (%s - %s)",
+						clash.BookedBy,
+						clash.StartTime.Local().Format("Mon 2 Jan 15:04"),
+						clash.EndTime.Local().Format("15:04"))
+				}
+				if !errors.Is(err, gorm.ErrRecordNotFound) {
+					return err
+				}
+				return tx.Create(&newBooking).Error
+			})
+
+			if err != nil {
+				c.JSON(409, gin.H{"error": err.Error()})
+				return
+			}
+
+			c.JSON(200, gin.H{"message": "Motion Capture Lab booked!", "booking": newBooking})
+		})
+
+		// Cancel your own booking by confirming the phone number it was made with
+		api.POST("/bookings/:id/cancel", func(c *gin.Context) {
+			type CancelRequest struct {
+				Phone string `json:"phone" binding:"required"`
+			}
+
+			var req CancelRequest
+			if err := c.ShouldBindJSON(&req); err != nil {
+				c.JSON(400, gin.H{"error": "Phone number is required"})
+				return
+			}
+
+			var booking Booking
+			if err := db.First(&booking, c.Param("id")).Error; err != nil {
+				c.JSON(404, gin.H{"error": "Booking not found"})
+				return
+			}
+
+			if strings.TrimSpace(req.Phone) != booking.Phone {
+				c.JSON(403, gin.H{"error": "That phone number does not match this booking"})
+				return
+			}
+
+			if err := db.Delete(&booking).Error; err != nil {
+				c.JSON(500, gin.H{"error": "Failed to cancel booking"})
+				return
+			}
+
+			c.JSON(200, gin.H{"message": "Booking cancelled"})
+		})
+
 		// --- ADMIN ROUTES ---
 		admin := api.Group("/admin")
 		{
@@ -751,6 +892,22 @@ func main() {
 					return
 				}
 				c.JSON(200, loans)
+			})
+
+			// Delete any Motion Capture Lab booking
+			admin.DELETE("/bookings/:id", func(c *gin.Context) {
+				var booking Booking
+				if err := db.First(&booking, c.Param("id")).Error; err != nil {
+					c.JSON(404, gin.H{"error": "Booking not found"})
+					return
+				}
+
+				if err := db.Delete(&booking).Error; err != nil {
+					c.JSON(500, gin.H{"error": "Failed to delete booking"})
+					return
+				}
+
+				c.JSON(200, gin.H{"message": "Booking deleted"})
 			})
 
 			// Get archived (old returned) items - older than 2 weeks

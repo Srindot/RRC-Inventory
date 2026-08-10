@@ -363,6 +363,10 @@
                     ↩️ Return Item
                     <p>Return borrowed equipment</p>
                 </button>
+                <a class="option-btn mocap-btn" href="/mocap">
+                    🎥 Motion Capture Lab
+                    <p>Book a slot and see the calendar</p>
+                </a>
                 <button class="option-btn printer-btn" on:click={goToPrinterGuide}>
                     🖨️ Printer Guidelines
                     <p>Bambu Labs printer instructions</p>
@@ -1032,6 +1036,18 @@
     .return-btn:hover {
         background: linear-gradient(135deg, #89b4fa, #b4befe);
         border-color: #74c7ec;
+    }
+
+    .mocap-btn {
+        background: linear-gradient(135deg, #cba6f7, #b4befe);
+        color: #11111b;
+        display: block;
+        text-decoration: none;
+    }
+
+    .mocap-btn:hover {
+        background: linear-gradient(135deg, #b4befe, #89b4fa);
+        border-color: #cba6f7;
     }
 
     .printer-btn {

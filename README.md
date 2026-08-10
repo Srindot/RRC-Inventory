@@ -58,6 +58,13 @@
 > created only once, on an empty database. If `ADMIN_PASSWORD` is left empty, a random
 > password is generated and printed in the backend logs (`./logs.sh`). Never commit `.env`.
 
+### 🎥 Motion Capture Lab booking
+
+Open **Motion Capture Lab** from the home page (or go to `/mocap`) for a week calendar of
+who has the lab. Click any empty slot to book it - no approval, the slot just has to be
+free. Bookings are cancelled by whoever made them using the phone number they booked with,
+and admins can delete any booking from the **Mocap Bookings** tab.
+
 > **🌐 Network Access Note:** This website is hosted locally on a server. To access it, you need to be connected to **wifi@iiith** or use **OpenVPN** to connect to the IIIT network.
 
 5. **Stop the application:**

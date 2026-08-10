@@ -24,6 +24,7 @@
 
     // Data
     let lostMissingItems = [];
+    let bookings = [];
     let historyItems = [];
     let labLoans = [];
     let loading = false;
@@ -361,6 +362,40 @@
         }
     }
 
+    // Load Motion Capture Lab bookings (from a week ago onwards)
+    async function loadBookings() {
+        loading = true;
+        try {
+            const from = new Date();
+            from.setDate(from.getDate() - 7);
+            const response = await apiFetch(`/api/bookings?from=${from.toISOString()}`);
+            if (response && response.ok) {
+                bookings = await response.json();
+            } else if (response) {
+                showMessage('Failed to load bookings', 'error');
+            }
+        } finally {
+            loading = false;
+        }
+    }
+
+    async function deleteBooking(bookingId, bookedBy) {
+        if (!confirm(`Delete the Motion Capture Lab booking by ${bookedBy}?`)) {
+            return;
+        }
+
+        const response = await apiFetch(`/api/admin/bookings/${bookingId}`, { method: 'DELETE' });
+        if (!response) return;
+
+        if (response.ok) {
+            showMessage('Booking deleted', 'success');
+            loadBookings();
+        } else {
+            const error = await response.json();
+            showMessage(error.error || 'Failed to delete booking', 'error');
+        }
+    }
+
     // Export data as CSV
     async function exportCSV() {
         try {
@@ -441,6 +476,11 @@
     function showLostMissingItems() {
         currentView = 'lost-missing';
         loadLostMissingItems();
+    }
+
+    function showBookings() {
+        currentView = 'bookings';
+        loadBookings();
     }
 
     function showItemHistory() {
@@ -690,6 +730,13 @@
                 {/each}
                 <button 
                     class="tab-btn" 
+                    class:active={currentView === 'bookings'}
+                    on:click={showBookings}
+                >
+                    🎥 Mocap Bookings
+                </button>
+                <button 
+                    class="tab-btn" 
                     class:active={currentView === 'history'}
                     on:click={showItemHistory}
                 >
@@ -722,6 +769,11 @@
                             <h3>🔍 Missing Items</h3>
                             <p class="stat-number">{lostMissingItems.length}</p>
                             <button class="card-btn" on:click={showLostMissingItems}>Review</button>
+                        </div>
+                        <div class="card">
+                            <h3>🎥 Mocap Lab</h3>
+                            <p>Motion Capture Lab bookings</p>
+                            <button class="card-btn" on:click={showBookings}>Manage</button>
                         </div>
                         {#each labs as lab}
                             <div class="card">
@@ -807,6 +859,59 @@
                                             </div>
                                         </div>
                                     {/if}
+                                </div>
+                            {/each}
+                        </div>
+                    {/if}
+                </div>
+            {/if}
+
+            <!-- Motion Capture Lab Bookings View -->
+            {#if currentView === 'bookings'}
+                <div class="loans-content">
+                    <h2>🎥 Motion Capture Lab Bookings</h2>
+                    <p class="subtitle-text">
+                        Bookings from the last week onwards.
+                        <a class="calendar-link" href="/mocap" target="_blank" rel="noopener">Open calendar view →</a>
+                    </p>
+                    {#if loading}
+                        <p>Loading bookings...</p>
+                    {:else if bookings.length === 0}
+                        <p class="no-items">No bookings.</p>
+                    {:else}
+                        <div class="bookings-list">
+                            {#each bookings as booking}
+                                <div class="booking-row" class:past={new Date(booking.end_time) < new Date()}>
+                                    <div class="booking-when">
+                                        <span class="booking-date">
+                                            {new Date(booking.start_time).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}
+                                        </span>
+                                        <span class="booking-time">
+                                            {new Date(booking.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                            -
+                                            {new Date(booking.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                        </span>
+                                    </div>
+                                    <div class="booking-info">
+                                        <p class="booking-purpose">{booking.purpose}</p>
+                                        <p class="booking-by">
+                                            {booking.booked_by} ·
+                                            <span 
+                                                class="clickable-phone" 
+                                                role="button"
+                                                tabindex="0"
+                                                on:click={() => copyToClipboard(booking.phone)}
+                                                on:keydown={(e) => e.key === 'Enter' && copyToClipboard(booking.phone)}
+                                                title="Click to copy phone number"
+                                            >{booking.phone}</span>
+                                        </p>
+                                    </div>
+                                    <button 
+                                        class="delete-admin-btn" 
+                                        on:click={() => deleteBooking(booking.ID, booking.booked_by)}
+                                    >
+                                        🗑️ Delete
+                                    </button>
                                 </div>
                             {/each}
                         </div>
@@ -1742,6 +1847,67 @@
     .loan-card.overdue {
         border-left-color: #f85149;
         background: rgba(248, 81, 73, 0.05);
+    }
+
+    .calendar-link {
+        color: #89b4fa;
+        text-decoration: none;
+        margin-left: 6px;
+    }
+
+    .bookings-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .booking-row {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        background: #11111b;
+        border: 1px solid #313244;
+        border-left: 4px solid #cba6f7;
+        border-radius: 8px;
+        padding: 12px 14px;
+        flex-wrap: wrap;
+    }
+
+    .booking-row.past {
+        opacity: 0.55;
+        border-left-color: #6c7086;
+    }
+
+    .booking-when {
+        display: flex;
+        flex-direction: column;
+        min-width: 150px;
+    }
+
+    .booking-date {
+        font-weight: 600;
+        color: #cba6f7;
+    }
+
+    .booking-time {
+        font-size: 0.85rem;
+        color: #a6adc8;
+    }
+
+    .booking-info {
+        flex: 1;
+        min-width: 180px;
+    }
+
+    .booking-purpose {
+        margin: 0;
+        font-weight: 500;
+    }
+
+    .booking-by {
+        margin: 2px 0 0;
+        font-size: 0.85rem;
+        color: #a6adc8;
     }
 
     .loan-card.rejected {
