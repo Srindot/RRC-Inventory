@@ -59,7 +59,7 @@ fi
 print_success "Server IP detected: $SERVER_IP"
 echo ""
 
-print_status "Setting up local access instructions (mDNS removed)"
+print_status "Setting up local access instructions (use server IP)"
 echo ""
 
 echo -e "${YELLOW}To access the RRC Inventory system with a friendly domain name:${NC}"

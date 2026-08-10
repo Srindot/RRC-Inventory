@@ -42,3 +42,13 @@ else
     echo "❌ Failed to stop RRC Inventory"
     exit 1
 fi
+# Disable rrc-inventory.service autostart (user and system)
+if systemctl --user --quiet is-active rrc-inventory.service 2>/dev/null; then
+    echo "Disabling user rrc-inventory.service autostart..."
+    systemctl --user disable rrc-inventory.service
+fi
+if systemctl --quiet is-active rrc-inventory.service 2>/dev/null; then
+    echo "Disabling system rrc-inventory.service autostart..."
+    sudo systemctl disable rrc-inventory.service
+fi
+echo "rrc-inventory.service autostart disabled (if it was enabled)."

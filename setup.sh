@@ -122,8 +122,8 @@ else
     print_warning "  sudo systemctl enable rrc-inventory.service"
 fi
 
-# Note: mDNS/Bonjour setup is optional and may be unreliable across certain networks.
-print_status "Skipping automated mDNS setup. Use server IP to access the application (recommended)."
+# Note: mDNS/Bonjour support removed. Use server IP to access the application.
+print_status "Using IP-based access instructions. mDNS setup removed."
 
 echo ""
 echo "================================================"

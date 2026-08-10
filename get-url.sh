@@ -26,14 +26,12 @@ fi
 if grep -qi microsoft /proc/version; then
     echo "⚠️  Note: Running in WSL2"
     echo ""
-    echo "   mDNS may not work from other devices due to WSL2's virtual networking."
-    echo ""
-    echo "📖 For alternatives, see: MDNS_WSL2_TROUBLESHOOTING.md"
+    echo "   WSL2 uses virtual networking — other devices may not reach the WSL IP directly."
     echo ""
     echo "💡 Quick Solutions:"
     echo "   1. Share the IP above (easiest)"
-    echo "   2. Setup Windows port forwarding (recommended)"
-    echo "   3. Configure router DNS (best for production)"
+    echo "   2. Set up Windows port forwarding to forward host ports to WSL (recommended)"
+    echo "   3. Configure router DNS or run a reverse proxy on the host (best for production)"
 fi
 
 # Check if containers are running
