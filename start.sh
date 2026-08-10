@@ -49,8 +49,8 @@ if [ $? -eq 0 ]; then
     echo "🛑 To stop: ./stop.sh"
     echo ""
     echo "🔐 Super Admin Login:"
-    echo "   Username: Srinath"
-    echo "   Password: rrc@srinath"
+    echo "   Credentials come from .env (ADMIN_USERNAME / ADMIN_PASSWORD)"
+    echo "   If ADMIN_PASSWORD was empty, the generated password is in ./logs.sh"
 else
     echo "❌ Failed to start RRC Inventory"
     exit 1

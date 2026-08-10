@@ -4,7 +4,9 @@
     // Authentication state
     let isLoggedIn = false;
     let adminInfo = null;
-    
+    let authToken = '';
+    let apiBase = ''; // set when logging in through the IP fallback
+
     // Login form
     let loginForm = {
         username: '',
@@ -16,13 +18,11 @@
     let ipLoading = false;
     
     // Current view
-    let currentView = 'login'; // login, dashboard, pending, pending-returns, lost-missing, history, lab-view, admin-management, change-password
+    let currentView = 'login'; // login, dashboard, lost-missing, history, lab-view, admin-management, change-password
     let selectedLab = '';
-    let selectedFilter = 'all'; // all, borrowed, rejected, returned, pending, not_found
-    
+    let selectedFilter = 'all'; // all, borrowed, returned, not_found
+
     // Data
-    let pendingLoans = [];
-    let pendingReturns = [];
     let lostMissingItems = [];
     let historyItems = [];
     let labLoans = [];
@@ -103,19 +103,69 @@
     // Lab options
     const labs = ['Main Lab', 'Mech Lab', 'Control Lab'];
 
-    onMount(() => {
-        // Check if admin is already logged in
+    onMount(async () => {
+        // Restore a previous session, if the token is still valid
         const savedAdmin = localStorage.getItem('adminInfo');
-        if (savedAdmin) {
+        const savedToken = localStorage.getItem('adminToken');
+        apiBase = localStorage.getItem('adminApiBase') || '';
+        if (savedAdmin && savedToken) {
             adminInfo = JSON.parse(savedAdmin);
+            authToken = savedToken;
             isLoggedIn = true;
             currentView = 'dashboard';
-            // Load initial data
-            loadPendingLoans();
-            loadPendingReturns();
-            loadLostMissingItems();
+            const response = await apiFetch('/api/admin/me');
+            if (response && response.ok) {
+                loadLostMissingItems();
+            }
         }
     });
+
+    // Authenticated fetch. Clears the session and returns to login on 401.
+    async function apiFetch(path, options = {}) {
+        const headers = { ...(options.headers || {}) };
+        if (authToken) {
+            headers['Authorization'] = `Bearer ${authToken}`;
+        }
+
+        let response;
+        try {
+            response = await fetch(`${apiBase}${path}`, { ...options, headers });
+        } catch (e) {
+            showMessage('Network error. Please try again.', 'error');
+            return null;
+        }
+
+        if (response.status === 401) {
+            clearSession();
+            showMessage('Your session expired. Please log in again.', 'error');
+            return null;
+        }
+        return response;
+    }
+
+    function saveSession(data, base = '') {
+        adminInfo = data.admin;
+        authToken = data.token;
+        apiBase = base;
+        localStorage.setItem('adminInfo', JSON.stringify(adminInfo));
+        localStorage.setItem('adminToken', authToken);
+        localStorage.setItem('adminApiBase', base);
+        isLoggedIn = true;
+        currentView = 'dashboard';
+        loginForm = { username: '', password: '' };
+        loadLostMissingItems();
+    }
+
+    function clearSession() {
+        localStorage.removeItem('adminInfo');
+        localStorage.removeItem('adminToken');
+        localStorage.removeItem('adminApiBase');
+        adminInfo = null;
+        authToken = '';
+        apiBase = '';
+        isLoggedIn = false;
+        currentView = 'login';
+    }
 
     // Login function
     async function login() {
@@ -128,17 +178,8 @@
             });
 
             if (response.ok) {
-                const data = await response.json();
-                adminInfo = data.admin;
-                localStorage.setItem('adminInfo', JSON.stringify(adminInfo));
-                isLoggedIn = true;
-                currentView = 'dashboard';
+                saveSession(await response.json());
                 showMessage('Login successful!', 'success');
-                loginForm = { username: '', password: '' };
-                // Load initial data
-                loadPendingLoans();
-                loadPendingReturns();
-                loadLostMissingItems();
             } else {
                 const error = await response.json();
                 showMessage(error.error || 'Login failed', 'error');
@@ -162,25 +203,16 @@
         try {
             // Trim possible http(s) prefix
             const hostOnly = altHost.replace(/^https?:\/\//, '').replace(/\/.*/, '');
-            const url = `http://${hostOnly}/api/admin/login`;
-            const response = await fetch(url, {
+            const base = `http://${hostOnly}`;
+            const response = await fetch(`${base}/api/admin/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(loginForm)
             });
 
             if (response.ok) {
-                const data = await response.json();
-                adminInfo = data.admin;
-                localStorage.setItem('adminInfo', JSON.stringify(adminInfo));
-                isLoggedIn = true;
-                currentView = 'dashboard';
+                saveSession(await response.json(), base);
                 showMessage('Login successful (via IP)!', 'success');
-                loginForm = { username: '', password: '' };
-                // Load initial data
-                loadPendingLoans();
-                loadPendingReturns();
-                loadLostMissingItems();
             } else {
                 const error = await response.json().catch(() => ({}));
                 showMessage(error.error || `Login failed (HTTP ${response.status})`, 'error');
@@ -193,60 +225,22 @@
     }
 
     // Logout function
-    function logout() {
-        localStorage.removeItem('adminInfo');
-        isLoggedIn = false;
-        adminInfo = null;
-        currentView = 'login';
+    async function logout() {
+        await apiFetch('/api/admin/logout', { method: 'POST' });
+        clearSession();
         showMessage('Logged out successfully', 'success');
     }
 
-    // Load pending loans
-    async function loadPendingLoans() {
-        loading = true;
-        try {
-            const response = await fetch('/api/admin/loans/pending');
-            if (response.ok) {
-                pendingLoans = await response.json();
-            } else {
-                showMessage('Failed to load pending loans', 'error');
-            }
-        } catch (e) {
-            showMessage('Failed to load pending loans', 'error');
-        } finally {
-            loading = false;
-        }
-    }
-
-    // Load pending returns
-    async function loadPendingReturns() {
-        loading = true;
-        try {
-            const response = await fetch('/api/admin/loans/pending-returns');
-            if (response.ok) {
-                pendingReturns = await response.json();
-            } else {
-                showMessage('Failed to load pending returns', 'error');
-            }
-        } catch (e) {
-            showMessage('Failed to load pending returns', 'error');
-        } finally {
-            loading = false;
-        }
-    }
-
-    // Load lost/missing items
+    // Load missing items
     async function loadLostMissingItems() {
         loading = true;
         try {
-            const response = await fetch('/api/admin/loans/lost-missing');
-            if (response.ok) {
+            const response = await apiFetch('/api/admin/loans/lost-missing');
+            if (response && response.ok) {
                 lostMissingItems = await response.json();
-            } else {
-                showMessage('Failed to load lost/missing items', 'error');
+            } else if (response) {
+                showMessage('Failed to load missing items', 'error');
             }
-        } catch (e) {
-            showMessage('Failed to load lost/missing items', 'error');
         } finally {
             loading = false;
         }
@@ -256,14 +250,12 @@
     async function loadHistoryItems() {
         loading = true;
         try {
-            const response = await fetch('/api/admin/loans/history');
-            if (response.ok) {
+            const response = await apiFetch('/api/admin/loans/history');
+            if (response && response.ok) {
                 historyItems = await response.json();
-            } else {
+            } else if (response) {
                 showMessage('Failed to load item history', 'error');
             }
-        } catch (e) {
-            showMessage('Failed to load item history', 'error');
         } finally {
             loading = false;
         }
@@ -273,47 +265,14 @@
     async function loadLabLoans(lab, filter = 'all') {
         loading = true;
         try {
-            const response = await fetch(`/api/admin/loans/by-lab/${encodeURIComponent(lab)}?status=${filter}`);
-            if (response.ok) {
+            const response = await apiFetch(`/api/admin/loans/by-lab/${encodeURIComponent(lab)}?status=${filter}`);
+            if (response && response.ok) {
                 labLoans = await response.json();
                 selectedLab = lab;
                 selectedFilter = filter;
-            } else {
+            } else if (response) {
                 showMessage('Failed to load lab loans', 'error');
             }
-        } catch (e) {
-            showMessage('Failed to load lab loans', 'error');
-        } finally {
-            loading = false;
-        }
-    }
-
-    // Approve or deny loan
-    async function approveLoan(loanId, action) {
-        loading = true;
-        try {
-            const response = await fetch(`/api/admin/loans/${loanId}/approve`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: action,
-                    admin_name: adminInfo.name
-                })
-            });
-
-            if (response.ok) {
-                showMessage(`Loan ${action}d successfully!`, 'success');
-                if (currentView === 'pending') {
-                    loadPendingLoans();
-                } else if (currentView === 'lab-view') {
-                    loadLabLoans(selectedLab);
-                }
-            } else {
-                const error = await response.json();
-                showMessage(error.error || `Failed to ${action} loan`, 'error');
-            }
-        } catch (e) {
-            showMessage(`Failed to ${action} loan`, 'error');
         } finally {
             loading = false;
         }
@@ -323,7 +282,7 @@
     async function extendLoan(loanId, days, hours) {
         loading = true;
         try {
-            const response = await fetch(`/api/admin/loans/${loanId}/extend`, {
+            const response = await apiFetch(`/api/admin/loans/${loanId}/extend`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -333,133 +292,80 @@
                 })
             });
 
-            if (response.ok) {
+            if (response && response.ok) {
                 showMessage('Loan extended successfully!', 'success');
                 if (currentView === 'lab-view') {
                     loadLabLoans(selectedLab, selectedFilter);
                 }
-            } else {
+            } else if (response) {
                 const error = await response.json();
                 showMessage(error.error || 'Failed to extend loan', 'error');
             }
-        } catch (e) {
-            showMessage('Failed to extend loan', 'error');
         } finally {
             loading = false;
         }
     }
 
-    // Approve return request
-    async function approveReturn(loanId, action = 'approved') {
+    // Mark an item as missing - the admin could not find it in the lab
+    async function markAsMissing(loanId, itemName) {
+        if (!confirm(`Mark "${itemName}" as missing?\n\nIt will show up in the Missing Items list.`)) {
+            return;
+        }
+
         loading = true;
         try {
-            // Check if admin info is available
-            if (!adminInfo || !adminInfo.name) {
-                showMessage('Admin authentication required. Please log in again.', 'error');
-                return;
-            }
-
-            console.log('Approving return:', { loanId, action, adminName: adminInfo.name });
-
-            const response = await fetch(`/api/admin/loans/${loanId}/approve-return`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: action,
-                    admin_name: adminInfo.name
-                })
+            const response = await apiFetch(`/api/admin/loans/${loanId}/mark-missing`, {
+                method: 'POST'
             });
 
-            const result = await response.json();
-            console.log('Return approval response:', result);
-
-            if (response.ok) {
-                showMessage(result.message, 'success');
-                if (currentView === 'pending-returns') {
-                    loadPendingReturns();
-                } else if (currentView === 'lab-view') {
-                    loadLabLoans(selectedLab, selectedFilter);
-                }
-            } else {
-                console.error('Return approval error:', result);
-                showMessage(result.error || 'Failed to process return', 'error');
+            if (response && response.ok) {
+                showMessage('Item marked as missing', 'success');
+                refreshCurrentView();
+            } else if (response) {
+                const error = await response.json();
+                showMessage(error.error || 'Failed to mark item as missing', 'error');
             }
-        } catch (e) {
-            console.error('Return approval exception:', e);
-            showMessage('Network error. Failed to process return', 'error');
         } finally {
             loading = false;
         }
     }
 
-    // Mark item as found (restore from not_found status)
+    // Mark item as found (restore from missing status)
     async function markAsFound(loanId) {
         loading = true;
         try {
-            if (!adminInfo || !adminInfo.name) {
-                showMessage('Admin authentication required. Please log in again.', 'error');
-                return;
-            }
-
-            console.log('Marking item as found:', { loanId, adminName: adminInfo.name });
-
-            const response = await fetch(`/api/admin/loans/${loanId}/mark-found`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    admin_name: adminInfo.name
-                })
+            const response = await apiFetch(`/api/admin/loans/${loanId}/mark-found`, {
+                method: 'POST'
             });
 
-            const result = await response.json();
-            console.log('Mark as found response:', result);
-
-            if (response.ok) {
-                showMessage(result.message, 'success');
-                // Refresh the lost/missing items view
-                if (currentView === 'lost-missing') {
-                    loadLostMissingItems();
-                }
-            } else {
-                console.error('Mark as found error:', result);
-                showMessage(result.error || 'Failed to mark item as found', 'error');
+            if (response && response.ok) {
+                showMessage('Item marked as found and restored to borrowed', 'success');
+                refreshCurrentView();
+            } else if (response) {
+                const error = await response.json();
+                showMessage(error.error || 'Failed to mark item as found', 'error');
             }
-        } catch (e) {
-            console.error('Mark as found exception:', e);
-            showMessage('Network error. Failed to mark item as found', 'error');
         } finally {
             loading = false;
         }
     }
 
-    // Cleanup denied loans
-    async function cleanupDeniedLoans() {
-        loading = true;
-        try {
-            const response = await fetch('/api/admin/cleanup-denied', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
-            });
-
-            if (response.ok) {
-                const result = await response.json();
-                showMessage(`Cleanup completed. ${result.deleted_count} denied loans removed.`, 'success');
-            } else {
-                const error = await response.json();
-                showMessage(error.error || 'Failed to cleanup', 'error');
-            }
-        } catch (e) {
-            showMessage('Failed to cleanup', 'error');
-        } finally {
-            loading = false;
+    // Reload whichever list is currently on screen
+    function refreshCurrentView() {
+        if (currentView === 'lost-missing') {
+            loadLostMissingItems();
+        } else if (currentView === 'lab-view') {
+            loadLabLoans(selectedLab, selectedFilter);
+        } else if (currentView === 'history') {
+            loadHistoryItems();
         }
     }
 
     // Export data as CSV
     async function exportCSV() {
         try {
-            const response = await fetch('/api/admin/export-csv');
-            if (response.ok) {
+            const response = await apiFetch('/api/admin/export-csv');
+            if (response && response.ok) {
                 const blob = await response.blob();
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
@@ -470,7 +376,7 @@
                 document.body.removeChild(a);
                 window.URL.revokeObjectURL(url);
                 showMessage('Data exported successfully!', 'success');
-            } else {
+            } else if (response) {
                 showMessage('Failed to export data', 'error');
             }
         } catch (e) {
@@ -532,16 +438,6 @@
         }
     }
 
-    function showPendingLoans() {
-        currentView = 'pending';
-        loadPendingLoans();
-    }
-
-    function showPendingReturns() {
-        currentView = 'pending-returns';
-        loadPendingReturns();
-    }
-
     function showLostMissingItems() {
         currentView = 'lost-missing';
         loadLostMissingItems();
@@ -580,14 +476,10 @@
     async function loadAdminList() {
         if (!adminInfo?.is_super_admin) return;
         
-        try {
-            const response = await fetch(`/api/admin/list?requesting_username=${adminInfo.username}`);
-            if (response.ok) {
-                adminList = await response.json();
-            } else {
-                showMessage('Failed to load admin list', 'error');
-            }
-        } catch (error) {
+        const response = await apiFetch('/api/admin/list');
+        if (response && response.ok) {
+            adminList = await response.json();
+        } else if (response) {
             showMessage('Failed to load admin list', 'error');
         }
     }
@@ -595,30 +487,21 @@
     async function createAdmin() {
         if (!adminInfo?.is_super_admin) return;
         
-        try {
-            const response = await fetch('/api/admin/create', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    requesting_username: adminInfo.username,
-                    ...createAdminForm
-                })
-            });
+        const response = await apiFetch('/api/admin/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(createAdminForm)
+        });
+        if (!response) return;
 
-            const result = await response.json();
-            
-            if (response.ok) {
-                showMessage('Admin created successfully', 'success');
-                showCreateAdminForm = false;
-                createAdminForm = { username: '', password: '', name: '', is_super_admin: false };
-                loadAdminList();
-            } else {
-                showMessage(result.error || 'Failed to create admin', 'error');
-            }
-        } catch (error) {
-            showMessage('Failed to create admin', 'error');
+        const result = await response.json();
+        if (response.ok) {
+            showMessage('Admin created successfully', 'success');
+            showCreateAdminForm = false;
+            createAdminForm = { username: '', password: '', name: '', is_super_admin: false };
+            loadAdminList();
+        } else {
+            showMessage(result.error || 'Failed to create admin', 'error');
         }
     }
 
@@ -628,30 +511,28 @@
             return;
         }
 
-        try {
-            const response = await fetch('/api/admin/change-password', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    username: adminInfo.username,
-                    old_password: changePasswordForm.old_password,
-                    new_password: changePasswordForm.new_password
-                })
-            });
+        if (changePasswordForm.new_password.length < 8) {
+            showMessage('New password must be at least 8 characters long', 'error');
+            return;
+        }
 
-            const result = await response.json();
-            
-            if (response.ok) {
-                showMessage('Password changed successfully', 'success');
-                changePasswordForm = { old_password: '', new_password: '', confirm_password: '' };
-                currentView = 'dashboard';
-            } else {
-                showMessage(result.error || 'Failed to change password', 'error');
-            }
-        } catch (error) {
-            showMessage('Failed to change password', 'error');
+        const response = await apiFetch('/api/admin/change-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                old_password: changePasswordForm.old_password,
+                new_password: changePasswordForm.new_password
+            })
+        });
+        if (!response) return;
+
+        const result = await response.json();
+        if (response.ok) {
+            showMessage('Password changed successfully', 'success');
+            changePasswordForm = { old_password: '', new_password: '', confirm_password: '' };
+            currentView = 'dashboard';
+        } else {
+            showMessage(result.error || 'Failed to change password', 'error');
         }
     }
 
@@ -662,27 +543,18 @@
             return;
         }
 
-        try {
-            const response = await fetch('/api/admin/delete-all-items', {
-                method: 'DELETE',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    requesting_username: adminInfo.username,
-                    confirm_delete: true
-                })
-            });
+        const response = await apiFetch('/api/admin/delete-all-items', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ confirm_delete: true })
+        });
+        if (!response) return;
 
-            const result = await response.json();
-            
-            if (response.ok) {
-                showMessage(`Successfully deleted ${result.deleted_count} items`, 'success');
-            } else {
-                showMessage(result.error || 'Failed to delete items', 'error');
-            }
-        } catch (error) {
-            showMessage('Failed to delete items', 'error');
+        const result = await response.json();
+        if (response.ok) {
+            showMessage(`Successfully deleted ${result.deleted_count} items`, 'success');
+        } else {
+            showMessage(result.error || 'Failed to delete items', 'error');
         }
     }
 
@@ -695,44 +567,25 @@
             return;
         }
 
-        // Prevent deleting main super admin
-        if (adminUsername === 'Srinath') {
-            showMessage('Cannot delete the main super admin account', 'error');
-            return;
-        }
-        
+
         if (!confirm(`⚠️ WARNING: This will permanently delete the admin account!\n\nAdmin: ${adminName} (@${adminUsername})\n\nThis action cannot be undone. Are you sure you want to continue?`)) {
             return;
         }
 
-        try {
-            const response = await fetch(`/api/admin/delete/${adminId}`, {
-                method: 'DELETE',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    requesting_username: adminInfo.username
-                })
-            });
+        const response = await apiFetch(`/api/admin/delete/${adminId}`, {
+            method: 'DELETE'
+        });
+        if (!response) return;
 
-            const result = await response.json();
-            
-            if (response.ok) {
-                showMessage(`Successfully deleted admin: ${result.deleted_admin.name}`, 'success');
-                loadAdminList(); // Reload the admin list
-            } else {
-                showMessage(result.error || 'Failed to delete admin', 'error');
-            }
-        } catch (error) {
-            showMessage('Failed to delete admin', 'error');
+        const result = await response.json();
+        if (response.ok) {
+            showMessage(`Successfully deleted admin: ${result.deleted_admin.name}`, 'success');
+            loadAdminList(); // Reload the admin list
+        } else {
+            showMessage(result.error || 'Failed to delete admin', 'error');
         }
     }
 
-    // Reactive statements
-    $: if (currentView === 'pending') {
-        loadPendingLoans();
-    }
 </script>
 
 <div class="admin-container">
@@ -818,30 +671,10 @@
                 </button>
                 <button 
                     class="tab-btn" 
-                    class:active={currentView === 'pending'}
-                    on:click={showPendingLoans}
-                >
-                    Borrow Pending Requests
-                    {#if pendingLoans.length > 0}
-                        <span class="badge">{pendingLoans.length}</span>
-                    {/if}
-                </button>
-                <button 
-                    class="tab-btn" 
-                    class:active={currentView === 'pending-returns'}
-                    on:click={showPendingReturns}
-                >
-                    Return Pending Requests
-                    {#if pendingReturns.length > 0}
-                        <span class="badge">{pendingReturns.length}</span>
-                    {/if}
-                </button>
-                <button 
-                    class="tab-btn" 
                     class:active={currentView === 'lost-missing'}
                     on:click={showLostMissingItems}
                 >
-                    🔍 Lost/Missing Items
+                    🔍 Missing Items
                     {#if lostMissingItems.length > 0}
                         <span class="badge">{lostMissingItems.length}</span>
                     {/if}
@@ -886,17 +719,7 @@
                     <h2>System Overview</h2>
                     <div class="overview-cards">
                         <div class="card">
-                            <h3>📋 Pending Requests</h3>
-                            <p class="stat-number">{pendingLoans.length}</p>
-                            <button class="card-btn" on:click={showPendingLoans}>Review</button>
-                        </div>
-                        <div class="card">
-                            <h3>🔄 Pending Returns</h3>
-                            <p class="stat-number">{pendingReturns.length}</p>
-                            <button class="card-btn" on:click={showPendingReturns}>Review</button>
-                        </div>
-                        <div class="card">
-                            <h3>🔍 Lost/Missing Items</h3>
+                            <h3>🔍 Missing Items</h3>
                             <p class="stat-number">{lostMissingItems.length}</p>
                             <button class="card-btn" on:click={showLostMissingItems}>Review</button>
                         </div>
@@ -909,9 +732,6 @@
                         {/each}
                     </div>
                     <div class="admin-actions">
-                        <button class="cleanup-btn" on:click={cleanupDeniedLoans}>
-                            🗑️ Cleanup Denied Loans (24h+)
-                        </button>
                         <button class="export-btn" on:click={exportCSV}>
                             📊 Export All Data (CSV)
                         </button>
@@ -919,169 +739,15 @@
                 </div>
             {/if}
 
-            <!-- Pending Loans View -->
-            {#if currentView === 'pending'}
-                <div class="loans-content">
-                    <h2>📋 Pending Loan Requests</h2>
-                    {#if loading}
-                        <p>Loading pending requests...</p>
-                    {:else if pendingLoans.length === 0}
-                        <p class="no-items">No pending requests.</p>
-                    {:else}
-                        <div class="loans-grid">
-                            {#each pendingLoans as loan}
-                                <div class="loan-card pending">
-                                    <div class="loan-header">
-                                        <div class="loan-title-section">
-                                            <h3>{loan.item_name}</h3>
-                                            {#if loan.photo_filename}
-                                                <div class="item-image">
-                                                    <img 
-                                                        src="/api/photos/{loan.photo_filename}" 
-                                                        alt="{loan.item_name}"
-                                                        on:error={(e) => e.target.style.display = 'none'}
-                                                    />
-                                                </div>
-                                            {:else}
-                                                <div class="item-image placeholder">
-                                                    <span>📷</span>
-                                                </div>
-                                            {/if}
-                                        </div>
-                                        <div class="status-badges">
-                                            <span class="status-badge pending">Pending</span>
-                                        </div>
-                                    </div>
-                                    <div class="loan-details">
-                                        <p><strong>Borrower:</strong> {loan.borrower_name}</p>
-                                        <p><strong>Phone:</strong> 
-                                            <span 
-                                                class="clickable-phone" 
-                                                role="button"
-                                                tabindex="0"
-                                                on:click={() => copyToClipboard(loan.borrower_phone)}
-                                                on:keydown={(e) => e.key === 'Enter' && copyToClipboard(loan.borrower_phone)}
-                                                title="Click to copy phone number"
-                                            >
-                                                {loan.borrower_phone}
-                                            </span>
-                                        </p>
-                                        <p><strong>Lab:</strong> {loan.lab_location}</p>
-                                        <p><strong>Quantity:</strong> {loan.quantity_borrowed}</p>
-                                        <p><strong>Purpose:</strong> {loan.purpose}</p>
-                                        <p><strong>Expected Return:</strong> {formatExpectedReturn(loan.expected_return_date)}</p>
-                                        <p><strong>Requested:</strong> {formatDate(loan.CreatedAt)}</p>
-                                    </div>
-                                    <div class="loan-actions">
-                                        <button 
-                                            class="approve-btn" 
-                                            on:click={() => approveLoan(loan.ID, 'approve')}
-                                            disabled={loading}
-                                        >
-                                            ✅ Approve
-                                        </button>
-                                        <button 
-                                            class="deny-btn" 
-                                            on:click={() => approveLoan(loan.ID, 'deny')}
-                                            disabled={loading}
-                                        >
-                                            ❌ Deny
-                                        </button>
-                                    </div>
-                                </div>
-                            {/each}
-                        </div>
-                    {/if}
-                </div>
-            {/if}
-
-            <!-- Pending Returns View -->
-            {#if currentView === 'pending-returns'}
-                <div class="loans-content">
-                    <h2>🔄 Pending Return Requests</h2>
-                    {#if loading}
-                        <p>Loading pending returns...</p>
-                    {:else if pendingReturns.length === 0}
-                        <p class="no-items">No pending return requests.</p>
-                    {:else}
-                        <div class="loans-grid">
-                            {#each pendingReturns as loan}
-                                <div class="loan-card return-pending">
-                                    <div class="loan-header">
-                                        <div class="loan-title-section">
-                                            <h3>{loan.item_name}</h3>
-                                            {#if loan.photo_filename}
-                                                <div class="item-image">
-                                                    <img 
-                                                        src="/api/photos/{loan.photo_filename}" 
-                                                        alt="{loan.item_name}"
-                                                        on:error={(e) => e.target.style.display = 'none'}
-                                                    />
-                                                </div>
-                                            {:else}
-                                                <div class="item-image placeholder">
-                                                    <span>📷</span>
-                                                </div>
-                                            {/if}
-                                        </div>
-                                        <div class="status-badges">
-                                            <span class="status-badge return-pending">Return Pending</span>
-                                        </div>
-                                    </div>
-                                    <div class="loan-details">
-                                        <p><strong>Borrower:</strong> {loan.borrower_name}</p>
-                                        <p><strong>Phone:</strong> 
-                                            <span 
-                                                class="clickable-phone" 
-                                                role="button"
-                                                tabindex="0"
-                                                on:click={() => copyToClipboard(loan.borrower_phone)}
-                                                on:keydown={(e) => e.key === 'Enter' && copyToClipboard(loan.borrower_phone)}
-                                                title="Click to copy phone number"
-                                            >
-                                                {loan.borrower_phone}
-                                            </span>
-                                        </p>
-                                        <p><strong>Lab:</strong> {loan.lab_location}</p>
-                                        <p><strong>Quantity:</strong> {loan.quantity_borrowed}</p>
-                                        <p><strong>Expected Return:</strong> {formatExpectedReturn(loan.expected_return_date)}</p>
-                                        <p><strong>Return Requested:</strong> {formatDate(loan.return_requested_at)}</p>
-                                        {#if isOverdue(loan.expected_return_date)}
-                                            <p class="overdue-text"><strong>Status:</strong> OVERDUE</p>
-                                        {/if}
-                                    </div>
-                                    <div class="loan-actions">
-                                        <button 
-                                            class="approve-btn" 
-                                            on:click={() => approveReturn(loan.ID, 'approved')}
-                                            disabled={loading}
-                                        >
-                                            ✅ Approve Return
-                                        </button>
-                                        <button 
-                                            class="not-found-btn" 
-                                            on:click={() => approveReturn(loan.ID, 'not_found')}
-                                            disabled={loading}
-                                        >
-                                            ❌ Mark as Not Found
-                                        </button>
-                                    </div>
-                                </div>
-                            {/each}
-                        </div>
-                    {/if}
-                </div>
-            {/if}
-
-            <!-- Lost/Missing Items View -->
+            <!-- Missing Items View -->
             {#if currentView === 'lost-missing'}
                 <div class="loans-content">
-                    <h2>🔍 Lost/Missing Items</h2>
-                    <p class="subtitle-text">Items marked as not found or with pending return requests</p>
+                    <h2>🔍 Missing Items</h2>
+                    <p class="subtitle-text">Items an admin could not find in the lab</p>
                     {#if loading}
-                        <p>Loading lost/missing items...</p>
+                        <p>Loading missing items...</p>
                     {:else if lostMissingItems.length === 0}
-                        <p class="no-items">No lost or missing items found.</p>
+                        <p class="no-items">No missing items.</p>
                     {:else}
                         <div class="loans-grid">
                             {#each lostMissingItems as loan}
@@ -1104,11 +770,7 @@
                                             {/if}
                                         </div>
                                         <div class="status-badges">
-                                            {#if loan.status === 'not_found'}
-                                                <span class="status-badge not-found">Not Found</span>
-                                            {:else if loan.return_requested}
-                                                <span class="status-badge return-pending">Return Pending</span>
-                                            {/if}
+                                            <span class="status-badge not-found">Missing</span>
                                         </div>
                                     </div>
                                     <div class="loan-details">
@@ -1128,37 +790,12 @@
                                         <p><strong>Lab:</strong> {loan.lab_location}</p>
                                         <p><strong>Quantity:</strong> {loan.quantity_borrowed}</p>
                                         <p><strong>Expected Return:</strong> {formatExpectedReturn(loan.expected_return_date)}</p>
-                                        {#if loan.status === 'not_found'}
-                                            <p><strong>Status:</strong> Marked as not found</p>
-                                        {:else}
-                                            <p><strong>Status:</strong> Return requested, awaiting approval</p>
-                                        {/if}
+                                        <p><strong>Status:</strong> Marked as missing{#if loan.approved_by} by {loan.approved_by}{/if}</p>
                                         <p><strong>Borrowed:</strong> {formatDate(loan.CreatedAt)}</p>
                                     </div>
-                                    {#if loan.return_requested && loan.return_approval_status === 'pending'}
-                                        <div class="return-section">
-                                            <p class="return-notice">🔄 Return requested - waiting for approval</p>
-                                            <div class="return-actions">
-                                                <button 
-                                                    class="approve-btn" 
-                                                    on:click={() => approveReturn(loan.ID, 'approved')}
-                                                    disabled={loading}
-                                                >
-                                                    ✅ Approve Return
-                                                </button>
-                                                <button 
-                                                    class="not-found-btn" 
-                                                    on:click={() => approveReturn(loan.ID, 'not_found')}
-                                                    disabled={loading}
-                                                >
-                                                    ❌ Mark as Not Found
-                                                </button>
-                                            </div>
-                                        </div>
-                                    {/if}
                                     {#if loan.status === 'not_found'}
                                         <div class="found-section">
-                                            <p class="found-notice">🔍 Item marked as not found</p>
+                                            <p class="found-notice">🔍 Item marked as missing</p>
                                             <div class="found-actions">
                                                 <button 
                                                     class="found-btn" 
@@ -1181,7 +818,7 @@
             {#if currentView === 'history'}
                 <div class="loans-content">
                     <h2>📚 Complete Item History</h2>
-                    <p class="subtitle-text">Chronological history of all items - borrowed, returned, lost, and found</p>
+                    <p class="subtitle-text">Chronological history of all items - borrowed, returned and missing</p>
                     
                     <!-- Search functionality for history -->
                     <div class="history-search-container">
@@ -1252,21 +889,17 @@
                                             </div>
                                             <div class="history-status-badges">
                                                 <span class="status-badge {item.status}">
-                                                    {#if item.status === 'approved'}
-                                                        📋 Borrowed
-                                                    {:else if item.status === 'returned'}
+                                                    {#if item.status === 'returned'}
                                                         ✅ Returned
                                                     {:else if item.status === 'not_found'}
-                                                        ❌ Lost/Missing
-                                                    {:else if item.status === 'denied'}
-                                                        ❌ Denied
-                                                    {:else if item.status === 'pending'}
-                                                        ⏳ Pending
+                                                        ❌ Missing
+                                                    {:else if item.status === 'active'}
+                                                        📋 Borrowed
                                                     {:else}
                                                         {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
                                                     {/if}
                                                 </span>
-                                                {#if item.status === 'approved' && isOverdue(item.expected_return_date) && item.status !== 'returned'}
+                                                {#if item.status === 'active' && isOverdue(item.expected_return_date)}
                                                     <span class="overdue-badge">OVERDUE</span>
                                                 {/if}
                                             </div>
@@ -1275,19 +908,15 @@
                                                     {#if item.status === 'returned'}
                                                         Returned:
                                                     {:else if item.status === 'not_found'}
-                                                        Marked Lost:
-                                                    {:else if item.status === 'denied'}
-                                                        Denied:
-                                                    {:else if item.approved_at}
-                                                        Approved:
+                                                        Marked Missing:
                                                     {:else}
-                                                        Requested:
+                                                        Borrowed:
                                                     {/if}
                                                 </span>
                                                 <span class="date-value">
-                                                    {#if item.status === 'returned' && item.return_approved_at}
-                                                        {formatDate(item.return_approved_at)}
-                                                    {:else if item.approved_at}
+                                                    {#if item.status === 'returned' && item.returned_at}
+                                                        {formatDate(item.returned_at)}
+                                                    {:else if item.status === 'not_found' && item.approved_at}
                                                         {formatDate(item.approved_at)}
                                                     {:else}
                                                         {formatDate(item.CreatedAt)}
@@ -1317,7 +946,7 @@
                                                     <p><strong>Quantity:</strong> {item.quantity_borrowed}</p>
                                                     <p><strong>Purpose:</strong> {item.purpose}</p>
                                                     {#if item.approved_by}
-                                                        <p><strong>Approved by:</strong> {item.approved_by}</p>
+                                                        <p><strong>Last handled by:</strong> {item.approved_by}</p>
                                                     {/if}
                                                 </div>
                                                 <div class="detail-group">
@@ -1325,11 +954,8 @@
                                                     {#if item.expected_return_date}
                                                         <p><strong>Expected Return:</strong> {formatExpectedReturn(item.expected_return_date)}</p>
                                                     {/if}
-                                                    {#if item.return_requested_at}
-                                                        <p><strong>Return Requested:</strong> {formatDate(item.return_requested_at)}</p>
-                                                    {/if}
-                                                    {#if item.status === 'returned' && item.return_approved_at}
-                                                        <p><strong>Return Date:</strong> {formatDate(item.return_approved_at)}</p>
+                                                    {#if item.status === 'returned' && item.returned_at}
+                                                        <p><strong>Return Date:</strong> {formatDate(item.returned_at)}</p>
                                                     {/if}
                                                     {#if item.status === 'returned' && isOverdue(item.expected_return_date)}
                                                         <p><strong>Return Status:</strong> <span class="overdue-mark">⚠️ Returned Overdue</span></p>
@@ -1369,20 +995,6 @@
                         </button>
                         <button 
                             class="filter-btn" 
-                            class:active={selectedFilter === 'pending'}
-                            on:click={() => filterLabLoans('pending')}
-                        >
-                            Pending
-                        </button>
-                        <button 
-                            class="filter-btn" 
-                            class:active={selectedFilter === 'rejected'}
-                            on:click={() => filterLabLoans('rejected')}
-                        >
-                            Rejected
-                        </button>
-                        <button 
-                            class="filter-btn" 
                             class:active={selectedFilter === 'returned'}
                             on:click={() => filterLabLoans('returned')}
                         >
@@ -1393,7 +1005,7 @@
                             class:active={selectedFilter === 'not_found'}
                             on:click={() => filterLabLoans('not_found')}
                         >
-                            Not Found
+                            Missing
                         </button>
                     </div>
 
@@ -1406,8 +1018,7 @@
                             {#each labLoans as loan}
                                 <div 
                                     class="loan-card" 
-                                    class:overdue={isOverdue(loan.expected_return_date) && loan.approval_status === 'approved' && loan.status !== 'returned'}
-                                    class:rejected={loan.approval_status === 'denied'}
+                                    class:overdue={isOverdue(loan.expected_return_date) && loan.status === 'active'}
                                 >
                                     <div class="loan-header">
                                         <div class="loan-title-section">
@@ -1427,10 +1038,14 @@
                                             {/if}
                                         </div>
                                         <div class="status-badges">
-                                            <span class="status-badge {loan.approval_status}">
-                                                {loan.approval_status.charAt(0).toUpperCase() + loan.approval_status.slice(1)}
-                                            </span>
-                                            {#if isOverdue(loan.expected_return_date) && loan.approval_status === 'approved' && loan.status !== 'returned'}
+                                            {#if loan.status === 'not_found'}
+                                                <span class="status-badge not-found">Missing</span>
+                                            {:else if loan.status === 'returned'}
+                                                <span class="status-badge returned">Returned</span>
+                                            {:else}
+                                                <span class="status-badge approved">Borrowed</span>
+                                            {/if}
+                                            {#if isOverdue(loan.expected_return_date) && loan.status === 'active'}
                                                 <span class="overdue-badge">OVERDUE</span>
                                             {/if}
                                         </div>
@@ -1454,10 +1069,10 @@
                                         <p><strong>Expected Return:</strong> {formatExpectedReturn(loan.expected_return_date)}</p>
                                         <p><strong>Borrowed:</strong> {formatDate(loan.CreatedAt)}</p>
                                         {#if loan.approved_by}
-                                            <p><strong>Approved by:</strong> {loan.approved_by}</p>
+                                            <p><strong>Last handled by:</strong> {loan.approved_by}</p>
                                         {/if}
                                     </div>
-                                    {#if loan.approval_status === 'approved'}
+                                    {#if loan.status === 'active'}
                                         <div class="loan-actions">
                                             <div class="extend-controls">
                                                 <label>Extend by:</label>
@@ -1493,59 +1108,34 @@
                                             >
                                                 📅 Extend
                                             </button>
+                                            <button
+                                                class="not-found-btn"
+                                                on:click={() => markAsMissing(loan.ID, loan.item_name)}
+                                                disabled={loading}
+                                            >
+                                                ❓ Can't Find This Item
+                                            </button>
                                         </div>
                                     {/if}
-                                    {#if loan.return_requested && loan.return_approval_status === 'pending'}
+                                    {#if loan.status === 'returned'}
                                         <div class="return-section">
-                                            <p class="return-notice">🔄 Return requested - waiting for approval</p>
-                                            <div class="return-actions">
-                                                <button 
-                                                    class="approve-btn" 
-                                                    on:click={() => approveReturn(loan.ID, 'approved')}
-                                                    disabled={loading}
-                                                >
-                                                    ✅ Approve Return
-                                                </button>
-                                                <button 
-                                                    class="not-found-btn" 
-                                                    on:click={() => approveReturn(loan.ID, 'not_found')}
-                                                    disabled={loading}
-                                                >
-                                                    ❌ Mark as Not Found
-                                                </button>
-                                            </div>
-                                        </div>
-                                    {:else if loan.return_requested && loan.return_approval_status === 'approved'}
-                                        <div class="return-section">
-                                            <p class="return-status approved">✅ Return approved - Item returned</p>
-                                            {#if loan.return_approved_at}
-                                                <p class="return-date"><strong>Return Date:</strong> {formatDate(loan.return_approved_at)}</p>
-                                            {/if}
+                                            <p class="return-status approved">✅ Returned{#if loan.returned_at} on {formatDate(loan.returned_at)}{/if}</p>
                                             {#if isOverdue(loan.expected_return_date)}
                                                 <p class="overdue-returned"><strong>Status:</strong> <span class="overdue-mark">⚠️ Returned Overdue</span></p>
                                             {/if}
                                         </div>
-                                    {:else if loan.return_requested && loan.return_approval_status === 'not_found'}
-                                        <div class="return-section">
-                                            <p class="return-status not-found">❌ Item marked as not found</p>
-                                        </div>
-                                    {/if}
-                                    {#if loan.approval_status === 'pending'}
-                                        <div class="loan-actions">
-                                            <button 
-                                                class="approve-btn" 
-                                                on:click={() => approveLoan(loan.ID, 'approve')}
-                                                disabled={loading}
-                                            >
-                                                ✅ Approve
-                                            </button>
-                                            <button 
-                                                class="deny-btn" 
-                                                on:click={() => approveLoan(loan.ID, 'deny')}
-                                                disabled={loading}
-                                            >
-                                                ❌ Deny
-                                            </button>
+                                    {:else if loan.status === 'not_found'}
+                                        <div class="found-section">
+                                            <p class="found-notice">🔍 Item marked as missing</p>
+                                            <div class="found-actions">
+                                                <button
+                                                    class="found-btn"
+                                                    on:click={() => markAsFound(loan.ID)}
+                                                    disabled={loading}
+                                                >
+                                                    ✅ Mark as Found
+                                                </button>
+                                            </div>
                                         </div>
                                     {/if}
                                 </div>
@@ -1704,7 +1294,9 @@
                                             </p>
                                         </div>
                                         <div class="admin-actions">
-                                            {#if admin.username !== adminInfo.username && admin.username !== 'Srinath'}
+                                            {#if admin.username === adminInfo.username}
+                                                <span class="current-user-badge">You</span>
+                                            {:else}
                                                 <button 
                                                     class="delete-admin-btn" 
                                                     on:click={() => deleteAdmin(admin.id, admin.name, admin.username)}
@@ -1712,10 +1304,6 @@
                                                 >
                                                     🗑️ Delete
                                                 </button>
-                                            {:else if admin.username === adminInfo.username}
-                                                <span class="current-user-badge">You</span>
-                                            {:else if admin.username === 'Srinath'}
-                                                <span class="protected-user-badge">Protected</span>
                                             {/if}
                                         </div>
                                     </div>

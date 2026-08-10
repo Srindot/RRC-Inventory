@@ -1,7 +1,10 @@
 package main
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/base64"
 	"encoding/csv"
 	"encoding/hex"
 	"errors"
@@ -12,9 +15,11 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -52,6 +57,96 @@ func validateImageFile(file *multipart.FileHeader) error {
 	return nil
 }
 
+// --- PASSWORD HASHING ---
+
+// hashPassword returns a bcrypt hash of the given plaintext password.
+func hashPassword(plain string) (string, error) {
+	h, err := bcrypt.GenerateFromPassword([]byte(plain), bcrypt.DefaultCost)
+	return string(h), err
+}
+
+// legacySHA256 reproduces the old (insecure) password hashing so existing
+// accounts can still log in once and be transparently upgraded to bcrypt.
+func legacySHA256(plain string) string {
+	hasher := sha256.New()
+	hasher.Write([]byte(plain))
+	return hex.EncodeToString(hasher.Sum(nil))
+}
+
+// verifyPassword checks a plaintext password against a stored hash.
+// The second return value is true when the stored hash is a legacy SHA-256
+// hash and should be re-hashed with bcrypt.
+func verifyPassword(stored, plain string) (ok bool, needsUpgrade bool) {
+	if strings.HasPrefix(stored, "$2") {
+		return bcrypt.CompareHashAndPassword([]byte(stored), []byte(plain)) == nil, false
+	}
+	match := subtle.ConstantTimeCompare([]byte(stored), []byte(legacySHA256(plain))) == 1
+	return match, match
+}
+
+// --- ADMIN SESSIONS ---
+
+const sessionTTL = 12 * time.Hour
+
+type session struct {
+	Username  string
+	ExpiresAt time.Time
+}
+
+type sessionStore struct {
+	mu       sync.RWMutex
+	sessions map[string]session
+}
+
+func newSessionStore() *sessionStore {
+	return &sessionStore{sessions: make(map[string]session)}
+}
+
+func (s *sessionStore) create(username string) (string, error) {
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	token := base64.RawURLEncoding.EncodeToString(buf)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	// Opportunistically drop expired sessions.
+	now := time.Now()
+	for t, sess := range s.sessions {
+		if now.After(sess.ExpiresAt) {
+			delete(s.sessions, t)
+		}
+	}
+	s.sessions[token] = session{Username: username, ExpiresAt: now.Add(sessionTTL)}
+	return token, nil
+}
+
+func (s *sessionStore) lookup(token string) (string, bool) {
+	s.mu.RLock()
+	sess, ok := s.sessions[token]
+	s.mu.RUnlock()
+	if !ok || time.Now().After(sess.ExpiresAt) {
+		return "", false
+	}
+	return sess.Username, true
+}
+
+func (s *sessionStore) revoke(token string) {
+	s.mu.Lock()
+	delete(s.sessions, token)
+	s.mu.Unlock()
+}
+
+// bearerToken extracts the token from an "Authorization: Bearer <token>" header.
+func bearerToken(c *gin.Context) string {
+	header := c.GetHeader("Authorization")
+	if len(header) > 7 && strings.EqualFold(header[:7], "Bearer ") {
+		return strings.TrimSpace(header[7:])
+	}
+	return ""
+}
+
 // --- DATABASE MODELS ---
 
 type Item struct {
@@ -80,13 +175,13 @@ type Loan struct {
 	ExpectedReturnDate   string     `json:"expected_return_date"`
 	Purpose              string     `json:"purpose"`
 	PhotoFilename        string     `json:"photo_filename"`
-	Status               string     `json:"status" gorm:"default:'pending'"`          // pending, approved, active, returned, denied
-	ApprovalStatus       string     `json:"approval_status" gorm:"default:'pending'"` // pending, approved, denied
-	ApprovedBy           string     `json:"approved_by"`
+	Status               string     `json:"status" gorm:"default:'active'"`            // active, returned, not_found
+	ApprovalStatus       string     `json:"approval_status" gorm:"default:'approved'"` // kept for historical records; borrowing no longer needs approval
+	ApprovedBy           string     `json:"approved_by"`                               // admin who last acted on the loan (marked missing/found)
 	ApprovedAt           *time.Time `json:"approved_at"`
-	DeniedAt             *time.Time `json:"denied_at"`
+	DeniedAt             *time.Time `json:"denied_at"` // legacy, kept so old records stay readable
 	ReturnRequested      bool       `json:"return_requested" gorm:"default:false"`
-	ReturnApprovalStatus string     `json:"return_approval_status" gorm:"default:'not_requested'"` // not_requested, pending, approved, not_found
+	ReturnApprovalStatus string     `json:"return_approval_status" gorm:"default:'not_requested'"` // not_requested, approved, not_found
 	ReturnRequestedAt    *time.Time `json:"return_requested_at"`
 	ReturnedAt           *time.Time `json:"returned_at"`
 }
@@ -114,6 +209,24 @@ func main() {
 
 	log.Println("Running database migrations...")
 	db.AutoMigrate(&Item{}, &Loan{}, &Admin{})
+
+	// Approvals were removed. Bring records created under the old flow into the
+	// new states so nothing is stranded in a status the app no longer uses.
+	if res := db.Model(&Loan{}).
+		Where("status IN ?", []string{"pending", "approved", "borrowed"}).
+		Updates(map[string]interface{}{"status": "active", "approval_status": "approved"}); res.RowsAffected > 0 {
+		log.Printf("Migrated %d loans from the old approval flow to 'active'", res.RowsAffected)
+	}
+	// Returns that were awaiting approval are treated as returned.
+	if res := db.Model(&Loan{}).
+		Where("return_requested = ? AND return_approval_status = ?", true, "pending").
+		Updates(map[string]interface{}{
+			"status":                 "returned",
+			"return_approval_status": "approved",
+			"returned_at":            time.Now(),
+		}); res.RowsAffected > 0 {
+		log.Printf("Migrated %d pending return requests to 'returned'", res.RowsAffected)
+	}
 	log.Println("Migrations complete.")
 
 	// Create uploads directory if it doesn't exist
@@ -121,30 +234,92 @@ func main() {
 		log.Printf("Warning: Could not create uploads directory: %v", err)
 	}
 
-	// Create default super admin if not exists
+	// Create the bootstrap super admin if no admin exists yet.
+	// Credentials come from the environment - never hardcode them, this repo is public.
 	var adminCount int64
 	db.Model(&Admin{}).Count(&adminCount)
 	if adminCount == 0 {
-		// Hash the password
-		hasher := sha256.New()
-		hasher.Write([]byte("rrc@srinath"))
-		hashedPassword := hex.EncodeToString(hasher.Sum(nil))
+		username := os.Getenv("ADMIN_USERNAME")
+		if username == "" {
+			username = "admin"
+		}
+		password := os.Getenv("ADMIN_PASSWORD")
+		generated := false
+		if password == "" {
+			buf := make([]byte, 12)
+			if _, err := rand.Read(buf); err != nil {
+				log.Fatalf("failed to generate bootstrap admin password: %v", err)
+			}
+			password = base64.RawURLEncoding.EncodeToString(buf)
+			generated = true
+		}
+
+		hashedPassword, err := hashPassword(password)
+		if err != nil {
+			log.Fatalf("failed to hash bootstrap admin password: %v", err)
+		}
 
 		defaultAdmin := Admin{
-			Username:     "Srinath",
+			Username:     username,
 			Password:     hashedPassword,
-			Name:         "Srinath (Super Admin)",
+			Name:         username + " (Super Admin)",
 			IsSuperAdmin: true,
 		}
-		db.Create(&defaultAdmin)
-		log.Println("Default super admin created: Srinath")
+		if err := db.Create(&defaultAdmin).Error; err != nil {
+			log.Fatalf("failed to create bootstrap admin: %v", err)
+		}
+		log.Printf("Bootstrap super admin created: %s", username)
+		if generated {
+			log.Printf("ADMIN_PASSWORD was not set. Generated one-time password: %s", password)
+			log.Println("Log in and change it immediately.")
+		}
+	}
+
+	sessions := newSessionStore()
+
+	// requireAdmin authenticates admin API calls with a bearer session token.
+	requireAdmin := func(c *gin.Context) {
+		username, ok := sessions.lookup(bearerToken(c))
+		if !ok {
+			c.AbortWithStatusJSON(401, gin.H{"error": "Authentication required"})
+			return
+		}
+
+		var admin Admin
+		if err := db.Where("username = ?", username).First(&admin).Error; err != nil {
+			c.AbortWithStatusJSON(401, gin.H{"error": "Authentication required"})
+			return
+		}
+
+		c.Set("admin", admin)
+		c.Next()
+	}
+
+	// currentAdmin returns the admin authenticated by requireAdmin.
+	currentAdmin := func(c *gin.Context) Admin {
+		return c.MustGet("admin").(Admin)
 	}
 
 	router := gin.Default()
 
-	// Add CORS middleware for development
+	// CORS. Set ALLOWED_ORIGINS (comma separated) to restrict which sites may
+	// call the API from a browser; defaults to allowing any origin so that the
+	// "login via IP" fallback keeps working on the lab network.
+	allowedOrigins := map[string]bool{}
+	for _, o := range strings.Split(os.Getenv("ALLOWED_ORIGINS"), ",") {
+		if o = strings.TrimSpace(o); o != "" {
+			allowedOrigins[o] = true
+		}
+	}
+
 	router.Use(func(c *gin.Context) {
-		c.Header("Access-Control-Allow-Origin", "*")
+		origin := c.GetHeader("Origin")
+		if len(allowedOrigins) == 0 {
+			c.Header("Access-Control-Allow-Origin", "*")
+		} else if allowedOrigins[origin] {
+			c.Header("Access-Control-Allow-Origin", origin)
+			c.Header("Vary", "Origin")
+		}
 		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Authorization")
 
@@ -173,7 +348,7 @@ func main() {
 		})
 
 		// --- NEW ENDPOINT TO CREATE ITEMS ---
-		api.POST("/items", func(c *gin.Context) {
+		api.POST("/items", requireAdmin, func(c *gin.Context) {
 			var newItem Item
 			if err := c.ShouldBindJSON(&newItem); err != nil {
 				c.JSON(400, gin.H{"error": "Invalid data"})
@@ -195,22 +370,19 @@ func main() {
 		api.GET("/loans/active", func(c *gin.Context) {
 			var loans []Loan
 			// Include:
-			// 1. Active loans (status = 'active' AND approval_status = 'approved')
-			// 2. Pending loans (status = 'pending' AND approval_status = 'pending') - so they show in return list
-			// 3. Items marked as not found (status = 'not_found')
-			// 4. Recently returned items (status = 'returned' AND returned_at within last 24 hours)
+			// 1. Items currently borrowed (status = 'active')
+			// 2. Items marked as missing by an admin (status = 'not_found')
+			// 3. Recently returned items (status = 'returned' AND returned_at within last 24 hours)
 			if err := db.Where(`
-				(status = ? AND approval_status = ?) OR 
-				(status = ? AND approval_status = ?) OR
-				status = ? OR 
+				status = ? OR
+				status = ? OR
 				(status = ? AND returned_at > ?)
-			`, "active", "approved", "pending", "pending", "not_found", "returned", time.Now().Add(-24*time.Hour)).
+			`, "active", "not_found", "returned", time.Now().Add(-24*time.Hour)).
 				Order(`
-					CASE 
-						WHEN status = 'not_found' THEN 0 
+					CASE
+						WHEN status = 'not_found' THEN 0
 						WHEN status = 'returned' THEN 1
-						WHEN status = 'pending' AND approval_status = 'pending' THEN 2
-						ELSE 3 
+						ELSE 2
 					END, created_at DESC
 				`).
 				Find(&loans).Error; err != nil {
@@ -290,7 +462,7 @@ func main() {
 				}
 			}
 
-			// Create a new loan record with pending status for admin approval
+			// Borrowing is self-service: the loan is active immediately, no approval needed.
 			newLoan := Loan{
 				BorrowerName:       borrowerName,
 				BorrowerPhone:      borrowerPhone,
@@ -300,8 +472,8 @@ func main() {
 				ExpectedReturnDate: expectedReturnDate,
 				Purpose:            purpose,
 				PhotoFilename:      photoFilename,
-				Status:             "pending",
-				ApprovalStatus:     "pending",
+				Status:             "active",
+				ApprovalStatus:     "approved",
 			}
 
 			if err := db.Create(&newLoan).Error; err != nil {
@@ -309,7 +481,7 @@ func main() {
 				return
 			}
 
-			c.JSON(200, gin.H{"message": "Borrow request submitted successfully! Please wait for admin approval.", "loan_id": newLoan.ID})
+			c.JSON(200, gin.H{"message": "Item borrowed successfully! Please return it by the expected date.", "loan_id": newLoan.ID})
 		})
 
 		// Endpoint for returning an item, identified by its loan ID
@@ -320,7 +492,7 @@ func main() {
 				return
 			}
 
-			// Mark the loan as return requested, requiring admin approval
+			// Returning is self-service: mark the loan returned right away.
 			err = db.Transaction(func(tx *gorm.DB) error {
 				var loan Loan
 				if err := tx.First(&loan, loanID).Error; err != nil {
@@ -334,23 +506,13 @@ func main() {
 					return fmt.Errorf("item has already been returned")
 				}
 
-				if loan.ReturnRequested {
-					return fmt.Errorf("return request already submitted for this item")
-				}
-
-				// Allow return for both pending and approved items
-				if loan.ApprovalStatus != "approved" && loan.ApprovalStatus != "pending" {
-					return fmt.Errorf("cannot return item with approval status: %s", loan.ApprovalStatus)
-				}
-
 				now := time.Now()
+				loan.Status = "returned"
 				loan.ReturnRequested = true
-				loan.ReturnApprovalStatus = "pending"
+				loan.ReturnApprovalStatus = "approved"
 				loan.ReturnRequestedAt = &now
-				if err := tx.Save(&loan).Error; err != nil {
-					return err
-				}
-				return nil
+				loan.ReturnedAt = &now
+				return tx.Save(&loan).Error
 			})
 
 			if err != nil {
@@ -358,7 +520,7 @@ func main() {
 				return
 			}
 
-			c.JSON(200, gin.H{"message": "Return request submitted! Please wait for admin approval."})
+			c.JSON(200, gin.H{"message": "Item marked as returned. Thank you!"})
 		})
 
 		// --- ADMIN ROUTES ---
@@ -377,19 +539,34 @@ func main() {
 					return
 				}
 
-				// Hash the provided password
-				hasher := sha256.New()
-				hasher.Write([]byte(req.Password))
-				hashedPassword := hex.EncodeToString(hasher.Sum(nil))
-
 				var admin Admin
-				if err := db.Where("username = ? AND password = ?", req.Username, hashedPassword).First(&admin).Error; err != nil {
+				if err := db.Where("username = ?", req.Username).First(&admin).Error; err != nil {
 					c.JSON(401, gin.H{"error": "Invalid credentials"})
+					return
+				}
+
+				ok, needsUpgrade := verifyPassword(admin.Password, req.Password)
+				if !ok {
+					c.JSON(401, gin.H{"error": "Invalid credentials"})
+					return
+				}
+
+				// Transparently migrate legacy SHA-256 hashes to bcrypt on login.
+				if needsUpgrade {
+					if newHash, err := hashPassword(req.Password); err == nil {
+						db.Model(&admin).Update("password", newHash)
+					}
+				}
+
+				token, err := sessions.create(admin.Username)
+				if err != nil {
+					c.JSON(500, gin.H{"error": "Failed to create session"})
 					return
 				}
 
 				c.JSON(200, gin.H{
 					"message": "Login successful",
+					"token":   token,
 					"admin": gin.H{
 						"name":           admin.Name,
 						"username":       admin.Username,
@@ -398,14 +575,23 @@ func main() {
 				})
 			})
 
-			// Get pending loan requests for approval
-			admin.GET("/loans/pending", func(c *gin.Context) {
-				var loans []Loan
-				if err := db.Where("approval_status = ?", "pending").Find(&loans).Error; err != nil {
-					c.JSON(500, gin.H{"error": "Failed to retrieve pending loans"})
-					return
-				}
-				c.JSON(200, loans)
+			// Every route below requires a valid admin session.
+			admin.Use(requireAdmin)
+
+			// Log out - invalidate the current session token
+			admin.POST("/logout", func(c *gin.Context) {
+				sessions.revoke(bearerToken(c))
+				c.JSON(200, gin.H{"message": "Logged out"})
+			})
+
+			// Confirm the stored session is still valid
+			admin.GET("/me", func(c *gin.Context) {
+				admin := currentAdmin(c)
+				c.JSON(200, gin.H{
+					"name":           admin.Name,
+					"username":       admin.Username,
+					"is_super_admin": admin.IsSuperAdmin,
+				})
 			})
 
 			// Get loans by lab with status filtering and smart ordering
@@ -418,15 +604,11 @@ func main() {
 
 				// Apply status filter
 				if statusFilter == "borrowed" {
-					query = query.Where("approval_status = ? AND status = ?", "approved", "active")
-				} else if statusFilter == "rejected" {
-					query = query.Where("approval_status = ?", "denied")
+					query = query.Where("status = ?", "active")
 				} else if statusFilter == "returned" {
 					// Show returned items from the last 2 weeks only
 					twoWeeksAgo := time.Now().AddDate(0, 0, -14)
 					query = query.Where("status = ? AND updated_at > ?", "returned", twoWeeksAgo)
-				} else if statusFilter == "pending" {
-					query = query.Where("approval_status = ?", "pending")
 				} else if statusFilter == "not_found" {
 					query = query.Where("status = ?", "not_found")
 				} else {
@@ -443,10 +625,9 @@ func main() {
 				// 2. Active loans by return date
 				// 3. Rejected items at bottom
 				orderClause := `
-					CASE 
-						WHEN approval_status = 'denied' THEN 4
+					CASE
 						WHEN status = 'not_found' THEN 3
-						WHEN approval_status = 'approved' AND status = 'active' AND expected_return_date::date < CURRENT_DATE THEN 1
+						WHEN status = 'active' AND expected_return_date::date < CURRENT_DATE THEN 1
 						ELSE 2
 					END ASC,
 					expected_return_date ASC
@@ -457,52 +638,6 @@ func main() {
 					return
 				}
 				c.JSON(200, loans)
-			})
-
-			// Approve or deny a loan request
-			admin.POST("/loans/:id/approve", func(c *gin.Context) {
-				loanID := c.Param("id")
-
-				type ApprovalRequest struct {
-					Action    string `json:"action" binding:"required"` // "approve" or "deny"
-					AdminName string `json:"admin_name" binding:"required"`
-				}
-
-				var req ApprovalRequest
-				if err := c.ShouldBindJSON(&req); err != nil {
-					c.JSON(400, gin.H{"error": "Invalid approval data"})
-					return
-				}
-
-				var loan Loan
-				if err := db.First(&loan, loanID).Error; err != nil {
-					c.JSON(404, gin.H{"error": "Loan not found"})
-					return
-				}
-
-				now := time.Now()
-				if req.Action == "approve" {
-					loan.ApprovalStatus = "approved"
-					loan.Status = "active"
-					loan.ApprovedBy = req.AdminName
-					loan.ApprovedAt = &now
-				} else if req.Action == "deny" {
-					loan.ApprovalStatus = "denied"
-					loan.Status = "denied"
-					loan.ApprovedBy = req.AdminName
-					loan.ApprovedAt = &now
-					loan.DeniedAt = &now
-				} else {
-					c.JSON(400, gin.H{"error": "Invalid action"})
-					return
-				}
-
-				if err := db.Save(&loan).Error; err != nil {
-					c.JSON(500, gin.H{"error": "Failed to update loan"})
-					return
-				}
-
-				c.JSON(200, gin.H{"message": "Loan " + req.Action + "d successfully"})
 			})
 
 			// Extend loan return date
@@ -547,20 +682,9 @@ func main() {
 				c.JSON(200, gin.H{"message": "Loan extended successfully"})
 			})
 
-			// Approve return request
-			admin.POST("/loans/:id/approve-return", func(c *gin.Context) {
+			// Mark an item as missing - the admin cannot find it in the lab
+			admin.POST("/loans/:id/mark-missing", func(c *gin.Context) {
 				loanID := c.Param("id")
-
-				type ReturnApprovalRequest struct {
-					Action    string `json:"action" binding:"required"` // "approved" or "not_found"
-					AdminName string `json:"admin_name" binding:"required"`
-				}
-
-				var req ReturnApprovalRequest
-				if err := c.ShouldBindJSON(&req); err != nil {
-					c.JSON(400, gin.H{"error": "Invalid approval data: " + err.Error()})
-					return
-				}
 
 				var loan Loan
 				if err := db.First(&loan, loanID).Error; err != nil {
@@ -568,57 +692,28 @@ func main() {
 					return
 				}
 
-				// Debug logging
-				log.Printf("Return approval request for loan %s: ReturnRequested=%v, ReturnApprovalStatus=%s",
-					loanID, loan.ReturnRequested, loan.ReturnApprovalStatus)
-
-				if !loan.ReturnRequested {
-					c.JSON(400, gin.H{"error": "No return request has been made for this loan"})
-					return
-				}
-
-				if loan.ReturnApprovalStatus != "pending" {
-					c.JSON(400, gin.H{"error": fmt.Sprintf("Return request is not pending. Current status: %s", loan.ReturnApprovalStatus)})
+				if loan.Status == "not_found" {
+					c.JSON(400, gin.H{"error": "Item is already marked as missing"})
 					return
 				}
 
 				now := time.Now()
-				loan.ApprovedBy = req.AdminName
+				loan.Status = "not_found"
+				loan.ReturnApprovalStatus = "not_found"
+				loan.ApprovedBy = currentAdmin(c).Name
 				loan.ApprovedAt = &now
 
-				if req.Action == "approved" {
-					loan.ReturnApprovalStatus = "approved"
-					loan.Status = "returned"
-					loan.ReturnedAt = &now
-				} else if req.Action == "not_found" {
-					loan.ReturnApprovalStatus = "not_found"
-					loan.Status = "not_found"
-				} else {
-					c.JSON(400, gin.H{"error": "Invalid action. Use 'approved' or 'not_found'"})
-					return
-				}
-
 				if err := db.Save(&loan).Error; err != nil {
-					c.JSON(500, gin.H{"error": "Failed to process return"})
+					c.JSON(500, gin.H{"error": "Failed to mark item as missing"})
 					return
 				}
 
-				c.JSON(200, gin.H{"message": fmt.Sprintf("Return %s successfully", req.Action)})
+				c.JSON(200, gin.H{"message": "Item marked as missing"})
 			})
 
 			// Mark item as found (restore from not_found status)
 			admin.POST("/loans/:id/mark-found", func(c *gin.Context) {
 				loanID := c.Param("id")
-
-				type MarkFoundRequest struct {
-					AdminName string `json:"admin_name" binding:"required"`
-				}
-
-				var req MarkFoundRequest
-				if err := c.ShouldBindJSON(&req); err != nil {
-					c.JSON(400, gin.H{"error": "Invalid request data: " + err.Error()})
-					return
-				}
 
 				var loan Loan
 				if err := db.First(&loan, loanID).Error; err != nil {
@@ -628,15 +723,16 @@ func main() {
 
 				// Check if the item is currently marked as not found
 				if loan.Status != "not_found" {
-					c.JSON(400, gin.H{"error": fmt.Sprintf("Item is not marked as not found. Current status: %s", loan.Status)})
+					c.JSON(400, gin.H{"error": fmt.Sprintf("Item is not marked as missing. Current status: %s", loan.Status)})
 					return
 				}
 
 				// Restore the item to borrowed status
 				now := time.Now()
-				loan.Status = "borrowed"
-				loan.ReturnApprovalStatus = ""
-				loan.ApprovedBy = req.AdminName
+				loan.Status = "active"
+				loan.ReturnRequested = false
+				loan.ReturnApprovalStatus = "not_requested"
+				loan.ApprovedBy = currentAdmin(c).Name
 				loan.ApprovedAt = &now
 
 				if err := db.Save(&loan).Error; err != nil {
@@ -647,28 +743,11 @@ func main() {
 				c.JSON(200, gin.H{"message": "Item successfully marked as found and restored to borrowed status"})
 			})
 
-			// Get pending return requests
-			admin.GET("/loans/pending-returns", func(c *gin.Context) {
-				var loans []Loan
-				if err := db.Where("return_requested = ? AND return_approval_status = ?", true, "pending").Find(&loans).Error; err != nil {
-					c.JSON(500, gin.H{"error": "Failed to retrieve pending returns"})
-					return
-				}
-				c.JSON(200, loans)
-			})
-
-			// Get lost/missing items (not found + pending returns, but exclude overdue items)
+			// Get missing items
 			admin.GET("/loans/lost-missing", func(c *gin.Context) {
 				var loans []Loan
-				// Include:
-				// 1. Items marked as not_found
-				// 2. Items with pending return requests that are NOT overdue
-				if err := db.Where(`
-					status = ? OR 
-					(return_requested = ? AND return_approval_status = ? AND 
-					 NOT (approval_status = ? AND status = ? AND expected_return_date::date < CURRENT_DATE))
-				`, "not_found", true, "pending", "approved", "active").Find(&loans).Error; err != nil {
-					c.JSON(500, gin.H{"error": "Failed to retrieve lost/missing items"})
+				if err := db.Where("status = ?", "not_found").Order("updated_at DESC").Find(&loans).Error; err != nil {
+					c.JSON(500, gin.H{"error": "Failed to retrieve missing items"})
 					return
 				}
 				c.JSON(200, loans)
@@ -762,26 +841,11 @@ func main() {
 				}
 			})
 
-			// Cleanup denied loans (called periodically)
-			admin.POST("/cleanup-denied", func(c *gin.Context) {
-				// Delete loans that were denied more than 24 hours ago
-				oneDayAgo := time.Now().Add(-24 * time.Hour)
-
-				result := db.Where("approval_status = ? AND denied_at < ?", "denied", oneDayAgo).Delete(&Loan{})
-				if result.Error != nil {
-					c.JSON(500, gin.H{"error": "Failed to cleanup denied loans"})
-					return
-				}
-
-				c.JSON(200, gin.H{"message": "Cleanup completed", "deleted_count": result.RowsAffected})
-			})
-
 			// === NEW ADMIN MANAGEMENT ROUTES ===
 
 			// Change password for any admin
 			admin.POST("/change-password", func(c *gin.Context) {
 				type ChangePasswordRequest struct {
-					Username    string `json:"username" binding:"required"`
 					OldPassword string `json:"old_password" binding:"required"`
 					NewPassword string `json:"new_password" binding:"required"`
 				}
@@ -793,29 +857,24 @@ func main() {
 				}
 
 				// Validate new password length
-				if len(req.NewPassword) < 6 {
-					c.JSON(400, gin.H{"error": "New password must be at least 6 characters long"})
+				if len(req.NewPassword) < 8 {
+					c.JSON(400, gin.H{"error": "New password must be at least 8 characters long"})
 					return
 				}
 
-				// Hash the old password to verify
-				hasher := sha256.New()
-				hasher.Write([]byte(req.OldPassword))
-				hashedOldPassword := hex.EncodeToString(hasher.Sum(nil))
-
-				// Find admin with username and old password
-				var admin Admin
-				if err := db.Where("username = ? AND password = ?", req.Username, hashedOldPassword).First(&admin).Error; err != nil {
-					c.JSON(401, gin.H{"error": "Invalid username or current password"})
+				// Only the logged-in admin's own password can be changed here
+				admin := currentAdmin(c)
+				if ok, _ := verifyPassword(admin.Password, req.OldPassword); !ok {
+					c.JSON(401, gin.H{"error": "Current password is incorrect"})
 					return
 				}
 
-				// Hash the new password
-				hasher.Reset()
-				hasher.Write([]byte(req.NewPassword))
-				hashedNewPassword := hex.EncodeToString(hasher.Sum(nil))
+				hashedNewPassword, err := hashPassword(req.NewPassword)
+				if err != nil {
+					c.JSON(500, gin.H{"error": "Failed to update password"})
+					return
+				}
 
-				// Update password
 				if err := db.Model(&admin).Update("password", hashedNewPassword).Error; err != nil {
 					c.JSON(500, gin.H{"error": "Failed to update password"})
 					return
@@ -826,21 +885,7 @@ func main() {
 
 			// Get all admins (only super admin can access)
 			admin.GET("/list", func(c *gin.Context) {
-				// Get requesting admin's username from query parameter
-				requestingUsername := c.Query("requesting_username")
-				if requestingUsername == "" {
-					c.JSON(400, gin.H{"error": "Requesting username is required"})
-					return
-				}
-
-				// Check if requesting admin is super admin
-				var requestingAdmin Admin
-				if err := db.Where("username = ?", requestingUsername).First(&requestingAdmin).Error; err != nil {
-					c.JSON(401, gin.H{"error": "Invalid requesting admin"})
-					return
-				}
-
-				if !requestingAdmin.IsSuperAdmin {
+				if !currentAdmin(c).IsSuperAdmin {
 					c.JSON(403, gin.H{"error": "Only super admin can view admin list"})
 					return
 				}
@@ -870,11 +915,10 @@ func main() {
 			// Create new admin (only super admin can create)
 			admin.POST("/create", func(c *gin.Context) {
 				type CreateAdminRequest struct {
-					RequestingUsername string `json:"requesting_username" binding:"required"`
-					Username           string `json:"username" binding:"required"`
-					Password           string `json:"password" binding:"required"`
-					Name               string `json:"name" binding:"required"`
-					IsSuperAdmin       bool   `json:"is_super_admin"`
+					Username     string `json:"username" binding:"required"`
+					Password     string `json:"password" binding:"required"`
+					Name         string `json:"name" binding:"required"`
+					IsSuperAdmin bool   `json:"is_super_admin"`
 				}
 
 				var req CreateAdminRequest
@@ -883,21 +927,14 @@ func main() {
 					return
 				}
 
-				// Check if requesting admin is super admin
-				var requestingAdmin Admin
-				if err := db.Where("username = ?", req.RequestingUsername).First(&requestingAdmin).Error; err != nil {
-					c.JSON(401, gin.H{"error": "Invalid requesting admin"})
-					return
-				}
-
-				if !requestingAdmin.IsSuperAdmin {
+				if !currentAdmin(c).IsSuperAdmin {
 					c.JSON(403, gin.H{"error": "Only super admin can create new admins"})
 					return
 				}
 
 				// Validate password length
-				if len(req.Password) < 6 {
-					c.JSON(400, gin.H{"error": "Password must be at least 6 characters long"})
+				if len(req.Password) < 8 {
+					c.JSON(400, gin.H{"error": "Password must be at least 8 characters long"})
 					return
 				}
 
@@ -908,10 +945,11 @@ func main() {
 					return
 				}
 
-				// Hash the password
-				hasher := sha256.New()
-				hasher.Write([]byte(req.Password))
-				hashedPassword := hex.EncodeToString(hasher.Sum(nil))
+				hashedPassword, err := hashPassword(req.Password)
+				if err != nil {
+					c.JSON(500, gin.H{"error": "Failed to create admin"})
+					return
+				}
 
 				// Create new admin
 				newAdmin := Admin{
@@ -939,16 +977,6 @@ func main() {
 
 			// Delete admin (only super admin can delete other admins, except themselves)
 			admin.DELETE("/delete/:id", func(c *gin.Context) {
-				type DeleteAdminRequest struct {
-					RequestingUsername string `json:"requesting_username" binding:"required"`
-				}
-
-				var req DeleteAdminRequest
-				if err := c.ShouldBindJSON(&req); err != nil {
-					c.JSON(400, gin.H{"error": "Invalid delete request data"})
-					return
-				}
-
 				// Get admin ID from URL parameter
 				adminId := c.Param("id")
 				if adminId == "" {
@@ -956,13 +984,7 @@ func main() {
 					return
 				}
 
-				// Check if requesting admin is super admin
-				var requestingAdmin Admin
-				if err := db.Where("username = ?", req.RequestingUsername).First(&requestingAdmin).Error; err != nil {
-					c.JSON(401, gin.H{"error": "Invalid requesting admin"})
-					return
-				}
-
+				requestingAdmin := currentAdmin(c)
 				if !requestingAdmin.IsSuperAdmin {
 					c.JSON(403, gin.H{"error": "Only super admin can delete admins"})
 					return
@@ -981,9 +1003,11 @@ func main() {
 					return
 				}
 
-				// Check if trying to delete the main super admin (Srinath)
-				if adminToDelete.Username == "Srinath" {
-					c.JSON(400, gin.H{"error": "Cannot delete the main super admin account"})
+				// Never leave the system without a super admin
+				var superAdminCount int64
+				db.Model(&Admin{}).Where("is_super_admin = ?", true).Count(&superAdminCount)
+				if adminToDelete.IsSuperAdmin && superAdminCount <= 1 {
+					c.JSON(400, gin.H{"error": "Cannot delete the last super admin account"})
 					return
 				}
 
@@ -1006,8 +1030,7 @@ func main() {
 			// Delete all items data (only super admin can delete all data)
 			admin.DELETE("/delete-all-items", func(c *gin.Context) {
 				type DeleteAllRequest struct {
-					RequestingUsername string `json:"requesting_username" binding:"required"`
-					ConfirmDelete      bool   `json:"confirm_delete" binding:"required"`
+					ConfirmDelete bool `json:"confirm_delete" binding:"required"`
 				}
 
 				var req DeleteAllRequest
@@ -1016,14 +1039,7 @@ func main() {
 					return
 				}
 
-				// Check if requesting admin is super admin
-				var requestingAdmin Admin
-				if err := db.Where("username = ?", req.RequestingUsername).First(&requestingAdmin).Error; err != nil {
-					c.JSON(401, gin.H{"error": "Invalid requesting admin"})
-					return
-				}
-
-				if !requestingAdmin.IsSuperAdmin {
+				if !currentAdmin(c).IsSuperAdmin {
 					c.JSON(403, gin.H{"error": "Only super admin can delete all items data"})
 					return
 				}
@@ -1060,23 +1076,6 @@ func main() {
 			})
 		}
 	}
-
-	// --- BACKGROUND CLEANUP TASK ---
-	// Start background task to automatically cleanup denied loans after 24 hours
-	go func() {
-		ticker := time.NewTicker(1 * time.Hour) // Check every hour
-		defer ticker.Stop()
-
-		for range ticker.C {
-			oneDayAgo := time.Now().Add(-24 * time.Hour)
-			result := db.Where("approval_status = ? AND denied_at < ?", "denied", oneDayAgo).Delete(&Loan{})
-			if result.Error != nil {
-				log.Printf("Auto-cleanup error: %v", result.Error)
-			} else if result.RowsAffected > 0 {
-				log.Printf("Auto-cleanup: removed %d denied loans older than 24 hours", result.RowsAffected)
-			}
-		}
-	}()
 
 	// --- START SERVER ---
 	log.Println("Starting server on port 8080...")

@@ -51,7 +51,12 @@
 4. **Access the system:**
   - **Local Access**: http://localhost
   - **Network Access** (via IP): http://[SERVER-IP]
-   - **Admin Login**: Username: `Srinath`, Password: `rrc@srinath`
+   - **Admin Login**: the credentials you set in `.env` (see below)
+
+> **🔐 Admin credentials:** Copy `.env.example` to `.env` and set `POSTGRES_PASSWORD`,
+> `ADMIN_USERNAME` and `ADMIN_PASSWORD` before the first start. The first admin account is
+> created only once, on an empty database. If `ADMIN_PASSWORD` is left empty, a random
+> password is generated and printed in the backend logs (`./logs.sh`). Never commit `.env`.
 
 > **🌐 Network Access Note:** This website is hosted locally on a server. To access it, you need to be connected to **wifi@iiith** or use **OpenVPN** to connect to the IIIT network.
 

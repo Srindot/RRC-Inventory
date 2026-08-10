@@ -55,15 +55,14 @@
             });
         }
         
-        // Sort loans by priority: Missing -> Borrowed -> Pending Borrow -> Returned
+        // Sort loans by priority: Missing -> Borrowed -> Returned
         filteredLoans = loansToFilter.sort((a, b) => {
             // Categorize loans with priority order
             const getLoanPriority = (loan) => {
-                if (loan.status === 'not_found') return 1;           // Missing items (highest priority)
-                if (loan.approval_status === 'approved' && loan.status !== 'returned') return 2; // Borrowed items
-                if (loan.approval_status === 'pending') return 3;    // Pending borrow requests
-                if (loan.status === 'returned') return 4;            // Returned items (lowest priority)
-                return 5;                                            // Other
+                if (loan.status === 'not_found') return 1;  // Missing items (highest priority)
+                if (loan.status === 'active') return 2;     // Borrowed items
+                if (loan.status === 'returned') return 3;   // Returned items (lowest priority)
+                return 4;                                   // Other
             };
             
             const priorityA = getLoanPriority(a);
@@ -159,7 +158,7 @@
 				// Redirect to home view first
 				currentView = 'home';
 				// Then show the success message
-				showMessage('Request sent! Your borrow request has been submitted successfully.', 'success');
+				showMessage(result.message || 'Item borrowed successfully!', 'success');
 			} else {
 				showMessage(result.error || 'Failed to submit borrow request', 'error');
 			}
@@ -582,9 +581,8 @@
                     {/if}
                     
                     {#each filteredLoans as loan (loan.ID)}
-                        {@const itemCategory = loan.status === 'not_found' ? 'missing' : 
-                                              loan.approval_status === 'approved' && loan.status !== 'returned' ? 'borrowed' :
-                                              loan.approval_status === 'pending' ? 'pending' : 'returned'}
+                        {@const itemCategory = loan.status === 'not_found' ? 'missing' :
+                                              loan.status === 'returned' ? 'returned' : 'borrowed'}
                         
                         <div class="item-card {itemCategory}">
                             <!-- Category Tag -->
@@ -595,9 +593,6 @@
                                 {:else if itemCategory === 'borrowed'}
                                     <span class="tag-icon">📋</span>
                                     <span class="tag-text">Borrowed Item</span>
-                                {:else if itemCategory === 'pending'}
-                                    <span class="tag-icon">⏳</span>
-                                    <span class="tag-text">Pending Borrow Request</span>
                                 {:else if itemCategory === 'returned'}
                                     <span class="tag-icon">✅</span>
                                     <span class="tag-text">Returned Item</span>
@@ -608,9 +603,6 @@
                             <div class="item-content">
                                 <div class="item-header">
                                     <h4 class="item-name">{loan.item_name}</h4>
-                                    {#if loan.return_requested}
-                                        <span class="return-pending-badge">🔄 Return Pending</span>
-                                    {/if}
                                 </div>
 
                                 <div class="item-details">
@@ -664,22 +656,9 @@
                                 <!-- Action Section -->
                                 <div class="item-actions">
                                     {#if itemCategory === 'missing'}
-                                        <p class="status-message missing">⚠️ This item has been marked as missing. Please contact lab personnel if found.</p>
+                                        <p class="status-message missing">⚠️ This item has been marked as missing by an admin. Please contact lab personnel if found.</p>
                                     {:else if itemCategory === 'returned'}
-                                        <p class="status-message returned">✅ Successfully returned and processed by admin.</p>
-                                    {:else if loan.return_requested}
-                                        <p class="status-message return-pending">🔄 Return request submitted. Waiting for admin approval.</p>
-                                    {:else if itemCategory === 'pending'}
-                                        <div class="pending-actions">
-                                            <p class="status-message pending">⏳ Waiting for admin approval of borrow request.</p>
-                                            <button 
-                                                class="return-action-btn cancel-btn" 
-                                                on:click={() => returnItem(loan.ID)}
-                                                disabled={loading}
-                                            >
-                                                ❌ Cancel Request
-                                            </button>
-                                        </div>
+                                        <p class="status-message returned">✅ Successfully returned.</p>
                                     {:else if itemCategory === 'borrowed'}
                                         <button 
                                             class="return-action-btn" 
