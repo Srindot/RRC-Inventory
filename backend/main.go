@@ -445,10 +445,14 @@ func main() {
 				purpose = values[0]
 			}
 
-			// Validate required fields
-			if borrowerName == "" || borrowerPhone == "" || itemName == "" || labLocation == "" || expectedReturnDate == "" || purpose == "" {
-				c.JSON(400, gin.H{"error": "All fields are required"})
+			// Validate required fields. Purpose is optional - asking for it every
+			// time was friction people were routing around.
+			if borrowerName == "" || borrowerPhone == "" || itemName == "" || labLocation == "" || expectedReturnDate == "" {
+				c.JSON(400, gin.H{"error": "Name, phone, item, lab and return date are required"})
 				return
+			}
+			if purpose == "" {
+				purpose = "Not specified"
 			}
 
 			// Handle file upload

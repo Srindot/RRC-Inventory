@@ -35,7 +35,28 @@
     $: weekLabel = `${weekDays[0].toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} - ` +
                    `${weekDays[6].toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}`;
 
-    onMount(loadBookings);
+    // Shared with the borrow form, so people fill this in once per device
+    const CONTACT_KEY = 'rrc_contact';
+
+    onMount(() => {
+        try {
+            const saved = JSON.parse(localStorage.getItem(CONTACT_KEY) || 'null');
+            if (saved) {
+                form = { ...form, booked_by: saved.name || '', phone: saved.phone || '' };
+            }
+        } catch (e) {
+            // Ignore unreadable storage
+        }
+        loadBookings();
+    });
+
+    function saveContact() {
+        try {
+            localStorage.setItem(CONTACT_KEY, JSON.stringify({ name: form.booked_by, phone: form.phone }));
+        } catch (e) {
+            // Convenience only
+        }
+    }
 
     // --- date helpers ---
     function startOfWeek(date) {
@@ -116,6 +137,7 @@
 
             const result = await response.json();
             if (response.ok) {
+                saveContact();
                 showMessage(result.message || 'Booked!', 'success');
                 showForm = false;
                 form = { ...form, purpose: '' };
@@ -282,6 +304,9 @@
             <p><strong>Contact:</strong> {selectedBooking.phone}</p>
             <div class="details-actions">
                 <input type="tel" bind:value={cancelPhone} placeholder="Your phone number to cancel" />
+                {#if form.phone && cancelPhone !== form.phone}
+                    <button class="close-btn" on:click={() => cancelPhone = form.phone}>Use my number</button>
+                {/if}
                 <button class="cancel-btn" on:click={cancelBooking}>Cancel Booking</button>
                 <button class="close-btn" on:click={() => { selectedBooking = null; cancelPhone = ''; }}>Close</button>
             </div>

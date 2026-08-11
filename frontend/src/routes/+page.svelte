@@ -23,6 +23,18 @@
         item_photo: null
     };
 
+    // Quick duration choices - one tap instead of two number inputs
+    const durationPresets = [
+        { label: '2 hours', days: 0, hours: 2 },
+        { label: '1 day', days: 1, hours: 0 },
+        { label: '3 days', days: 3, hours: 0 },
+        { label: '1 week', days: 7, hours: 0 }
+    ];
+    let showCustomDuration = false;
+
+    // Common purposes, so most people never have to type one
+    const purposePresets = ['Project work', 'Course assignment', 'Research', 'Testing'];
+
     // Lab locations
     const labLocations = [
         { value: 'Main Lab', label: 'Main Lab' },
@@ -93,6 +105,50 @@
         }, 50);
     }
 
+    // Name and phone are remembered on this device so repeat borrowers only
+    // have to fill in the item.
+    const CONTACT_KEY = 'rrc_contact';
+
+    function loadSavedContact() {
+        try {
+            const saved = JSON.parse(localStorage.getItem(CONTACT_KEY) || 'null');
+            if (saved) {
+                borrowForm.borrower_name = saved.name || '';
+                borrowForm.borrower_phone = saved.phone || '';
+            }
+        } catch (e) {
+            // Ignore unreadable storage and just start with an empty form
+        }
+    }
+
+    function saveContact() {
+        try {
+            localStorage.setItem(CONTACT_KEY, JSON.stringify({
+                name: borrowForm.borrower_name,
+                phone: borrowForm.borrower_phone
+            }));
+        } catch (e) {
+            // Saving is a convenience - never block a borrow on it
+        }
+    }
+
+    function forgetContact() {
+        try {
+            localStorage.removeItem(CONTACT_KEY);
+        } catch (e) {
+            // Nothing to do
+        }
+        borrowForm.borrower_name = '';
+        borrowForm.borrower_phone = '';
+        showMessage('Saved details cleared', 'success');
+    }
+
+    function setDuration(preset) {
+        borrowForm.return_days = preset.days;
+        borrowForm.return_hours = preset.hours;
+        showCustomDuration = false;
+    }
+
     // Load items for borrowing
     async function loadItems() {
         try {
@@ -154,6 +210,7 @@
 			const result = await response.json();
 			
 			if (response.ok) {
+				saveContact();
 				resetBorrowForm();
 				// Redirect to home view first
 				currentView = 'home';
@@ -257,8 +314,9 @@
 
     function resetBorrowForm() {
         borrowForm = {
-            borrower_name: '',
-            borrower_phone: '',
+            // Keep the person signed in on this device
+            borrower_name: borrowForm.borrower_name,
+            borrower_phone: borrowForm.borrower_phone,
             item_name: '',
             lab_location: '',
             quantity_borrowed: 1,
@@ -313,6 +371,8 @@
 
     function goToBorrow() {
         currentView = 'borrow';
+        showCustomDuration = false;
+        loadSavedContact();
         // No need to load items since users can enter any item name
     }
 
@@ -383,7 +443,12 @@
             
             <form on:submit|preventDefault={submitBorrow}>
                 <div class="form-group">
-                    <label for="name">Name *</label>
+                    <div class="label-row">
+                        <label for="name">Name *</label>
+                        {#if borrowForm.borrower_name}
+                            <button type="button" class="link-btn" on:click={forgetContact}>Not you?</button>
+                        {/if}
+                    </div>
                     <input 
                         type="text" 
                         id="name" 
@@ -391,6 +456,7 @@
                         required
                         placeholder="Enter your name"
                     />
+                    <small class="help-text">Your name and phone are saved on this device for next time.</small>
                 </div>
 
                 <div class="form-group">
@@ -467,29 +533,50 @@
 
                 <div class="form-group">
                     <label>Return Time *</label>
-                    <div class="time-inputs">
-                        <div class="time-input">
-                            <label for="days">Days:</label>
-                            <input 
-                                type="number" 
-                                id="days" 
-                                bind:value={borrowForm.return_days} 
-                                min="0" 
-                                max="30"
-                                required
-                            />
-                        </div>
-                        <div class="time-input">
-                            <label for="hours">Hours:</label>
-                            <input 
-                                type="number" 
-                                id="hours" 
-                                bind:value={borrowForm.return_hours} 
-                                min="0" 
-                                max="23"
-                            />
-                        </div>
+                    <div class="chip-row">
+                        {#each durationPresets as preset}
+                            <button
+                                type="button"
+                                class="chip"
+                                class:selected={!showCustomDuration && borrowForm.return_days === preset.days && borrowForm.return_hours === preset.hours}
+                                on:click={() => setDuration(preset)}
+                            >
+                                {preset.label}
+                            </button>
+                        {/each}
+                        <button
+                            type="button"
+                            class="chip"
+                            class:selected={showCustomDuration}
+                            on:click={() => showCustomDuration = !showCustomDuration}
+                        >
+                            Custom
+                        </button>
                     </div>
+                    {#if showCustomDuration}
+                        <div class="time-inputs">
+                            <div class="time-input">
+                                <label for="days">Days:</label>
+                                <input 
+                                    type="number" 
+                                    id="days" 
+                                    bind:value={borrowForm.return_days} 
+                                    min="0" 
+                                    max="30"
+                                />
+                            </div>
+                            <div class="time-input">
+                                <label for="hours">Hours:</label>
+                                <input 
+                                    type="number" 
+                                    id="hours" 
+                                    bind:value={borrowForm.return_hours} 
+                                    min="0" 
+                                    max="23"
+                                />
+                            </div>
+                        </div>
+                    {/if}
                     <small class="help-text">
                         Expected return: {borrowForm.return_days} day{borrowForm.return_days !== 1 ? 's' : ''} 
                         {#if borrowForm.return_hours > 0}and {borrowForm.return_hours} hour{borrowForm.return_hours !== 1 ? 's' : ''}{/if}
@@ -498,13 +585,24 @@
                 </div>
 
                 <div class="form-group">
-                    <label for="purpose">Purpose *</label>
+                    <label for="purpose">Purpose <span class="optional-tag">optional</span></label>
+                    <div class="chip-row">
+                        {#each purposePresets as preset}
+                            <button
+                                type="button"
+                                class="chip"
+                                class:selected={borrowForm.purpose === preset}
+                                on:click={() => borrowForm.purpose = borrowForm.purpose === preset ? '' : preset}
+                            >
+                                {preset}
+                            </button>
+                        {/each}
+                    </div>
                     <textarea 
                         id="purpose" 
                         bind:value={borrowForm.purpose} 
-                        required
-                        placeholder="Why do you need this item?(Please explicitly mention the project and priority of the item)"
-                        rows="3"
+                        placeholder="Anything more specific? (project name, priority)"
+                        rows="2"
                     ></textarea>
                 </div>
 
@@ -1065,6 +1163,60 @@
         margin-top: 15px;
         opacity: 0.9;
         line-height: 1.4;
+    }
+
+    .label-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 8px;
+    }
+
+    .link-btn {
+        background: none;
+        border: none;
+        color: #89b4fa;
+        font-size: 0.8rem;
+        cursor: pointer;
+        padding: 0;
+        text-decoration: underline;
+    }
+
+    .optional-tag {
+        font-size: 0.75rem;
+        color: #6c7086;
+        font-weight: 400;
+        text-transform: none;
+    }
+
+    .chip-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 8px;
+    }
+
+    .chip {
+        background: #313244;
+        color: #cdd6f4;
+        border: 1px solid #45475a;
+        border-radius: 999px;
+        padding: 10px 16px;
+        /* Comfortable one-handed tap target on a phone */
+        min-height: 44px;
+        font-size: 0.95rem;
+        cursor: pointer;
+    }
+
+    .chip:hover {
+        background: #45475a;
+    }
+
+    .chip.selected {
+        background: #f2cdcd;
+        border-color: #f2cdcd;
+        color: #11111b;
+        font-weight: 600;
     }
 
     /* Form Styles */
