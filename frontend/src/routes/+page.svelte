@@ -264,8 +264,18 @@
         }, 5000);
     }
 
+    // An item is due at the END of its return date, so something due today is
+    // not late yet. Matches the backend and the admin sort order.
+    function dueDeadline(returnDate) {
+        const due = new Date(returnDate);
+        if (isNaN(due)) return null;
+        due.setHours(23, 59, 59, 999);
+        return due;
+    }
+
     function isOverdue(returnDate) {
-        return new Date(returnDate) < new Date();
+        const deadline = dueDeadline(returnDate);
+        return deadline !== null && deadline < new Date();
     }
 
     function formatDate(dateString) {
@@ -273,7 +283,7 @@
     }
 
     function formatExpectedReturn(dateString) {
-        const expectedDate = new Date(dateString);
+        const expectedDate = dueDeadline(dateString) || new Date(dateString);
         const now = new Date();
         const diffMs = expectedDate.getTime() - now.getTime();
         const diffHours = Math.ceil(diffMs / (1000 * 60 * 60));

@@ -24,6 +24,9 @@ services:
       # Used only to create the first admin account on an empty database.
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      # Dates like a loan's return date are judged in this timezone, so the
+      # site and the CSV agree with the clock on the wall.
+      TZ: ${TZ:-Asia/Kolkata}
       # Optional: comma separated list of origins allowed to call the API from a browser.
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
       # 3D printers, as Name|host|serial|accesscode entries separated by commas.

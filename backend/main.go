@@ -197,6 +197,46 @@ type Booking struct {
 	EndTime   time.Time `json:"end_time"`
 }
 
+// parseReturnDate reads the expected return date. It is stored as a plain
+// date ("2026-08-20"), though older rows may carry a full timestamp.
+//
+// Plain dates are interpreted in the server's local timezone, so "due on the
+// 20th" means the end of the 20th here in the lab - not in UTC. Set TZ in the
+// environment (docker-compose defaults it to Asia/Kolkata); otherwise the
+// browser and the backend disagree about the date for a few hours each night.
+func parseReturnDate(value string) (time.Time, bool) {
+	for _, layout := range []string{"2006-01-02", time.RFC3339} {
+		if parsed, err := time.ParseInLocation(layout, value, time.Local); err == nil {
+			return parsed, true
+		}
+	}
+	return time.Time{}, false
+}
+
+// loanOverdue reports whether a loan is late, and by how many days. An item is
+// due at the END of its return date, so something due today is not yet late.
+// A returned item is judged on when it actually came back.
+func loanOverdue(loan Loan, now time.Time) (bool, int) {
+	due, ok := parseReturnDate(loan.ExpectedReturnDate)
+	if !ok {
+		return false, 0
+	}
+	deadline := due.AddDate(0, 0, 1)
+
+	compareAt := now
+	if loan.Status == "returned" {
+		if loan.ReturnedAt == nil {
+			return false, 0
+		}
+		compareAt = *loan.ReturnedAt
+	}
+
+	if !compareAt.After(deadline) {
+		return false, 0
+	}
+	return true, int(compareAt.Sub(deadline).Hours() / 24)
+}
+
 // Helper function to format time pointers for CSV
 func formatTimePtr(t *time.Time) string {
 	if t == nil {
@@ -1030,12 +1070,7 @@ func main() {
 					// Calculate additional fields
 					daysSinceBorrowed := int(time.Since(loan.CreatedAt).Hours() / 24)
 
-					expectedReturnTime, _ := time.Parse("2006-01-02T15:04:05Z07:00", loan.ExpectedReturnDate)
-					isOverdue := time.Now().After(expectedReturnTime)
-					daysOverdue := 0
-					if isOverdue {
-						daysOverdue = int(time.Since(expectedReturnTime).Hours() / 24)
-					}
+					isOverdue, daysOverdue := loanOverdue(loan, time.Now())
 
 					record := []string{
 						strconv.Itoa(int(loan.ID)),
