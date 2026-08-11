@@ -7,11 +7,18 @@
     let printers = [];
     let loaded = false;
     let error = '';
+    let notice = '';
+    let stopping = '';
+    // Stopping a print is admin-only; the button only appears when an admin
+    // session is present, and the backend checks the token regardless.
+    let adminToken = '';
     let cameraTick = Date.now();
     let statusTimer;
     let cameraTimer;
 
     onMount(() => {
+        adminToken = localStorage.getItem('adminToken') || '';
+
         loadPrinters();
         statusTimer = setInterval(loadPrinters, STATUS_INTERVAL);
         cameraTimer = setInterval(() => (cameraTick = Date.now()), CAMERA_INTERVAL);
@@ -35,6 +42,41 @@
             error = 'Could not reach the server';
         } finally {
             loaded = true;
+        }
+    }
+
+    async function stopPrint(printer) {
+        const job = printer.file_name ? tidyFileName(printer.file_name) : 'the current job';
+        if (!confirm(`Stop ${job} on ${printer.name}?\n\nThis cannot be undone - the print will be cancelled.`)) {
+            return;
+        }
+
+        stopping = printer.id;
+        try {
+            const response = await fetch(`/api/admin/printers/${printer.id}/stop`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${adminToken}` }
+            });
+
+            if (response.status === 401) {
+                adminToken = '';
+                error = 'Your admin session expired. Log in again to stop prints.';
+                return;
+            }
+
+            const result = await response.json();
+            if (response.ok) {
+                notice = `Stop command sent to ${printer.name}`;
+                setTimeout(() => (notice = ''), 6000);
+                loadPrinters();
+            } else {
+                error = result.error || 'Could not stop the print';
+                setTimeout(() => (error = ''), 6000);
+            }
+        } catch (e) {
+            error = 'Could not reach the server';
+        } finally {
+            stopping = '';
         }
     }
 
@@ -104,6 +146,9 @@
     {#if error}
         <div class="message error">{error}</div>
     {/if}
+    {#if notice}
+        <div class="message success">{notice}</div>
+    {/if}
 
     {#if !loaded}
         <p class="note">Loading printers...</p>
@@ -163,6 +208,19 @@
                                 <span>📦 Chamber {printer.chamber_temp.toFixed(0)}°C</span>
                             {/if}
                         </div>
+                        {#if adminToken && isPrinting(printer)}
+                            <button
+                                class="stop-btn"
+                                on:click={() => stopPrint(printer)}
+                                disabled={stopping === printer.id}
+                            >
+                                {stopping === printer.id ? 'Stopping...' : '⏹ Stop Print'}
+                            </button>
+                        {/if}
+
+                        {#if printer.last_action_by}
+                            <p class="last-action">Last stopped by {printer.last_action_by}</p>
+                        {/if}
                     {:else}
                         <p class="offline-note">
                             Not responding - it may be switched off or off the network.
@@ -175,6 +233,9 @@
         <p class="footnote">
             Status refreshes automatically. The camera updates about once every two
             seconds - that is the fastest the P1S allows over the local network.
+            {#if !adminToken}
+                Stopping a print requires an <a href="/admin">admin login</a>.
+            {/if}
         </p>
     {/if}
 </div>
@@ -389,6 +450,43 @@
         margin-top: 10px;
         font-size: 0.78rem;
         color: #a6adc8;
+    }
+
+    .stop-btn {
+        margin-top: 12px;
+        width: 100%;
+        background: #f38ba8;
+        color: #11111b;
+        border: none;
+        border-radius: 8px;
+        padding: 10px;
+        font-weight: 600;
+        font-size: 0.9rem;
+        cursor: pointer;
+        min-height: 44px;
+    }
+
+    .stop-btn:hover { background: #eba0ac; }
+
+    .stop-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
+    .last-action {
+        margin: 8px 0 0;
+        font-size: 0.75rem;
+        color: #6c7086;
+    }
+
+    .message.success {
+        background: #2a3b2a;
+        color: #a6e3a1;
+        border: 1px solid #a6e3a1;
+        padding: 10px 14px;
+        border-radius: 8px;
+        margin-bottom: 14px;
+        font-size: 0.9rem;
     }
 
     .offline-note {

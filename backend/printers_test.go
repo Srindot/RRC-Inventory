@@ -11,8 +11,10 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/binary"
+	"encoding/json"
 	"math/big"
 	"net"
+	"strings"
 	"testing"
 	"time"
 )
@@ -418,4 +420,65 @@ func atoiOrZero(s string) int {
 		n = n*10 + int(r-'0')
 	}
 	return n
+}
+
+// --- stopping a print ---------------------------------------------------
+
+// Stopping must be refused when the printer is unreachable, rather than
+// silently pretending the job was cancelled.
+func TestStopRejectsUnreachablePrinter(t *testing.T) {
+	p := &printer{cfg: PrinterConfig{Name: "mock"}}
+
+	// Never connected
+	if err := p.stop("Srinath"); err == nil {
+		t.Error("expected an error when the printer was never reachable")
+	}
+
+	// Reported once, but long ago
+	p.applyReport([]byte(`{"print":{"gcode_state":"RUNNING"}}`))
+	p.mu.Lock()
+	p.lastReport = time.Now().Add(-statusStaleAfter - time.Minute)
+	p.mu.Unlock()
+
+	if err := p.stop("Srinath"); err == nil {
+		t.Error("expected an error when the printer has gone stale")
+	}
+
+	if p.status().LastActionBy != nil {
+		t.Error("a failed stop must not be recorded as an action")
+	}
+}
+
+func TestStoppableStates(t *testing.T) {
+	// Only states where a job is actually in progress should be stoppable
+	for _, state := range []string{"RUNNING", "PAUSE", "PREPARE", "SLICING"} {
+		if !stoppableStates[state] {
+			t.Errorf("%s should be stoppable", state)
+		}
+	}
+	for _, state := range []string{"IDLE", "FINISH", "FAILED", ""} {
+		if stoppableStates[state] {
+			t.Errorf("%s should not be stoppable", state)
+		}
+	}
+}
+
+func TestStatusExposesNoAccessCode(t *testing.T) {
+	p := &printer{cfg: PrinterConfig{
+		Name:       "mock",
+		AccessCode: "topsecret",
+		Serial:     "01P00A411600279",
+	}}
+	p.applyReport([]byte(`{"print":{"gcode_state":"RUNNING"}}`))
+
+	encoded, err := json.Marshal(p.status())
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if strings.Contains(string(encoded), "topsecret") {
+		t.Error("access code leaked into the status JSON")
+	}
+	if strings.Contains(string(encoded), "01P00A411600279") {
+		t.Error("serial leaked into the status JSON")
+	}
 }

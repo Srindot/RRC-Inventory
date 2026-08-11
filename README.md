@@ -63,7 +63,13 @@
 The **3D Printers** page shows live status for the lab's Bambu Lab P1S printers -
 whether each one is free or printing, progress, time remaining, temperatures and a
 camera view (about one frame every two seconds, which is the fastest the P1S allows
-over the local network). It is read-only; the site never sends print commands.
+over the local network). Anyone can view it.
+
+**Stopping a print is admin-only.** Logged-in admins get a Stop button on a
+running printer, with a confirmation naming the job; the action is recorded and
+shown on the card ("Last stopped by ..."). Everyone else sees status only - if
+they need a print stopped, they ask an admin. That is the one command the system
+can send; nothing else writes to the printers.
 
 Configure the printers in `.env`:
 

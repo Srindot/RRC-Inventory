@@ -51,8 +51,8 @@ type PrinterStatus struct {
 	ID               string  `json:"id"`
 	Name             string  `json:"name"`
 	Online           bool    `json:"online"`
-	State            string  `json:"state"`             // IDLE, RUNNING, FINISH, FAILED, PAUSE
-	Progress         int     `json:"progress"`          // percent
+	State            string  `json:"state"`    // IDLE, RUNNING, FINISH, FAILED, PAUSE
+	Progress         int     `json:"progress"` // percent
 	RemainingMinutes int     `json:"remaining_minutes"`
 	FileName         string  `json:"file_name"`
 	NozzleTemp       float64 `json:"nozzle_temp"`
@@ -60,6 +60,10 @@ type PrinterStatus struct {
 	ChamberTemp      float64 `json:"chamber_temp"`
 	CameraOnline     bool    `json:"camera_online"`
 	UpdatedAt        *string `json:"updated_at"`
+	// Set when an admin has stopped a job, so the action is visible rather
+	// than silent.
+	LastActionBy *string `json:"last_action_by"`
+	LastActionAt *string `json:"last_action_at"`
 }
 
 // printerReport mirrors the fields we care about from the printer's JSON.
@@ -94,8 +98,17 @@ type printer struct {
 	lastFrameAt  time.Time
 	frameVersion uint64
 
+	lastActionBy string
+	lastActionAt time.Time
+
+	// Set once the MQTT client is running, so commands can be published
+	client mqtt.Client
+
 	// Overridable so tests can point at a mock printer
 	cameraPort int
+
+	// Commands carry an incrementing sequence id
+	sequence int
 }
 
 // PrinterManager owns the connections to every configured printer.
@@ -216,6 +229,11 @@ func (p *printer) runStatus() {
 	})
 
 	client := mqtt.NewClient(opts)
+
+	p.mu.Lock()
+	p.client = client
+	p.mu.Unlock()
+
 	if token := client.Connect(); token.Wait() && token.Error() != nil {
 		log.Printf("printer %s: initial connect failed: %v", p.cfg.Name, token.Error())
 	}
@@ -379,6 +397,13 @@ func (p *printer) status() PrinterStatus {
 		CameraOnline: cameraOnline,
 	}
 
+	if p.lastActionBy != "" {
+		by := p.lastActionBy
+		at := p.lastActionAt.Format(time.RFC3339)
+		status.LastActionBy = &by
+		status.LastActionAt = &at
+	}
+
 	if online {
 		status.State = p.state
 		status.Progress = p.progress
@@ -412,6 +437,63 @@ func (m *PrinterManager) Frame(id string) ([]byte, bool) {
 	}
 	frame, _, fresh := p.latestFrame()
 	return frame, fresh
+}
+
+// stoppableStates are the states where stopping a job makes sense.
+var stoppableStates = map[string]bool{
+	"RUNNING": true,
+	"PAUSE":   true,
+	"PREPARE": true,
+	"SLICING": true,
+}
+
+// stop asks the printer to abort the current job. Read-only everywhere else,
+// this is the single command the system can send, and only admins reach it.
+func (p *printer) stop(adminName string) error {
+	p.mu.Lock()
+	client := p.client
+	online := !p.lastReport.IsZero() && time.Since(p.lastReport) < statusStaleAfter
+	state := p.state
+	p.sequence++
+	sequence := p.sequence
+	p.mu.Unlock()
+
+	if client == nil || !client.IsConnected() || !online {
+		return fmt.Errorf("printer is not reachable")
+	}
+
+	if !stoppableStates[strings.ToUpper(state)] {
+		return fmt.Errorf("nothing is printing right now (state: %s)", state)
+	}
+
+	payload := fmt.Sprintf(
+		`{"print":{"sequence_id":"%d","command":"stop"}}`, sequence)
+
+	topic := fmt.Sprintf("device/%s/request", p.cfg.Serial)
+	token := client.Publish(topic, 0, false, payload)
+	if !token.WaitTimeout(10*time.Second) || token.Error() != nil {
+		if token.Error() != nil {
+			return fmt.Errorf("could not send the stop command: %w", token.Error())
+		}
+		return fmt.Errorf("timed out sending the stop command")
+	}
+
+	p.mu.Lock()
+	p.lastActionBy = adminName
+	p.lastActionAt = time.Now()
+	p.mu.Unlock()
+
+	log.Printf("printer %s: stop requested by %s", p.cfg.Name, adminName)
+	return nil
+}
+
+// Stop aborts the current job on one printer.
+func (m *PrinterManager) Stop(id, adminName string) error {
+	p, ok := m.byID[id]
+	if !ok {
+		return fmt.Errorf("unknown printer")
+	}
+	return p.stop(adminName)
 }
 
 // Configured reports whether any printers are set up at all.

@@ -190,9 +190,9 @@ type Loan struct {
 // a slot is either free or taken.
 type Booking struct {
 	gorm.Model
-	BookedBy string `json:"booked_by"`
-	Phone    string `json:"phone"`
-	Purpose  string `json:"purpose"`
+	BookedBy  string    `json:"booked_by"`
+	Phone     string    `json:"phone"`
+	Purpose   string    `json:"purpose"`
 	StartTime time.Time `json:"start_time"`
 	EndTime   time.Time `json:"end_time"`
 }
@@ -924,6 +924,17 @@ func main() {
 					return
 				}
 				c.JSON(200, loans)
+			})
+
+			// Stop the current print job. Admins only - a stray click here
+			// destroys someone's work, so it is deliberately not public.
+			admin.POST("/printers/:id/stop", func(c *gin.Context) {
+				adminName := currentAdmin(c).Name
+				if err := printers.Stop(c.Param("id"), adminName); err != nil {
+					c.JSON(400, gin.H{"error": err.Error()})
+					return
+				}
+				c.JSON(200, gin.H{"message": "Stop command sent to the printer"})
 			})
 
 			// Delete any Motion Capture Lab booking
