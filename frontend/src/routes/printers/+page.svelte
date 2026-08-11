@@ -1,0 +1,399 @@
+<script>
+    import { onMount, onDestroy } from 'svelte';
+
+    const STATUS_INTERVAL = 5000;   // printers report every few seconds
+    const CAMERA_INTERVAL = 2000;   // the camera itself only manages ~0.5 fps
+
+    let printers = [];
+    let loaded = false;
+    let error = '';
+    let cameraTick = Date.now();
+    let statusTimer;
+    let cameraTimer;
+
+    onMount(() => {
+        loadPrinters();
+        statusTimer = setInterval(loadPrinters, STATUS_INTERVAL);
+        cameraTimer = setInterval(() => (cameraTick = Date.now()), CAMERA_INTERVAL);
+    });
+
+    onDestroy(() => {
+        clearInterval(statusTimer);
+        clearInterval(cameraTimer);
+    });
+
+    async function loadPrinters() {
+        try {
+            const response = await fetch('/api/printers');
+            if (response.ok) {
+                printers = await response.json();
+                error = '';
+            } else {
+                error = 'Could not load printer status';
+            }
+        } catch (e) {
+            error = 'Could not reach the server';
+        } finally {
+            loaded = true;
+        }
+    }
+
+    // A printer is "busy" only while actually running a job
+    function isPrinting(printer) {
+        return printer.online && printer.state === 'RUNNING';
+    }
+
+    function stateLabel(printer) {
+        if (!printer.online) return 'Offline';
+        switch (printer.state) {
+            case 'RUNNING': return 'Printing';
+            case 'FINISH': return 'Finished';
+            case 'FAILED': return 'Failed';
+            case 'PAUSE': return 'Paused';
+            case 'IDLE': return 'Idle';
+            case 'PREPARE': return 'Preparing';
+            case 'SLICING': return 'Slicing';
+            default: return printer.state || 'Idle';
+        }
+    }
+
+    function stateClass(printer) {
+        if (!printer.online) return 'offline';
+        switch (printer.state) {
+            case 'RUNNING': return 'running';
+            case 'FAILED': return 'failed';
+            case 'PAUSE': return 'paused';
+            case 'FINISH': return 'finished';
+            default: return 'idle';
+        }
+    }
+
+    // "Free" is what most people actually want to know
+    function availability(printer) {
+        if (!printer.online) return 'Unknown';
+        return isPrinting(printer) ? 'In use' : 'Free';
+    }
+
+    function formatRemaining(minutes) {
+        if (!minutes || minutes <= 0) return '';
+        if (minutes < 60) return `${minutes} min left`;
+        const hours = Math.floor(minutes / 60);
+        const rest = minutes % 60;
+        return rest ? `${hours}h ${rest}m left` : `${hours}h left`;
+    }
+
+    // Slicers add a lot of noise to file names
+    function tidyFileName(name) {
+        if (!name) return '';
+        return name.replace(/\.gcode\.3mf$/i, '').replace(/\.3mf$/i, '');
+    }
+</script>
+
+<div class="container">
+    <div class="header">
+        <div class="logo-title">
+            <a href="/"><img src="/rrc_logo.png" alt="RRC Logo" class="logo" /></a>
+            <div>
+                <h1>🖨️ 3D Printers</h1>
+                <p class="subtitle">Live status of the lab's Bambu Lab P1S printers</p>
+            </div>
+        </div>
+        <a href="/" class="back-link">← Back to Home</a>
+    </div>
+
+    {#if error}
+        <div class="message error">{error}</div>
+    {/if}
+
+    {#if !loaded}
+        <p class="note">Loading printers...</p>
+    {:else if printers.length === 0}
+        <p class="note">No printers are configured.</p>
+    {:else}
+        <div class="printer-grid">
+            {#each printers as printer (printer.id)}
+                <div class="printer-card {stateClass(printer)}">
+                    <div class="card-head">
+                        <div>
+                            <h2>{printer.name}</h2>
+                            <span class="availability {isPrinting(printer) ? 'busy' : 'free'}">
+                                {availability(printer)}
+                            </span>
+                        </div>
+                        <span class="state-badge {stateClass(printer)}">{stateLabel(printer)}</span>
+                    </div>
+
+                    <div class="camera">
+                        {#if printer.camera_online}
+                            <img
+                                src="/api/printers/{printer.id}/snapshot?t={cameraTick}"
+                                alt="Camera view of {printer.name}"
+                            />
+                        {:else}
+                            <div class="camera-placeholder">
+                                <span>📷</span>
+                                <p>No camera image</p>
+                            </div>
+                        {/if}
+                    </div>
+
+                    {#if printer.online}
+                        {#if isPrinting(printer)}
+                            <div class="progress-row">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" style="width: {printer.progress}%"></div>
+                                </div>
+                                <span class="progress-text">{printer.progress}%</span>
+                            </div>
+                            {#if printer.remaining_minutes > 0}
+                                <p class="remaining">{formatRemaining(printer.remaining_minutes)}</p>
+                            {/if}
+                        {/if}
+
+                        {#if printer.file_name}
+                            <p class="file" title={printer.file_name}>
+                                📄 {tidyFileName(printer.file_name)}
+                            </p>
+                        {/if}
+
+                        <div class="temps">
+                            <span>🔥 Nozzle {printer.nozzle_temp.toFixed(0)}°C</span>
+                            <span>🛏️ Bed {printer.bed_temp.toFixed(0)}°C</span>
+                            {#if printer.chamber_temp > 0}
+                                <span>📦 Chamber {printer.chamber_temp.toFixed(0)}°C</span>
+                            {/if}
+                        </div>
+                    {:else}
+                        <p class="offline-note">
+                            Not responding - it may be switched off or off the network.
+                        </p>
+                    {/if}
+                </div>
+            {/each}
+        </div>
+
+        <p class="footnote">
+            Status refreshes automatically. The camera updates about once every two
+            seconds - that is the fastest the P1S allows over the local network.
+        </p>
+    {/if}
+</div>
+
+<style>
+    :global(body) {
+        background: #1e1e2e;
+        color: #cdd6f4;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        margin: 0;
+    }
+
+    .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 16px;
+    }
+
+    .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+        border-bottom: 1px solid #313244;
+        padding-bottom: 12px;
+        margin-bottom: 16px;
+    }
+
+    .logo-title {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .logo {
+        height: 48px;
+        width: auto;
+    }
+
+    h1 {
+        margin: 0;
+        font-size: clamp(1.2rem, 3vw, 1.6rem);
+        color: #fab387;
+    }
+
+    .subtitle {
+        margin: 2px 0 0;
+        font-size: 0.85rem;
+        color: #a6adc8;
+    }
+
+    .back-link {
+        color: #89b4fa;
+        text-decoration: none;
+        font-size: 0.9rem;
+    }
+
+    .message.error {
+        background: #3b2a2a;
+        color: #f38ba8;
+        border: 1px solid #f38ba8;
+        padding: 10px 14px;
+        border-radius: 8px;
+        margin-bottom: 14px;
+        font-size: 0.9rem;
+    }
+
+    .note,
+    .footnote {
+        color: #6c7086;
+        font-size: 0.85rem;
+        text-align: center;
+        margin-top: 16px;
+    }
+
+    .printer-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 16px;
+    }
+
+    .printer-card {
+        background: #11111b;
+        border: 1px solid #313244;
+        border-left: 4px solid #6c7086;
+        border-radius: 10px;
+        padding: 14px;
+    }
+
+    .printer-card.running { border-left-color: #a6e3a1; }
+    .printer-card.failed { border-left-color: #f38ba8; }
+    .printer-card.paused { border-left-color: #f9e2af; }
+    .printer-card.finished { border-left-color: #89b4fa; }
+    .printer-card.offline { opacity: 0.6; }
+
+    .card-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 8px;
+        margin-bottom: 10px;
+    }
+
+    h2 {
+        margin: 0;
+        font-size: 1rem;
+    }
+
+    .availability {
+        font-size: 0.8rem;
+        font-weight: 600;
+    }
+
+    .availability.free { color: #a6e3a1; }
+    .availability.busy { color: #fab387; }
+
+    .state-badge {
+        font-size: 0.75rem;
+        padding: 3px 9px;
+        border-radius: 999px;
+        background: #313244;
+        color: #cdd6f4;
+        white-space: nowrap;
+    }
+
+    .state-badge.running { background: #a6e3a1; color: #11111b; }
+    .state-badge.failed { background: #f38ba8; color: #11111b; }
+    .state-badge.paused { background: #f9e2af; color: #11111b; }
+    .state-badge.finished { background: #89b4fa; color: #11111b; }
+
+    .camera {
+        aspect-ratio: 16 / 9;
+        background: #181825;
+        border-radius: 8px;
+        overflow: hidden;
+        margin-bottom: 10px;
+    }
+
+    .camera img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+    }
+
+    .camera-placeholder {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: #45475a;
+    }
+
+    .camera-placeholder span {
+        font-size: 2rem;
+    }
+
+    .camera-placeholder p {
+        margin: 4px 0 0;
+        font-size: 0.8rem;
+    }
+
+    .progress-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .progress-bar {
+        flex: 1;
+        height: 8px;
+        background: #313244;
+        border-radius: 999px;
+        overflow: hidden;
+    }
+
+    .progress-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #a6e3a1, #94e2d5);
+        transition: width 0.4s ease;
+    }
+
+    .progress-text {
+        font-size: 0.8rem;
+        color: #a6adc8;
+        min-width: 34px;
+        text-align: right;
+    }
+
+    .remaining {
+        margin: 6px 0 0;
+        font-size: 0.85rem;
+        color: #a6e3a1;
+    }
+
+    .file {
+        margin: 8px 0 0;
+        font-size: 0.8rem;
+        color: #a6adc8;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .temps {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 10px;
+        font-size: 0.78rem;
+        color: #a6adc8;
+    }
+
+    .offline-note {
+        margin: 8px 0 0;
+        font-size: 0.82rem;
+        color: #6c7086;
+    }
+</style>

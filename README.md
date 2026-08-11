@@ -58,6 +58,26 @@
 > created only once, on an empty database. If `ADMIN_PASSWORD` is left empty, a random
 > password is generated and printed in the backend logs (`./logs.sh`). Never commit `.env`.
 
+### 🖨️ 3D printer status
+
+The **3D Printers** page shows live status for the lab's Bambu Lab P1S printers -
+whether each one is free or printing, progress, time remaining, temperatures and a
+camera view (about one frame every two seconds, which is the fastest the P1S allows
+over the local network). It is read-only; the site never sends print commands.
+
+Configure the printers in `.env`:
+
+```
+PRINTERS=Name|host|serial|accesscode,Name2|host2|serial2|accesscode2
+```
+
+Enable **LAN Only Mode** on each printer, then read its access code off the screen.
+`tools/printer_discover.py` prints the name, IP and serial of every printer on the
+network. Leave `PRINTERS` unset and the page simply shows nothing.
+
+> The server must be able to reach the printers' network. Access codes are
+> credentials - keep them in `.env`, never in the repo.
+
 ### 🎥 Motion Capture Lab booking
 
 Open **Motion Capture Lab** from the home page (or go to `/mocap`) for a week calendar of

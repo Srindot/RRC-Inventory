@@ -286,6 +286,9 @@ func main() {
 		}
 	}
 
+	// Connect to the lab's 3D printers, if any are configured
+	printers := loadPrinterManager()
+
 	sessions := newSessionStore()
 
 	// requireAdmin authenticates admin API calls with a bearer session token.
@@ -543,6 +546,24 @@ func main() {
 			}
 
 			c.JSON(200, gin.H{"message": "Item marked as returned. Thank you!"})
+		})
+
+		// --- 3D PRINTERS (read-only status and camera) ---
+
+		// Live status of every configured printer
+		api.GET("/printers", func(c *gin.Context) {
+			c.JSON(200, printers.Statuses())
+		})
+
+		// Latest camera frame as a single JPEG
+		api.GET("/printers/:id/snapshot", func(c *gin.Context) {
+			frame, ok := printers.Frame(c.Param("id"))
+			if !ok {
+				c.JSON(404, gin.H{"error": "No camera image available"})
+				return
+			}
+			c.Header("Cache-Control", "no-store")
+			c.Data(200, "image/jpeg", frame)
 		})
 
 		// --- MOTION CAPTURE LAB BOOKINGS ---

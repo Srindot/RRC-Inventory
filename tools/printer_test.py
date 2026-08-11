@@ -26,6 +26,7 @@ import time
 MQTT_PORT = 8883
 CAMERA_PORT = 6000
 CAMERA_WAIT_SECONDS = 20
+STATUS_WAIT_SECONDS = 30
 FRAME_RATE_SAMPLE_SECONDS = 15
 
 
@@ -117,11 +118,14 @@ def main():
         heading("2. Live status (MQTT)")
         print("  waiting for the first status message...")
 
-        # Connecting is not enough - anything can accept a TCP connection.
-        # Real status means the MQTT session authenticated AND reported a state.
+        # Connecting is not enough - anything can accept a TCP connection, and
+        # the library reports harmless defaults (state UNKNOWN, temps 0.0)
+        # before any message has actually arrived. The only honest test is
+        # whether the printer has sent us real data.
         connected = False
         state = None
-        for _ in range(20):
+        payload = {}
+        for _ in range(STATUS_WAIT_SECONDS):
             time.sleep(1)
             try:
                 connected = printer.mqtt_client_connected()
@@ -131,18 +135,37 @@ def main():
                 state = printer.get_state()
             except Exception:  # noqa: BLE001 - library raises assorted errors early on
                 state = None
-            if connected and state is not None and str(state) != "GcodeState.UNKNOWN":
+            try:
+                payload = printer.mqtt_dump() or {}
+            except Exception:  # noqa: BLE001
+                payload = {}
+            # The printer answers commands with info/pushing/upgrade sections
+            # first; the telemetry lives in "print" and arrives a moment later.
+            if connected and payload.get("print"):
                 break
+
+        state_name = getattr(state, "name", str(state)) if state is not None else "None"
 
         if not connected:
             fail("Could not authenticate to the printer's MQTT server. "
                  "Usually a wrong access code, or LAN mode is off.")
-        elif state is None or str(state) == "GcodeState.UNKNOWN":
-            fail("Connected, but the printer reported no usable state. "
-                 "Check the serial number - it selects which printer to listen to.")
+        elif not payload:
+            fail(f"Connected for {STATUS_WAIT_SECONDS}s but the printer sent no "
+                 "data at all.")
+            print("      (state reads as "
+                  f"{state_name!r} with 0.0 temperatures - those are defaults, "
+                  "not readings)")
+            print("      Check the serial is exactly right; it selects which "
+                  "printer's topic we listen to.")
+        elif not payload.get("print"):
+            fail("Connected and the printer replied, but no telemetry arrived.")
+            print(f"      (got: {', '.join(sorted(payload.keys()))} - these are "
+                  "command acknowledgements, not status)")
         else:
             status_ok = True
-            ok(f"Printer state: {state}")
+            ok(f"Printer sent live telemetry "
+               f"(sections: {', '.join(sorted(payload.keys()))})")
+            ok(f"Printer state: {state_name}")
 
             # Everything below is best-effort - fields vary by state and firmware
             for label, getter in [

@@ -423,6 +423,10 @@
                     ↩️ Return Item
                     <p>Return borrowed equipment</p>
                 </button>
+                <a class="option-btn printers-btn" href="/printers">
+                    🖨️ 3D Printers
+                    <p>See which printers are free</p>
+                </a>
                 <a class="option-btn mocap-btn" href="/mocap">
                     🎥 Motion Capture Lab
                     <p>Book a slot and see the calendar</p>
@@ -1134,6 +1138,18 @@
     .return-btn:hover {
         background: linear-gradient(135deg, #89b4fa, #b4befe);
         border-color: #74c7ec;
+    }
+
+    .printers-btn {
+        background: linear-gradient(135deg, #fab387, #f9e2af);
+        color: #11111b;
+        display: block;
+        text-decoration: none;
+    }
+
+    .printers-btn:hover {
+        background: linear-gradient(135deg, #f9e2af, #fab387);
+        border-color: #fab387;
     }
 
     .mocap-btn {
