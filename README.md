@@ -84,6 +84,12 @@ network. Leave `PRINTERS` unset and the page simply shows nothing.
 > The server must be able to reach the printers' network. Access codes are
 > credentials - keep them in `.env`, never in the repo.
 
+**If a printer's access code changes** (toggling LAN mode regenerates it), the
+printer page shows an **⚠️ Access code changed** warning on that printer, and a
+logged-in admin can paste the new code straight into the page. It reconnects by
+itself - no editing `.env`, no restart, no downtime. The new code is saved in the
+database and overrides `PRINTERS` from then on, so it survives restarts too.
+
 ### 🎥 Motion Capture Lab booking
 
 Open **Motion Capture Lab** from the home page (or go to `/mocap`) for a week calendar of

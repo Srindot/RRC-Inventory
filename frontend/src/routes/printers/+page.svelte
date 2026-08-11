@@ -12,6 +12,10 @@
     // Stopping a print is admin-only; the button only appears when an admin
     // session is present, and the backend checks the token regardless.
     let adminToken = '';
+    // Printer id currently showing the "change access code" box
+    let editingCode = '';
+    let newCode = '';
+    let savingCode = false;
     let cameraTick = Date.now();
     let statusTimer;
     let cameraTimer;
@@ -77,6 +81,53 @@
             error = 'Could not reach the server';
         } finally {
             stopping = '';
+        }
+    }
+
+    function startCodeEdit(printer) {
+        editingCode = printer.id;
+        newCode = '';
+    }
+
+    async function saveAccessCode(printer) {
+        if (!newCode.trim()) {
+            error = 'Enter the new access code from the printer screen';
+            return;
+        }
+
+        savingCode = true;
+        try {
+            const response = await fetch(`/api/admin/printers/${printer.id}/access-code`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${adminToken}`
+                },
+                body: JSON.stringify({ access_code: newCode.trim() })
+            });
+
+            if (response.status === 401) {
+                adminToken = '';
+                error = 'Your admin session expired. Log in again.';
+                return;
+            }
+
+            const result = await response.json();
+            if (response.ok) {
+                notice = `${printer.name}: access code updated, reconnecting...`;
+                setTimeout(() => (notice = ''), 8000);
+                editingCode = '';
+                newCode = '';
+                // Reconnection takes a few seconds
+                setTimeout(loadPrinters, 4000);
+                setTimeout(loadPrinters, 12000);
+            } else {
+                error = result.error || 'Could not update the access code';
+            }
+        } catch (e) {
+            error = 'Could not reach the server';
+        } finally {
+            savingCode = false;
         }
     }
 
@@ -168,6 +219,48 @@
                         </div>
                         <span class="state-badge {stateClass(printer)}">{stateLabel(printer)}</span>
                     </div>
+
+                    {#if printer.access_code_problem}
+                        <div class="code-warning">
+                            <strong>⚠️ Access code changed</strong>
+                            <p>
+                                {printer.name} is refusing our access code. This happens when
+                                LAN mode is toggled on the printer, which regenerates the code.
+                            </p>
+                            {#if adminToken}
+                                {#if editingCode === printer.id}
+                                    <div class="code-form">
+                                        <input
+                                            type="text"
+                                            bind:value={newCode}
+                                            placeholder="New access code from the printer screen"
+                                            autocomplete="off"
+                                        />
+                                        <button
+                                            class="save-code-btn"
+                                            on:click={() => saveAccessCode(printer)}
+                                            disabled={savingCode}
+                                        >
+                                            {savingCode ? 'Saving...' : 'Save'}
+                                        </button>
+                                        <button class="cancel-code-btn" on:click={() => (editingCode = '')}>
+                                            Cancel
+                                        </button>
+                                    </div>
+                                    <p class="code-hint">
+                                        On the printer: Settings → Network → the code is shown with
+                                        the IP address. No restart needed - it reconnects by itself.
+                                    </p>
+                                {:else}
+                                    <button class="fix-code-btn" on:click={() => startCodeEdit(printer)}>
+                                        Update access code
+                                    </button>
+                                {/if}
+                            {:else}
+                                <p class="code-hint">An admin can fix this from this page.</p>
+                            {/if}
+                        </div>
+                    {/if}
 
                     <div class="camera">
                         {#if printer.camera_online}
@@ -467,6 +560,76 @@
         margin-top: 10px;
         font-size: 0.78rem;
         color: #a6adc8;
+    }
+
+    .code-warning {
+        background: #3b2f1e;
+        border: 1px solid #fab387;
+        border-radius: 8px;
+        padding: 10px 12px;
+        margin-bottom: 10px;
+        font-size: 0.82rem;
+        color: #f9e2af;
+    }
+
+    .code-warning p {
+        margin: 6px 0 0;
+        color: #d7c9a7;
+        line-height: 1.35;
+    }
+
+    .code-form {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 8px;
+    }
+
+    .code-form input {
+        flex: 1;
+        min-width: 150px;
+        background: #1e1e2e;
+        border: 1px solid #45475a;
+        border-radius: 6px;
+        padding: 8px;
+        color: #cdd6f4;
+        font-size: 0.9rem;
+    }
+
+    .fix-code-btn,
+    .save-code-btn {
+        background: #fab387;
+        color: #11111b;
+        border: none;
+        border-radius: 6px;
+        padding: 8px 14px;
+        font-weight: 600;
+        cursor: pointer;
+        margin-top: 8px;
+        min-height: 40px;
+    }
+
+    .save-code-btn { margin-top: 0; }
+
+    .save-code-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
+    .cancel-code-btn {
+        background: #313244;
+        color: #cdd6f4;
+        border: none;
+        border-radius: 6px;
+        padding: 8px 12px;
+        cursor: pointer;
+        min-height: 40px;
+    }
+
+    .code-hint {
+        font-size: 0.75rem;
+        color: #a6adc8;
+        margin-top: 6px;
     }
 
     .stop-btn {

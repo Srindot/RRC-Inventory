@@ -790,6 +790,115 @@
             <button class="back-btn" on:click={goHome}>← Back to Home</button>
             
             <div class="guide-content">
+                <!-- How to print, in the order you actually do it -->
+                <section class="guide-section">
+                    <h3>🚀 How to print - start here</h3>
+
+                    <div class="rule-box">
+                        <strong>The one rule: put your name in the file name.</strong>
+                        <p>
+                            Save your sliced file as <code>yourname_object.3mf</code> - for example
+                            <code>srinath_bracket.3mf</code>. The printer reports the file name, so the
+                            <a href="/printers">printer page</a> shows whose print is running on each
+                            machine. A print nobody can identify is a print that gets stopped when
+                            someone else needs the printer.
+                        </p>
+                    </div>
+
+                    <ol class="steps">
+                        <li>
+                            <strong>Get on the printer network.</strong>
+                            The printers are on their own network inside the lab - they are not on
+                            wifi@iiith. Ask a lab admin how to connect the first time.
+                        </li>
+                        <li>
+                            <strong>Check a printer is actually free.</strong>
+                            Open the <a href="/printers">printer page</a>. It shows Free or In use,
+                            progress and time remaining for all three printers.
+                            <em>Look at the camera before you walk over</em> - a printer can say
+                            "Finished" while someone's finished print is still sitting on the plate.
+                            The plate must be empty and clean before you start.
+                        </li>
+                        <li>
+                            <strong>Add the printer in Bambu Studio</strong> (first time only).
+                            Use LAN mode and enter the printer's IP and access code, both shown on
+                            the printer's own screen under Settings → Network.
+                            <div class="printer-table-wrap">
+                                <table class="printer-table">
+                                    <thead>
+                                        <tr><th>Printer</th><th>Label on the machine</th><th>IP address</th></tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr><td>Printer 1</td><td>3DP-01P-279</td><td><code>192.168.2.101</code></td></tr>
+                                        <tr><td>Printer 2</td><td>3DP-01P-112</td><td><code>192.168.2.105</code></td></tr>
+                                        <tr><td>Printer 3</td><td>3DP-01P-739</td><td><code>192.168.2.102</code></td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <span class="step-note">
+                                Access codes are on each printer's screen. They are not listed here on
+                                purpose - if a code stops working, tell an admin.
+                            </span>
+                        </li>
+                        <li>
+                            <strong>Slice with the right printer and filament.</strong>
+                            Select <em>Bambu Lab P1S</em> and the filament that is actually loaded in
+                            that machine. Wrong filament settings are the single most common cause of
+                            a failed print.
+                        </li>
+                        <li>
+                            <strong>Name the file with your name</strong> (see the rule above), then
+                            send the print.
+                        </li>
+                        <li>
+                            <strong>Watch the first layer.</strong> Stay until the first layer is down.
+                            Most failures happen there, and a bad first layer wastes hours and
+                            filament. After that you can check remotely on the
+                            <a href="/printers">printer page</a>.
+                        </li>
+                        <li>
+                            <strong>Collect your print promptly and clear the plate.</strong>
+                            The next person cannot start until the bed is empty. Take your waste
+                            (purge blobs, skirts, supports) with you.
+                        </li>
+                    </ol>
+                </section>
+
+                <section class="guide-section">
+                    <h3>⚠️ When something goes wrong</h3>
+                    <ul class="plain-list">
+                        <li>
+                            <strong>Print failing or spaghetti?</strong> Stop it. If you are in the lab,
+                            stop it on the printer screen. If you are not, message a lab admin - admins
+                            can stop any print remotely from the printer page.
+                        </li>
+                        <li>
+                            <strong>Filament ran out or jammed?</strong> Do not force anything. Tell an
+                            admin - a wrongly cleared jam can damage the hotend.
+                        </li>
+                        <li>
+                            <strong>Printer shows Offline on the website?</strong> It is switched off or
+                            off the network. Tell an admin.
+                        </li>
+                        <li>
+                            <strong>Print stopped and you do not know why?</strong> An admin may have
+                            stopped it - the printer page shows who did. Ask them.
+                        </li>
+                    </ul>
+                </section>
+
+                <section class="guide-section">
+                    <h3>📋 Lab rules</h3>
+                    <ul class="plain-list">
+                        <li>Put your name in the file name. Every time.</li>
+                        <li>Do not start a long print and disappear without telling anyone.</li>
+                        <li>Do not cancel or remove someone else's print. Ask an admin.</li>
+                        <li>Do not change printer settings, calibration or firmware.</li>
+                        <li>Leave the machine and the area cleaner than you found it.</li>
+                        <li>If you break something, say so. Hiding it costs the lab more.</li>
+                    </ul>
+                </section>
+
                 <!-- Official Documentation Links -->
                 <section class="guide-section">
                     <h3>📚 Official Documentation</h3>
@@ -2345,6 +2454,95 @@
     }
 
     /* Printer Guide Styles */
+    .rule-box {
+        background: #2a2438;
+        border: 1px solid #cba6f7;
+        border-left: 4px solid #cba6f7;
+        border-radius: 8px;
+        padding: 14px 16px;
+        margin-bottom: 18px;
+    }
+
+    .rule-box strong {
+        color: #cba6f7;
+        font-size: 1.02rem;
+    }
+
+    .rule-box p {
+        margin: 8px 0 0;
+        line-height: 1.5;
+        font-size: 0.92rem;
+    }
+
+    .steps {
+        padding-left: 20px;
+        margin: 0;
+    }
+
+    .steps li {
+        margin-bottom: 14px;
+        line-height: 1.5;
+        font-size: 0.92rem;
+    }
+
+    .steps strong {
+        color: #f9e2af;
+    }
+
+    .step-note {
+        display: block;
+        margin-top: 6px;
+        font-size: 0.82rem;
+        color: #a6adc8;
+    }
+
+    .plain-list {
+        padding-left: 20px;
+        margin: 0;
+    }
+
+    .plain-list li {
+        margin-bottom: 10px;
+        line-height: 1.5;
+        font-size: 0.92rem;
+    }
+
+    .printer-table-wrap {
+        overflow-x: auto;
+        margin: 10px 0 4px;
+    }
+
+    .printer-table {
+        border-collapse: collapse;
+        font-size: 0.85rem;
+        min-width: 380px;
+    }
+
+    .printer-table th,
+    .printer-table td {
+        border: 1px solid #313244;
+        padding: 6px 10px;
+        text-align: left;
+    }
+
+    .printer-table th {
+        background: #181825;
+        color: #a6adc8;
+        font-weight: 600;
+    }
+
+    .guide-content code {
+        background: #181825;
+        border: 1px solid #313244;
+        border-radius: 4px;
+        padding: 1px 6px;
+        font-size: 0.88em;
+    }
+
+    .guide-content a {
+        color: #89b4fa;
+    }
+
     .printer-guide-container {
         background: #11111b;
         padding: clamp(15px, 3vw, 25px);

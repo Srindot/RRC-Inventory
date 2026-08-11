@@ -14,6 +14,7 @@ import (
 	"crypto/tls"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -24,6 +25,7 @@ import (
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"gorm.io/gorm"
 )
 
 const (
@@ -59,7 +61,10 @@ type PrinterStatus struct {
 	BedTemp          float64 `json:"bed_temp"`
 	ChamberTemp      float64 `json:"chamber_temp"`
 	CameraOnline     bool    `json:"camera_online"`
-	UpdatedAt        *string `json:"updated_at"`
+	// Reachable but rejecting our credentials - almost always a changed
+	// access code, which the printer does when LAN mode is toggled.
+	AccessCodeProblem bool    `json:"access_code_problem"`
+	UpdatedAt         *string `json:"updated_at"`
 	// Set when an admin has stopped a job, so the action is visible rather
 	// than silent.
 	LastActionBy *string `json:"last_action_by"`
@@ -101,6 +106,14 @@ type printer struct {
 	lastActionBy string
 	lastActionAt time.Time
 
+	// Credential health, derived from the camera handshake: the printer
+	// accepts the TCP connection and then hangs up when the code is wrong.
+	authFailed bool
+
+	// Closed and replaced when the access code changes, to force a reconnect
+	cameraConn net.Conn
+	restart    chan struct{}
+
 	// Set once the MQTT client is running, so commands can be published
 	client mqtt.Client
 
@@ -115,6 +128,16 @@ type printer struct {
 type PrinterManager struct {
 	printers []*printer
 	byID     map[string]*printer
+	db       *gorm.DB
+}
+
+// PrinterCredential stores an access code changed from the admin page, so the
+// new code survives a restart without anyone editing .env on the server.
+// It overrides whatever PRINTERS specifies.
+type PrinterCredential struct {
+	gorm.Model
+	PrinterID  string `gorm:"uniqueIndex"`
+	AccessCode string
 }
 
 // parsePrinterConfig reads the PRINTERS environment variable. Format:
@@ -178,11 +201,33 @@ func slugifyPrinterName(name string) string {
 
 // NewPrinterManager starts background connections to every configured printer.
 // Printers that are switched off simply show as offline and keep retrying.
-func NewPrinterManager(configs []PrinterConfig) *PrinterManager {
-	m := &PrinterManager{byID: make(map[string]*printer)}
+func NewPrinterManager(configs []PrinterConfig, db *gorm.DB) *PrinterManager {
+	m := &PrinterManager{byID: make(map[string]*printer), db: db}
+
+	// A code changed from the admin page wins over the one in PRINTERS
+	if db != nil {
+		var saved []PrinterCredential
+		if err := db.Find(&saved).Error; err == nil {
+			overrides := make(map[string]string, len(saved))
+			for _, credential := range saved {
+				overrides[credential.PrinterID] = credential.AccessCode
+			}
+			for i := range configs {
+				if code, ok := overrides[configs[i].ID]; ok && code != "" {
+					configs[i].AccessCode = code
+					log.Printf("Printer %s: using the access code saved from the admin page",
+						configs[i].Name)
+				}
+			}
+		}
+	}
 
 	for _, cfg := range configs {
-		p := &printer{cfg: cfg, cameraPort: printerCameraPort}
+		p := &printer{
+			cfg:        cfg,
+			cameraPort: printerCameraPort,
+			restart:    make(chan struct{}, 1),
+		}
 		m.printers = append(m.printers, p)
 		m.byID[cfg.ID] = p
 
@@ -193,14 +238,76 @@ func NewPrinterManager(configs []PrinterConfig) *PrinterManager {
 	return m
 }
 
+// accessCode returns the current code, which an admin can change at runtime.
+func (p *printer) accessCode() string {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.cfg.AccessCode
+}
+
+// setAccessCode swaps the credential and forces both connections to restart.
+func (p *printer) setAccessCode(code string) {
+	p.mu.Lock()
+	p.cfg.AccessCode = code
+	// Assume the new code works until the printer says otherwise
+	p.authFailed = false
+	conn := p.cameraConn
+	p.cameraConn = nil
+	p.mu.Unlock()
+
+	// Dropping the camera socket makes the reader loop reconnect with the
+	// new code; the MQTT loop is signalled separately.
+	if conn != nil {
+		conn.Close()
+	}
+
+	select {
+	case p.restart <- struct{}{}:
+	default:
+	}
+}
+
 // --- status over MQTT ---------------------------------------------------
 
+// runStatus keeps an MQTT session alive, rebuilding it whenever the access
+// code changes (paho fixes credentials at client construction).
 func (p *printer) runStatus() {
+	for {
+		client := p.connectStatus()
+
+		requestTopic := fmt.Sprintf("device/%s/request", p.cfg.Serial)
+		ticker := time.NewTicker(60 * time.Second)
+
+		// Nudge the printer for a fresh dump periodically; some fields are only
+		// sent on change and we want to recover after a reconnect.
+	inner:
+		for {
+			select {
+			case <-ticker.C:
+				if client.IsConnected() {
+					client.Publish(requestTopic, 0, false, `{"pushing":{"command":"pushall"}}`)
+				}
+			case <-p.restart:
+				log.Printf("printer %s: reconnecting with the new access code", p.cfg.Name)
+				break inner
+			}
+		}
+
+		ticker.Stop()
+		client.Disconnect(250)
+
+		p.mu.Lock()
+		p.client = nil
+		p.mu.Unlock()
+	}
+}
+
+func (p *printer) connectStatus() mqtt.Client {
 	opts := mqtt.NewClientOptions()
 	opts.AddBroker(fmt.Sprintf("ssl://%s:%d", p.cfg.Host, printerMQTTPort))
 	opts.SetClientID(fmt.Sprintf("rrc-inventory-%s", p.cfg.ID))
 	opts.SetUsername("bblp")
-	opts.SetPassword(p.cfg.AccessCode)
+	opts.SetPassword(p.accessCode())
 	// The printer uses a self-signed certificate; there is no CA to check it
 	// against, and this traffic never leaves the printer network.
 	opts.SetTLSConfig(&tls.Config{InsecureSkipVerify: true}) // #nosec G402
@@ -238,15 +345,7 @@ func (p *printer) runStatus() {
 		log.Printf("printer %s: initial connect failed: %v", p.cfg.Name, token.Error())
 	}
 
-	// Nudge the printer for a fresh dump periodically; some fields are only
-	// sent on change and we want to recover after a reconnect.
-	ticker := time.NewTicker(60 * time.Second)
-	defer ticker.Stop()
-	for range ticker.C {
-		if client.IsConnected() {
-			client.Publish(requestTopic, 0, false, `{"pushing":{"command":"pushall"}}`)
-		}
-	}
+	return client
 }
 
 // applyReport merges a report into the printer's state. Reports are partial,
@@ -327,10 +426,16 @@ func (p *printer) streamCamera() error {
 	}
 	defer conn.Close()
 
-	if _, err := conn.Write(cameraAuthPacket("bblp", p.cfg.AccessCode)); err != nil {
+	if _, err := conn.Write(cameraAuthPacket("bblp", p.accessCode())); err != nil {
 		return fmt.Errorf("auth: %w", err)
 	}
 
+	// Hold the connection so a credential change can drop it immediately
+	p.mu.Lock()
+	p.cameraConn = conn
+	p.mu.Unlock()
+
+	framesThisConnection := 0
 	header := make([]byte, cameraHeaderSize)
 	for {
 		// Frames arrive every couple of seconds; allow plenty of slack before
@@ -343,11 +448,24 @@ func (p *printer) streamCamera() error {
 		// declares. Reading exact lengths avoids the frame corruption you get
 		// from trying to detect boundaries in a byte stream.
 		if _, err := io.ReadFull(conn, header); err != nil {
+			// The printer accepts the connection and then hangs up when the
+			// access code is wrong. Nothing received at all points at the
+			// credentials rather than the network.
+			if framesThisConnection == 0 &&
+				(errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)) {
+				p.setAuthFailed(true)
+				return fmt.Errorf("printer rejected our access code")
+			}
 			return fmt.Errorf("read header: %w", err)
 		}
 
 		payloadSize := binary.LittleEndian.Uint32(header[0:4])
 		if payloadSize == 0 || payloadSize > 8*1024*1024 {
+			// Garbage instead of a length header means the handshake was not
+			// accepted the way we expect
+			if framesThisConnection == 0 {
+				p.setAuthFailed(true)
+			}
 			return fmt.Errorf("implausible frame size %d (wrong access code?)", payloadSize)
 		}
 
@@ -362,12 +480,22 @@ func (p *printer) streamCamera() error {
 			continue
 		}
 
+		framesThisConnection++
+
 		p.mu.Lock()
 		p.lastFrame = frame
 		p.lastFrameAt = time.Now()
 		p.frameVersion++
+		// Frames are proof the credentials are good
+		p.authFailed = false
 		p.mu.Unlock()
 	}
+}
+
+func (p *printer) setAuthFailed(failed bool) {
+	p.mu.Lock()
+	p.authFailed = failed
+	p.mu.Unlock()
 }
 
 // latestFrame returns the most recent JPEG and its version counter.
@@ -391,10 +519,11 @@ func (p *printer) status() PrinterStatus {
 	cameraOnline := p.lastFrame != nil && time.Since(p.lastFrameAt) < cameraStaleAfter
 
 	status := PrinterStatus{
-		ID:           p.cfg.ID,
-		Name:         p.cfg.Name,
-		Online:       online,
-		CameraOnline: cameraOnline,
+		ID:                p.cfg.ID,
+		Name:              p.cfg.Name,
+		Online:            online,
+		CameraOnline:      cameraOnline,
+		AccessCodeProblem: p.authFailed,
 	}
 
 	if p.lastActionBy != "" {
@@ -496,17 +625,45 @@ func (m *PrinterManager) Stop(id, adminName string) error {
 	return p.stop(adminName)
 }
 
+// UpdateAccessCode changes a printer's access code, saves it so it survives a
+// restart, and reconnects. No downtime, no editing files on the server.
+func (m *PrinterManager) UpdateAccessCode(id, code string) error {
+	p, ok := m.byID[id]
+	if !ok {
+		return fmt.Errorf("unknown printer")
+	}
+
+	code = strings.TrimSpace(code)
+	if code == "" {
+		return fmt.Errorf("access code cannot be empty")
+	}
+
+	if m.db != nil {
+		credential := PrinterCredential{PrinterID: id, AccessCode: code}
+		err := m.db.Where(PrinterCredential{PrinterID: id}).
+			Assign(PrinterCredential{AccessCode: code}).
+			FirstOrCreate(&credential).Error
+		if err != nil {
+			return fmt.Errorf("could not save the new access code: %w", err)
+		}
+	}
+
+	p.setAccessCode(code)
+	log.Printf("printer %s: access code updated", p.cfg.Name)
+	return nil
+}
+
 // Configured reports whether any printers are set up at all.
 func (m *PrinterManager) Configured() bool {
 	return len(m.printers) > 0
 }
 
 // loadPrinterManager builds the manager from the environment.
-func loadPrinterManager() *PrinterManager {
+func loadPrinterManager(db *gorm.DB) *PrinterManager {
 	configs, err := parsePrinterConfig(os.Getenv("PRINTERS"))
 	if err != nil {
 		log.Printf("Ignoring PRINTERS setting: %v", err)
-		return NewPrinterManager(nil)
+		return NewPrinterManager(nil, db)
 	}
 
 	if len(configs) == 0 {
@@ -517,5 +674,5 @@ func loadPrinterManager() *PrinterManager {
 		}
 	}
 
-	return NewPrinterManager(configs)
+	return NewPrinterManager(configs, db)
 }

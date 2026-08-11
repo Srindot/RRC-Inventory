@@ -219,7 +219,7 @@ func main() {
 	}
 
 	log.Println("Running database migrations...")
-	db.AutoMigrate(&Item{}, &Loan{}, &Admin{}, &Booking{})
+	db.AutoMigrate(&Item{}, &Loan{}, &Admin{}, &Booking{}, &PrinterCredential{})
 
 	// Approvals were removed. Bring records created under the old flow into the
 	// new states so nothing is stranded in a status the app no longer uses.
@@ -287,7 +287,7 @@ func main() {
 	}
 
 	// Connect to the lab's 3D printers, if any are configured
-	printers := loadPrinterManager()
+	printers := loadPrinterManager(db)
 
 	sessions := newSessionStore()
 
@@ -935,6 +935,30 @@ func main() {
 					return
 				}
 				c.JSON(200, gin.H{"message": "Stop command sent to the printer"})
+			})
+
+			// Update a printer's access code. Printers regenerate their code
+			// when LAN mode is toggled, and this avoids editing .env and
+			// restarting the site to recover.
+			admin.PUT("/printers/:id/access-code", func(c *gin.Context) {
+				type AccessCodeRequest struct {
+					AccessCode string `json:"access_code" binding:"required"`
+				}
+
+				var req AccessCodeRequest
+				if err := c.ShouldBindJSON(&req); err != nil {
+					c.JSON(400, gin.H{"error": "An access code is required"})
+					return
+				}
+
+				if err := printers.UpdateAccessCode(c.Param("id"), req.AccessCode); err != nil {
+					c.JSON(400, gin.H{"error": err.Error()})
+					return
+				}
+
+				c.JSON(200, gin.H{
+					"message": "Access code updated. Reconnecting to the printer...",
+				})
 			})
 
 			// Delete any Motion Capture Lab booking
