@@ -41,13 +41,29 @@ if [ ! -f .env ]; then
     exit 1
 fi
 
-# shellcheck disable=SC1091
-set -a; source .env; set +a
+# Read just the values we need. Do NOT source .env - values like PRINTERS
+# contain spaces and pipe characters, which the shell would try to execute.
+read_env_value() {
+    grep -E "^[[:space:]]*$1=" .env 2>/dev/null | tail -1 |
+        cut -d= -f2- |
+        sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' \
+            -e "s/^'\(.*\)'$/\1/" -e 's/^"\(.*\)"$/\1/'
+}
 
+POSTGRES_USER="$(read_env_value POSTGRES_USER)"
+POSTGRES_DB="$(read_env_value POSTGRES_DB)"
 POSTGRES_USER="${POSTGRES_USER:-user}"
 POSTGRES_DB="${POSTGRES_DB:-mydatabase}"
 
-if ! $COMPOSE_CMD ps --status running 2>/dev/null | grep -q db; then
+DOCKER_CMD="docker"
+if ! docker ps &> /dev/null; then
+    DOCKER_CMD="sudo docker"
+fi
+
+DB_CONTAINER="$($COMPOSE_CMD ps -q db 2>/dev/null | head -1)"
+BACKEND_CONTAINER="$($COMPOSE_CMD ps -q backend 2>/dev/null | head -1)"
+
+if [ -z "$DB_CONTAINER" ]; then
     echo "❌ The database container is not running. Start the system first (./start.sh)."
     exit 1
 fi
@@ -77,12 +93,14 @@ if [ "$CONFIRM" != "restore" ]; then
 fi
 
 echo "📦 Restoring the database..."
-$COMPOSE_CMD exec -T db psql -q -U "$POSTGRES_USER" -d "$POSTGRES_DB" < "$STAGING/database.sql" > /dev/null
+$DOCKER_CMD exec -i "$DB_CONTAINER" psql -q -U "$POSTGRES_USER" -d "$POSTGRES_DB" < "$STAGING/database.sql" > /dev/null
 
 echo "🖼️  Restoring item photos..."
-$COMPOSE_CMD exec -T backend sh -c 'rm -rf /app/uploads/* || true'
-if [ "$PHOTO_COUNT" != "0" ]; then
-    $COMPOSE_CMD cp "$STAGING/uploads/." backend:/app/uploads/
+if [ -n "$BACKEND_CONTAINER" ]; then
+    $DOCKER_CMD exec "$BACKEND_CONTAINER" sh -c 'rm -rf /app/uploads/* || true'
+    if [ "$PHOTO_COUNT" != "0" ]; then
+        $DOCKER_CMD cp "$STAGING/uploads/." "$BACKEND_CONTAINER:/app/uploads/"
+    fi
 fi
 
 echo "🔄 Restarting the backend..."

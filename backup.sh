@@ -24,13 +24,30 @@ if [ ! -f .env ]; then
     exit 1
 fi
 
-# shellcheck disable=SC1091
-set -a; source .env; set +a
+# Read just the values we need. Do NOT source .env - values like PRINTERS
+# contain spaces and pipe characters, which the shell would try to execute.
+read_env_value() {
+    grep -E "^[[:space:]]*$1=" .env 2>/dev/null | tail -1 |
+        cut -d= -f2- |
+        sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' \
+            -e "s/^'\(.*\)'$/\1/" -e 's/^"\(.*\)"$/\1/'
+}
 
+POSTGRES_USER="$(read_env_value POSTGRES_USER)"
+POSTGRES_DB="$(read_env_value POSTGRES_DB)"
 POSTGRES_USER="${POSTGRES_USER:-user}"
 POSTGRES_DB="${POSTGRES_DB:-mydatabase}"
 
-if ! $COMPOSE_CMD ps --status running 2>/dev/null | grep -q db; then
+# "ps -q <service>" works on both compose v1 and v2, unlike "ps --status"
+DOCKER_CMD="docker"
+if ! docker ps &> /dev/null; then
+    DOCKER_CMD="sudo docker"
+fi
+
+DB_CONTAINER="$($COMPOSE_CMD ps -q db 2>/dev/null | head -1)"
+BACKEND_CONTAINER="$($COMPOSE_CMD ps -q backend 2>/dev/null | head -1)"
+
+if [ -z "$DB_CONTAINER" ]; then
     echo "❌ The database container is not running. Start the system first (./start.sh)."
     exit 1
 fi
@@ -44,12 +61,19 @@ trap 'rm -rf "$STAGING"' EXIT
 mkdir -p "$BACKUP_DIR"
 
 echo "📦 Backing up the database..."
-$COMPOSE_CMD exec -T db pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists > "$STAGING/database.sql"
+$DOCKER_CMD exec -i "$DB_CONTAINER" pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists > "$STAGING/database.sql"
+
+if [ ! -s "$STAGING/database.sql" ]; then
+    echo "❌ The database dump came out empty - check the credentials in .env."
+    exit 1
+fi
 
 echo "🖼️  Backing up item photos..."
 mkdir -p "$STAGING/uploads"
-# Copying out of the container works whether or not any photos exist yet
-$COMPOSE_CMD cp backend:/app/uploads/. "$STAGING/uploads/" 2>/dev/null || true
+# "docker cp" rather than "compose cp", which only exists in compose v2
+if [ -n "$BACKEND_CONTAINER" ]; then
+    $DOCKER_CMD cp "$BACKEND_CONTAINER:/app/uploads/." "$STAGING/uploads/" 2>/dev/null || true
+fi
 
 PHOTO_COUNT="$(find "$STAGING/uploads" -type f | wc -l | tr -d ' ')"
 
