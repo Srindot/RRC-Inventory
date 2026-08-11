@@ -340,6 +340,17 @@
         color: #cdd6f4;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         margin: 0;
+        /* The home page locks the page height with overflow:hidden. That style
+           stays loaded after client-side navigation, so undo it here or this
+           page cannot be scrolled. */
+        height: auto;
+        min-height: 100vh;
+        overflow-y: auto;
+    }
+
+    :global(html) {
+        height: auto;
+        overflow-y: auto;
     }
 
     .container {
