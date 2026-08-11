@@ -159,7 +159,8 @@
             {#each printers as printer (printer.id)}
                 <div class="printer-card {stateClass(printer)}">
                     <div class="card-head">
-                        <div>
+                        <img src="/P1S.png" alt="" class="printer-icon" />
+                        <div class="head-text">
                             <h2>{printer.name}</h2>
                             <span class="availability {isPrinting(printer) ? 'busy' : 'free'}">
                                 {availability(printer)}
@@ -176,7 +177,7 @@
                             />
                         {:else}
                             <div class="camera-placeholder">
-                                <span>📷</span>
+                                <img src="/P1S.png" alt="" class="placeholder-icon" />
                                 <p>No camera image</p>
                             </div>
                         {/if}
@@ -335,9 +336,21 @@
     .card-head {
         display: flex;
         justify-content: space-between;
-        align-items: flex-start;
-        gap: 8px;
+        align-items: center;
+        gap: 10px;
         margin-bottom: 10px;
+    }
+
+    .printer-icon {
+        width: 42px;
+        height: 42px;
+        object-fit: contain;
+        flex-shrink: 0;
+    }
+
+    .head-text {
+        flex: 1;
+        min-width: 0;
     }
 
     h2 {
@@ -392,8 +405,12 @@
         color: #45475a;
     }
 
-    .camera-placeholder span {
-        font-size: 2rem;
+    /* Scoped past the ".camera img" rule above, which would stretch it */
+    .camera-placeholder .placeholder-icon {
+        width: 64px;
+        height: 64px;
+        object-fit: contain;
+        opacity: 0.35;
     }
 
     .camera-placeholder p {
