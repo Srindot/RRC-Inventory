@@ -42,6 +42,10 @@
         { value: 'Control Lab', label: 'Control Lab' }
     ];
 
+    // The printer wifi password is hidden behind a click so it is not just
+    // sitting on screen for anyone glancing over
+    let showWifiPassword = false;
+
     // Return search
     let searchQuery = '';
     let filteredLoans = [];
@@ -383,6 +387,7 @@
 
     function goToPrinterGuide() {
         currentView = 'printer-guide';
+        showWifiPassword = false;
     }
 </script>
 
@@ -808,8 +813,32 @@
                     <ol class="steps">
                         <li>
                             <strong>Get on the printer network.</strong>
-                            The printers are on their own network inside the lab - they are not on
-                            wifi@iiith. Ask a lab admin how to connect the first time.
+                            The printers have their own network inside the lab - they are not
+                            reachable from wifi@iiith.
+                            <div class="wifi-box">
+                                <div class="wifi-row">
+                                    <span class="wifi-label">Network</span>
+                                    <code>printers@rrc</code>
+                                </div>
+                                <div class="wifi-row">
+                                    <span class="wifi-label">Password</span>
+                                    {#if showWifiPassword}
+                                        <code>printers@1234</code>
+                                        <button class="reveal-btn" on:click={() => showWifiPassword = false}>
+                                            Hide
+                                        </button>
+                                    {:else}
+                                        <code class="hidden-password">••••••••••••</code>
+                                        <button class="reveal-btn" on:click={() => showWifiPassword = true}>
+                                            Click to reveal
+                                        </button>
+                                    {/if}
+                                </div>
+                                <p class="wifi-note">
+                                    Lab members only. Do not post this in group chats or share it
+                                    outside the lab.
+                                </p>
+                            </div>
                         </li>
                         <li>
                             <strong>Check a printer is actually free.</strong>
@@ -818,6 +847,12 @@
                             <em>Look at the camera before you walk over</em> - a printer can say
                             "Finished" while someone's finished print is still sitting on the plate.
                             The plate must be empty and clean before you start.
+                        </li>
+                        <li>
+                            <strong>Install Bambu Studio.</strong>
+                            You need it to slice your model - it converts your STL into
+                            instructions the printer understands. Download it from
+                            <a href="https://bambulab.com/en/download/studio" target="_blank" rel="noopener noreferrer">bambulab.com</a>.
                         </li>
                         <li>
                             <strong>Add the printer in Bambu Studio</strong> (first time only).
@@ -841,20 +876,38 @@
                             </span>
                         </li>
                         <li>
-                            <strong>Slice with the right printer and filament.</strong>
-                            Select <em>Bambu Lab P1S</em> and the filament that is actually loaded in
-                            that machine. Wrong filament settings are the single most common cause of
-                            a failed print.
+                            <strong>Slice with the right printer and the right material.</strong>
+                            Select <em>Bambu Lab P1S</em>, and set the filament profile to the
+                            material that is <em>actually loaded</em> in that machine.
+                            <span class="danger-note">
+                                Printing PLA with PETG settings (or the other way round) melts at the
+                                wrong temperature and <strong>clogs the hotend</strong>. A clog takes
+                                the printer out of service and is a real repair job - check twice.
+                            </span>
+                        </li>
+                        <li>
+                            <strong>Get your settings checked.</strong>
+                            Before your first few prints, show your slicer settings to a lab admin.
+                            Thirty seconds of checking saves a failed 10 hour print and wasted
+                            filament.
+                        </li>
+                        <li>
+                            <strong>Check the plate and the filament before you start.</strong>
+                            The plate must be empty, clean and free of leftover plastic - anything
+                            stuck on it ruins the first layer. Confirm filament is loaded properly and
+                            is the material you sliced for, and that there is enough left on the spool
+                            for your print.
                         </li>
                         <li>
                             <strong>Name the file with your name</strong> (see the rule above), then
                             send the print.
                         </li>
                         <li>
-                            <strong>Watch the first layer.</strong> Stay until the first layer is down.
-                            Most failures happen there, and a bad first layer wastes hours and
-                            filament. After that you can check remotely on the
-                            <a href="/printers">printer page</a>.
+                            <strong>Watch the first layer, then check in regularly.</strong>
+                            Stay until the first layer is down - most failures happen there. After
+                            that keep checking on it every so often from the
+                            <a href="/printers">printer page</a>; the camera shows you whether it is
+                            still printing properly. Do not start a print and forget about it.
                         </li>
                         <li>
                             <strong>Collect your print promptly and clear the plate.</strong>
@@ -865,24 +918,81 @@
                 </section>
 
                 <section class="guide-section">
-                    <h3>⚠️ When something goes wrong</h3>
+                    <h3>🧵 Loading and unloading filament</h3>
+                    <p class="section-intro">
+                        Always use the printer's own screen menu. Never pull filament out cold and
+                        never force it - that is how hotends get damaged.
+                    </p>
+                    <div class="two-col">
+                        <div class="col-box">
+                            <h4>Loading</h4>
+                            <ol class="mini-steps">
+                                <li>Put the spool on the holder so it feeds without tangling.</li>
+                                <li>Snip the end at an angle so it feeds in cleanly.</li>
+                                <li>Push it through the PTFE tube until it reaches the extruder.</li>
+                                <li>On the screen, choose <em>Filament → Load</em> and pick the material.</li>
+                                <li>Wait for the nozzle to heat and extrude, until the colour coming
+                                    out is only your new filament.</li>
+                            </ol>
+                        </div>
+                        <div class="col-box">
+                            <h4>Unloading</h4>
+                            <ol class="mini-steps">
+                                <li>On the screen, choose <em>Filament → Unload</em>.</li>
+                                <li>Wait for the nozzle to heat - this is not optional.</li>
+                                <li>Let the printer retract it, then pull gently. If it resists,
+                                    stop and ask an admin.</li>
+                                <li>Clip the end and secure it on the spool so it does not tangle
+                                    for the next person.</li>
+                            </ol>
+                        </div>
+                    </div>
+                    <p class="section-note">
+                        Detailed official instructions are in the Bambu Lab documentation linked
+                        below.
+                    </p>
+                </section>
+
+                <section class="guide-section">
+                    <h3>🤔 Questions about the printer page</h3>
                     <ul class="plain-list">
                         <li>
-                            <strong>Print failing or spaghetti?</strong> Stop it. If you are in the lab,
-                            stop it on the printer screen. If you are not, message a lab admin - admins
-                            can stop any print remotely from the printer page.
+                            <strong>Your print is failing and you are not in the lab?</strong>
+                            Message a lab admin - admins can stop any print remotely from the
+                            <a href="/printers">printer page</a>. Faults themselves are covered in
+                            the safety section below.
                         </li>
                         <li>
-                            <strong>Filament ran out or jammed?</strong> Do not force anything. Tell an
-                            admin - a wrongly cleared jam can damage the hotend.
+                            <strong>A printer shows Offline?</strong> It is switched off or off the
+                            network. Tell an admin.
                         </li>
                         <li>
-                            <strong>Printer shows Offline on the website?</strong> It is switched off or
-                            off the network. Tell an admin.
+                            <strong>Your print stopped and you do not know why?</strong> An admin may
+                            have stopped it - the printer page shows who did. Ask them.
                         </li>
                         <li>
-                            <strong>Print stopped and you do not know why?</strong> An admin may have
-                            stopped it - the printer page shows who did. Ask them.
+                            <strong>A printer says "Access code changed"?</strong> Nothing you did.
+                            An admin needs to update it; tell them.
+                        </li>
+                    </ul>
+                </section>
+
+                <section class="guide-section">
+                    <h3>🦺 Safety</h3>
+                    <ul class="plain-list">
+                        <li>
+                            <strong>Be careful with the scraper.</strong> The blade is sharp and
+                            prints come loose suddenly. Scrape <em>away</em> from your hand, never
+                            towards it, and take the plate off the printer first. More people are
+                            hurt by the scraper than by anything else on these machines.
+                        </li>
+                        <li>
+                            <strong>The nozzle and bed are hot</strong> - well over 200 °C at the
+                            nozzle. Let things cool before reaching inside.
+                        </li>
+                        <li>
+                            <strong>Keep the lid closed while printing</strong>, and do not reach in
+                            to "fix" something mid-print. Pause or stop it first.
                         </li>
                     </ul>
                 </section>
@@ -891,10 +1001,19 @@
                     <h3>📋 Lab rules</h3>
                     <ul class="plain-list">
                         <li>Put your name in the file name. Every time.</li>
+                        <li>
+                            <strong>Filament that is not yours needs permission.</strong> Ask the
+                            owner or a lab admin before using someone else's spool. If you are
+                            unsure whose it is, ask - do not assume it is lab stock.
+                        </li>
                         <li>Do not start a long print and disappear without telling anyone.</li>
                         <li>Do not cancel or remove someone else's print. Ask an admin.</li>
                         <li>Do not change printer settings, calibration or firmware.</li>
-                        <li>Leave the machine and the area cleaner than you found it.</li>
+                        <li>
+                            <strong>Keep the printer area clean.</strong> Clear away purge blobs,
+                            supports and offcuts, put tools back, and leave the bench tidy for the
+                            next person.
+                        </li>
                         <li>If you break something, say so. Hiding it costs the lab more.</li>
                     </ul>
                 </section>
@@ -2454,6 +2573,108 @@
     }
 
     /* Printer Guide Styles */
+    .wifi-box {
+        background: #181825;
+        border: 1px solid #313244;
+        border-radius: 8px;
+        padding: 10px 12px;
+        margin: 8px 0 4px;
+    }
+
+    .wifi-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 6px;
+    }
+
+    .wifi-label {
+        color: #a6adc8;
+        font-size: 0.8rem;
+        min-width: 70px;
+    }
+
+    .hidden-password {
+        letter-spacing: 2px;
+        color: #6c7086;
+    }
+
+    .reveal-btn {
+        background: #313244;
+        color: #cdd6f4;
+        border: 1px solid #45475a;
+        border-radius: 6px;
+        padding: 8px 14px;
+        /* Big enough to tap on a phone */
+        min-height: 38px;
+        font-size: 0.8rem;
+        cursor: pointer;
+    }
+
+    .reveal-btn:hover {
+        background: #45475a;
+    }
+
+    .wifi-note {
+        margin: 4px 0 0;
+        font-size: 0.75rem;
+        color: #6c7086;
+    }
+
+    .danger-note {
+        display: block;
+        margin-top: 6px;
+        padding: 8px 10px;
+        background: #3b2a2a;
+        border-left: 3px solid #f38ba8;
+        border-radius: 4px;
+        font-size: 0.85rem;
+        color: #f5c2c7;
+    }
+
+    .section-intro {
+        font-size: 0.9rem;
+        color: #a6adc8;
+        margin: 0 0 10px;
+    }
+
+    .section-note {
+        font-size: 0.8rem;
+        color: #6c7086;
+        margin-top: 8px;
+    }
+
+    .two-col {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 12px;
+    }
+
+    .col-box {
+        background: #181825;
+        border: 1px solid #313244;
+        border-radius: 8px;
+        padding: 10px 12px;
+    }
+
+    .col-box h4 {
+        margin: 0 0 8px;
+        color: #94e2d5;
+        font-size: 0.95rem;
+    }
+
+    .mini-steps {
+        padding-left: 18px;
+        margin: 0;
+    }
+
+    .mini-steps li {
+        margin-bottom: 6px;
+        font-size: 0.85rem;
+        line-height: 1.45;
+    }
+
     .rule-box {
         background: #2a2438;
         border: 1px solid #cba6f7;
