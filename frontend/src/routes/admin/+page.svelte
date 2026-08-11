@@ -397,15 +397,15 @@
     }
 
     // Export data as CSV
-    async function exportCSV() {
+    async function exportCSV(path = '/api/admin/export-csv', filename = 'robotics_research_centre_loans.csv') {
         try {
-            const response = await apiFetch('/api/admin/export-csv');
+            const response = await apiFetch(path);
             if (response && response.ok) {
                 const blob = await response.blob();
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = 'robotics_research_centre_loans.csv';
+                a.download = filename;
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);
@@ -784,8 +784,11 @@
                         {/each}
                     </div>
                     <div class="admin-actions">
-                        <button class="export-btn" on:click={exportCSV}>
-                            📊 Export All Data (CSV)
+                        <button class="export-btn" on:click={() => exportCSV()}>
+                            📊 Export Loans (CSV)
+                        </button>
+                        <button class="export-btn" on:click={() => exportCSV('/api/admin/export-bookings-csv', 'motion_capture_lab_bookings.csv')}>
+                            🎥 Export Bookings (CSV)
                         </button>
                     </div>
                 </div>

@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # PostgreSQL Database
   db:
@@ -31,6 +29,10 @@ services:
     # Reached through Caddy, not published directly.
     expose:
       - "8080"
+    volumes:
+      # Item photos must outlive the container - without this every
+      # stop/start or rebuild throws away every photo ever uploaded.
+      - uploads_data:/app/uploads
     depends_on:
       - db
 
@@ -60,5 +62,6 @@ services:
 
 volumes:
   postgres_data:
+  uploads_data:
   caddy_data:
   caddy_config:

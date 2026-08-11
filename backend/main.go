@@ -466,9 +466,16 @@ func main() {
 					return
 				}
 
-				// Generate unique filename with original extension
+				// Generate unique filename with original extension. The random
+				// suffix keeps two uploads in the same second from overwriting
+				// each other.
 				ext := strings.ToLower(filepath.Ext(file.Filename))
-				photoFilename = fmt.Sprintf("%d%s", time.Now().Unix(), ext)
+				suffix := make([]byte, 6)
+				if _, err := rand.Read(suffix); err != nil {
+					c.JSON(500, gin.H{"error": "Failed to store photo"})
+					return
+				}
+				photoFilename = fmt.Sprintf("%d-%s%s", time.Now().Unix(), hex.EncodeToString(suffix), ext)
 
 				// Save file to uploads directory
 				if err := c.SaveUploadedFile(file, "./uploads/"+photoFilename); err != nil {
@@ -999,6 +1006,36 @@ func main() {
 						strconv.Itoa(daysOverdue),
 					}
 					writer.Write(record)
+				}
+			})
+
+			// Export Motion Capture Lab bookings as CSV
+			admin.GET("/export-bookings-csv", func(c *gin.Context) {
+				var bookings []Booking
+				if err := db.Order("start_time ASC").Find(&bookings).Error; err != nil {
+					c.JSON(500, gin.H{"error": "Failed to retrieve bookings for export"})
+					return
+				}
+
+				c.Header("Content-Type", "text/csv")
+				c.Header("Content-Disposition", "attachment; filename=motion_capture_lab_bookings.csv")
+
+				writer := csv.NewWriter(c.Writer)
+				defer writer.Flush()
+
+				writer.Write([]string{"ID", "Booked By", "Phone", "Purpose", "Start Time", "End Time", "Hours", "Created At"})
+
+				for _, b := range bookings {
+					writer.Write([]string{
+						strconv.Itoa(int(b.ID)),
+						b.BookedBy,
+						b.Phone,
+						b.Purpose,
+						b.StartTime.Local().Format("2006-01-02 15:04:05"),
+						b.EndTime.Local().Format("2006-01-02 15:04:05"),
+						fmt.Sprintf("%.1f", b.EndTime.Sub(b.StartTime).Hours()),
+						b.CreatedAt.Format("2006-01-02 15:04:05"),
+					})
 				}
 			})
 

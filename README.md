@@ -74,6 +74,56 @@ and admins can delete any booking from the **Mocap Bookings** tab.
 
 ---
 
+## 💾 Data, backups and portability
+
+All data lives in Docker named volumes, so it survives `./stop.sh` / `./start.sh`,
+reboots and rebuilds:
+
+| Volume | Holds |
+|---|---|
+| `postgres_data` | Loans, bookings and admin accounts |
+| `uploads_data` | Item photos |
+
+> ⚠️ `docker compose down -v` deletes those volumes and everything in them. Plain
+> `down` (what `./stop.sh` uses) is safe.
+
+### Making a backup
+
+```bash
+./backup.sh
+```
+
+Writes one self-contained archive to `backups/` holding a full database dump plus
+every item photo. Copy that single file anywhere - a laptop, a pen drive, cloud
+storage - and it is everything needed to rebuild the system.
+
+### Restoring
+
+```bash
+./restore.sh backups/rrc-backup-20260811-205403.tar.gz
+```
+
+Replaces the current database and photos with the contents of the archive, after
+asking for confirmation. This is also how you move the system to a new machine:
+clone the repo there, copy the `.env` and the archive over, `./start.sh`, then
+restore.
+
+### Automatic nightly backups (optional)
+
+```bash
+crontab -e
+# then add, adjusting the path:
+0 2 * * * cd /home/USER/RRC-Inventory && ./backup.sh >> backups/backup.log 2>&1
+```
+
+Old archives are never deleted automatically, so prune `backups/` occasionally.
+
+Admins can also export **Loans** and **Mocap Bookings** as CSV from the dashboard
+for a human-readable copy (spreadsheets, reports) - though CSV does not include
+photos, so it is not a substitute for `./backup.sh`.
+
+---
+
 ## 🛠️ Technology Stack
 
 <table align="center">

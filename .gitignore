@@ -51,3 +51,5 @@ logs/
 # Temporary files
 tmp/
 temp/
+# Backups (contain real data - never commit)
+backups/
