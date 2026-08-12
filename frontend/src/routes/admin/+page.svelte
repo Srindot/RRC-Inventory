@@ -1421,6 +1421,66 @@
                                         {/if}
 
 
+
+                                    {#if (printer.ams && printer.ams.length > 0) || printer.external_spool}
+                                        <div class="pa-ams">
+                                            {#each printer.ams as unit}
+                                                <div class="pa-ams-head">
+                                                    <span class="pa-ams-title">AMS {unit.id + 1}</span>
+                                                    {#if unit.humidity}
+                                                        <span class="pa-ams-meta" title="The AMS reports humidity on its own 1-5 scale">
+                                                            💧 {unit.humidity}/5
+                                                        </span>
+                                                    {/if}
+                                                    {#if unit.temp}
+                                                        <span class="pa-ams-meta">🌡️ {unit.temp}°C</span>
+                                                    {/if}
+                                                </div>
+
+                                                <div class="pa-ams-slots">
+                                                    {#each unit.slots as slot}
+                                                        <div
+                                                            class="pa-ams-slot"
+                                                            class:empty={slot.empty}
+                                                            class:active={slot.active}
+                                                            title={slot.empty
+                                                                ? `Slot ${slot.slot}: empty`
+                                                                : `Slot ${slot.slot}: ${slot.material}${slot.remain >= 0 ? ', ' + slot.remain + '% left' : ', amount unknown'}${slot.active ? ' (in use)' : ''}`}
+                                                        >
+                                                            <span class="pa-ams-top">
+                                                                <span class="pa-ams-swatch" style="background: {slot.color || 'transparent'}"></span>
+                                                                <span class="pa-ams-num">{slot.slot}</span>
+                                                                {#if slot.active}<span class="pa-ams-dot" title="Currently feeding"></span>{/if}
+                                                            </span>
+
+                                                            <span class="pa-ams-mat">{slot.empty ? 'Empty' : slot.material}</span>
+
+                                                            {#if slot.remain >= 0}
+                                                                <span class="pa-ams-bar">
+                                                                    <span class="pa-ams-fill" style="width: {slot.remain}%"></span>
+                                                                </span>
+                                                                <span class="pa-ams-pct">{slot.remain}%</span>
+                                                            {:else if !slot.empty}
+                                                                <span class="pa-ams-pct unknown" title="No RFID tag, so the printer cannot tell">? left</span>
+                                                            {/if}
+                                                        </div>
+                                                    {/each}
+                                                </div>
+                                            {/each}
+
+                                            {#if printer.external_spool && !printer.external_spool.empty}
+                                                <div class="pa-ams-ext">
+                                                    <span class="pa-ams-swatch" style="background: {printer.external_spool.color || 'transparent'}"></span>
+                                                    <span class="pa-ams-ext-label">External spool</span>
+                                                    <span class="pa-ams-ext-mat">{printer.external_spool.material}</span>
+                                                    {#if printer.external_spool.remain >= 0}
+                                                        <span class="pa-ams-pct">{printer.external_spool.remain}%</span>
+                                                    {/if}
+                                                </div>
+                                            {/if}
+                                        </div>
+                                    {/if}
+
                                         <div class="pa-temps">
                                             <span>🔥 {printer.nozzle_temp.toFixed(0)}°C</span>
                                             <span>🛏️ {printer.bed_temp.toFixed(0)}°C</span>
@@ -2911,6 +2971,145 @@
     }
 
 
+
+
+    /* --- AMS ------------------------------------------------------------ */
+    .pa-ams {
+        margin-top: 12px;
+        padding: 10px;
+        border: 1px solid var(--ctp-surface0);
+        border-radius: var(--radius-sm);
+        background: var(--ctp-crust);
+    }
+
+    .pa-ams-head {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-bottom: 8px;
+    }
+
+    .pa-ams-title {
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.6px;
+        text-transform: uppercase;
+        color: var(--ctp-teal);
+    }
+
+    .pa-ams-meta {
+        font-size: 0.7rem;
+        color: var(--ctp-subtext0);
+    }
+
+    .pa-ams-slots {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+        gap: 6px;
+    }
+
+    .pa-ams-slot {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding: 7px;
+        border: 1px solid var(--ctp-surface1);
+        border-radius: var(--radius-sm);
+        background: var(--ctp-mantle);
+        min-width: 0;
+    }
+
+    .pa-ams-slot.active {
+        border-color: var(--ctp-green);
+        box-shadow: 0 0 0 1px var(--ctp-green) inset;
+    }
+
+    .pa-ams-slot.empty { opacity: 0.45; }
+
+    .pa-ams-top {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
+
+    .pa-ams-swatch {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        border: 1px solid var(--ctp-surface2);
+        flex-shrink: 0;
+    }
+
+    .pa-ams-num {
+        font-size: 0.65rem;
+        color: var(--ctp-overlay0);
+        font-weight: 700;
+    }
+
+    .pa-ams-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--ctp-green);
+        margin-left: auto;
+        animation: soft-pulse 1.8s ease-in-out infinite;
+    }
+
+    .pa-ams-mat {
+        font-size: 0.68rem;
+        color: var(--ctp-text);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .pa-ams-bar {
+        display: block;
+        height: 4px;
+        background: var(--ctp-surface0);
+        border-radius: var(--radius-pill);
+        overflow: hidden;
+    }
+
+    .pa-ams-fill {
+        display: block;
+        height: 100%;
+        background: linear-gradient(90deg, var(--ctp-teal), var(--ctp-sky));
+        transition: width var(--slow) var(--ease);
+    }
+
+    .pa-ams-pct {
+        font-size: 0.62rem;
+        color: var(--ctp-subtext0);
+    }
+
+    .pa-ams-pct.unknown { color: var(--ctp-overlay0); }
+
+    .pa-ams-ext {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        margin-top: 8px;
+        padding-top: 8px;
+        border-top: 1px dashed var(--ctp-surface1);
+        font-size: 0.7rem;
+    }
+
+    .pa-ams-ext-label {
+        color: var(--ctp-overlay0);
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+        font-size: 0.62rem;
+    }
+
+    .pa-ams-ext-mat {
+        color: var(--ctp-text);
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
 
     .pa-stop {
         margin-top: 12px;

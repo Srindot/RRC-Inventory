@@ -90,6 +90,17 @@ logged-in admin can paste the new code straight into the page. It reconnects by
 itself - no editing `.env`, no restart, no downtime. The new code is saved in the
 database and overrides `PRINTERS` from then on, so it survives restarts too.
 
+### 🧵 AMS filament
+
+Printers with an AMS show every slot: material, colour, how much is left, and
+which one is feeding, plus the unit's humidity reading and temperature. The
+external spool is shown too.
+
+All of it comes from the spool's RFID tag, so it is only as good as what the
+printer knows: genuine Bambu spools identify themselves, while third-party
+filament has no tag and shows whatever was set by hand on the printer screen,
+with the amount as "? left".
+
 ### 📤 Sending files to a printer
 
 Anyone can send a sliced `.3mf` or `.gcode` from the **3D Printers** page - drag

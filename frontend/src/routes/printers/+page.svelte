@@ -450,6 +450,66 @@
                             </div>
                         {/if}
 
+
+                                    {#if (printer.ams && printer.ams.length > 0) || printer.external_spool}
+                                        <div class="ams">
+                                            {#each printer.ams as unit}
+                                                <div class="ams-head">
+                                                    <span class="ams-title">AMS {unit.id + 1}</span>
+                                                    {#if unit.humidity}
+                                                        <span class="ams-meta" title="The AMS reports humidity on its own 1-5 scale">
+                                                            💧 {unit.humidity}/5
+                                                        </span>
+                                                    {/if}
+                                                    {#if unit.temp}
+                                                        <span class="ams-meta">🌡️ {unit.temp}°C</span>
+                                                    {/if}
+                                                </div>
+
+                                                <div class="ams-slots">
+                                                    {#each unit.slots as slot}
+                                                        <div
+                                                            class="ams-slot"
+                                                            class:empty={slot.empty}
+                                                            class:active={slot.active}
+                                                            title={slot.empty
+                                                                ? `Slot ${slot.slot}: empty`
+                                                                : `Slot ${slot.slot}: ${slot.material}${slot.remain >= 0 ? ', ' + slot.remain + '% left' : ', amount unknown'}${slot.active ? ' (in use)' : ''}`}
+                                                        >
+                                                            <span class="ams-top">
+                                                                <span class="ams-swatch" style="background: {slot.color || 'transparent'}"></span>
+                                                                <span class="ams-num">{slot.slot}</span>
+                                                                {#if slot.active}<span class="ams-dot" title="Currently feeding"></span>{/if}
+                                                            </span>
+
+                                                            <span class="ams-mat">{slot.empty ? 'Empty' : slot.material}</span>
+
+                                                            {#if slot.remain >= 0}
+                                                                <span class="ams-bar">
+                                                                    <span class="ams-fill" style="width: {slot.remain}%"></span>
+                                                                </span>
+                                                                <span class="ams-pct">{slot.remain}%</span>
+                                                            {:else if !slot.empty}
+                                                                <span class="ams-pct unknown" title="No RFID tag, so the printer cannot tell">? left</span>
+                                                            {/if}
+                                                        </div>
+                                                    {/each}
+                                                </div>
+                                            {/each}
+
+                                            {#if printer.external_spool && !printer.external_spool.empty}
+                                                <div class="ams-ext">
+                                                    <span class="ams-swatch" style="background: {printer.external_spool.color || 'transparent'}"></span>
+                                                    <span class="ams-ext-label">External spool</span>
+                                                    <span class="ams-ext-mat">{printer.external_spool.material}</span>
+                                                    {#if printer.external_spool.remain >= 0}
+                                                        <span class="ams-pct">{printer.external_spool.remain}%</span>
+                                                    {/if}
+                                                </div>
+                                            {/if}
+                                        </div>
+                                    {/if}
+
                         <div class="temps">
                             <span>🔥 Nozzle {printer.nozzle_temp.toFixed(0)}°C</span>
                             <span>🛏️ Bed {printer.bed_temp.toFixed(0)}°C</span>
@@ -905,6 +965,145 @@
     }
 
 
+
+
+    /* --- AMS ------------------------------------------------------------ */
+    .ams {
+        margin-top: 12px;
+        padding: 10px;
+        border: 1px solid var(--ctp-surface0);
+        border-radius: var(--radius-sm);
+        background: var(--ctp-crust);
+    }
+
+    .ams-head {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-bottom: 8px;
+    }
+
+    .ams-title {
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.6px;
+        text-transform: uppercase;
+        color: var(--ctp-teal);
+    }
+
+    .ams-meta {
+        font-size: 0.7rem;
+        color: var(--ctp-subtext0);
+    }
+
+    .ams-slots {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+        gap: 6px;
+    }
+
+    .ams-slot {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding: 7px;
+        border: 1px solid var(--ctp-surface1);
+        border-radius: var(--radius-sm);
+        background: var(--ctp-mantle);
+        min-width: 0;
+    }
+
+    .ams-slot.active {
+        border-color: var(--ctp-green);
+        box-shadow: 0 0 0 1px var(--ctp-green) inset;
+    }
+
+    .ams-slot.empty { opacity: 0.45; }
+
+    .ams-top {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
+
+    .ams-swatch {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        border: 1px solid var(--ctp-surface2);
+        flex-shrink: 0;
+    }
+
+    .ams-num {
+        font-size: 0.65rem;
+        color: var(--ctp-overlay0);
+        font-weight: 700;
+    }
+
+    .ams-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--ctp-green);
+        margin-left: auto;
+        animation: soft-pulse 1.8s ease-in-out infinite;
+    }
+
+    .ams-mat {
+        font-size: 0.68rem;
+        color: var(--ctp-text);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .ams-bar {
+        display: block;
+        height: 4px;
+        background: var(--ctp-surface0);
+        border-radius: var(--radius-pill);
+        overflow: hidden;
+    }
+
+    .ams-fill {
+        display: block;
+        height: 100%;
+        background: linear-gradient(90deg, var(--ctp-teal), var(--ctp-sky));
+        transition: width var(--slow) var(--ease);
+    }
+
+    .ams-pct {
+        font-size: 0.62rem;
+        color: var(--ctp-subtext0);
+    }
+
+    .ams-pct.unknown { color: var(--ctp-overlay0); }
+
+    .ams-ext {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        margin-top: 8px;
+        padding-top: 8px;
+        border-top: 1px dashed var(--ctp-surface1);
+        font-size: 0.7rem;
+    }
+
+    .ams-ext-label {
+        color: var(--ctp-overlay0);
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+        font-size: 0.62rem;
+    }
+
+    .ams-ext-mat {
+        color: var(--ctp-text);
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
 
     .send-toggle {
         margin-top: 12px;
