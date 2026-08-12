@@ -37,6 +37,10 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /main .
 # --- Production Stage ---
 FROM alpine:latest AS production
 
+# Timezone data, so TZ (e.g. Asia/Kolkata) actually resolves - without this
+# Go silently falls back to UTC and due dates shift by hours.
+RUN apk add --no-cache tzdata
+
 # Set the working directory
 WORKDIR /app
 

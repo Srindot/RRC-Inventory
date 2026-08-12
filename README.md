@@ -51,7 +51,80 @@
 4. **Access the system:**
   - **Local Access**: http://localhost
   - **Network Access** (via IP): http://[SERVER-IP]
-   - **Admin Login**: Username: `Srinath`, Password: `rrc@srinath`
+   - **Admin Login**: the credentials you set in `.env` (see below)
+
+> **🔐 Admin credentials:** Copy `.env.example` to `.env` and set `POSTGRES_PASSWORD`,
+> `ADMIN_USERNAME` and `ADMIN_PASSWORD` before the first start. The first admin account is
+> created only once, on an empty database. If `ADMIN_PASSWORD` is left empty, a random
+> password is generated and printed in the backend logs (`./logs.sh`). Never commit `.env`.
+
+### 🖨️ 3D printer status
+
+The **3D Printers** page shows live status for the lab's Bambu Lab P1S printers -
+whether each one is free or printing, progress, time remaining, temperatures and a
+camera view (about one frame every two seconds, which is the fastest the P1S allows
+over the local network). Anyone can view it.
+
+**Stopping a print is admin-only.** Logged-in admins get a Stop button on a
+running printer, with a confirmation naming the job; the action is recorded and
+shown on the card ("Last stopped by ..."). Everyone else sees status only - if
+they need a print stopped, they ask an admin. That is the one command the system
+can send; nothing else writes to the printers.
+
+Configure the printers in `.env`:
+
+```
+PRINTERS=Name|host|serial|accesscode,Name2|host2|serial2|accesscode2
+```
+
+Enable **LAN Only Mode** on each printer, then read its access code off the screen.
+`tools/printer_discover.py` prints the name, IP and serial of every printer on the
+network. Leave `PRINTERS` unset and the page simply shows nothing.
+
+> The server must be able to reach the printers' network. Access codes are
+> credentials - keep them in `.env`, never in the repo.
+
+**If a printer's access code changes** (toggling LAN mode regenerates it), the
+printer page shows an **⚠️ Access code changed** warning on that printer, and a
+logged-in admin can paste the new code straight into the page. It reconnects by
+itself - no editing `.env`, no restart, no downtime. The new code is saved in the
+database and overrides `PRINTERS` from then on, so it survives restarts too.
+
+### 🧵 AMS filament
+
+Printers with an AMS show every slot: material, colour, how much is left, and
+which one is feeding, plus the unit's humidity reading and temperature. The
+external spool is shown too.
+
+All of it comes from the spool's RFID tag, so it is only as good as what the
+printer knows: genuine Bambu spools identify themselves, while third-party
+filament has no tag and shows whatever was set by hand on the printer screen,
+with the amount as "? left".
+
+### 📤 Sending files to a printer
+
+Anyone can send a sliced `.3mf` or `.gcode` from the **3D Printers** page - drag
+it onto the printer's card or tap to choose one. The file lands on the printer's
+storage, and the print is started from the printer's own screen once somebody
+has checked the plate is clear. That removes the need to switch onto the printer
+wifi just to press Print in Bambu Studio; slicing still happens in Studio.
+
+File names should start with the owner's name (`srinath_bracket.3mf`) - the
+printer reports the file name, so that is how the site shows whose print is
+running. Admins can delete files from the printer to stop the storage filling up.
+
+> Uploading is open to anyone who can reach the site, on the reasoning that it
+> only writes a file. Starting a print, stopping one, and deleting files are all
+> admin-only. To make uploading admin-only too, move the two
+> `api.POST/GET("/printers/:id/files"...)` routes into the `admin` group in
+> `backend/main.go`.
+
+### 🎥 Motion Capture Lab booking
+
+Open **Motion Capture Lab** from the home page (or go to `/mocap`) for a week calendar of
+who has the lab. Click any empty slot to book it - no approval, the slot just has to be
+free. Bookings are cancelled by whoever made them using the phone number they booked with,
+and admins can delete any booking from the **Mocap Bookings** tab.
 
 > **🌐 Network Access Note:** This website is hosted locally on a server. To access it, you need to be connected to **wifi@iiith** or use **OpenVPN** to connect to the IIIT network.
 
@@ -59,6 +132,56 @@
    ```bash
    ./stop.sh
    ```
+
+---
+
+## 💾 Data, backups and portability
+
+All data lives in Docker named volumes, so it survives `./stop.sh` / `./start.sh`,
+reboots and rebuilds:
+
+| Volume | Holds |
+|---|---|
+| `postgres_data` | Loans, bookings and admin accounts |
+| `uploads_data` | Item photos |
+
+> ⚠️ `docker compose down -v` deletes those volumes and everything in them. Plain
+> `down` (what `./stop.sh` uses) is safe.
+
+### Making a backup
+
+```bash
+./backup.sh
+```
+
+Writes one self-contained archive to `backups/` holding a full database dump plus
+every item photo. Copy that single file anywhere - a laptop, a pen drive, cloud
+storage - and it is everything needed to rebuild the system.
+
+### Restoring
+
+```bash
+./restore.sh backups/rrc-backup-20260811-205403.tar.gz
+```
+
+Replaces the current database and photos with the contents of the archive, after
+asking for confirmation. This is also how you move the system to a new machine:
+clone the repo there, copy the `.env` and the archive over, `./start.sh`, then
+restore.
+
+### Automatic nightly backups (optional)
+
+```bash
+crontab -e
+# then add, adjusting the path:
+0 2 * * * cd /home/USER/RRC-Inventory && ./backup.sh >> backups/backup.log 2>&1
+```
+
+Old archives are never deleted automatically, so prune `backups/` occasionally.
+
+Admins can also export **Loans** and **Mocap Bookings** as CSV from the dashboard
+for a human-readable copy (spreadsheets, reports) - though CSV does not include
+photos, so it is not a substitute for `./backup.sh`.
 
 ---
 

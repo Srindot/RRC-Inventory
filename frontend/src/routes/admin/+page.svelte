@@ -4,7 +4,9 @@
     // Authentication state
     let isLoggedIn = false;
     let adminInfo = null;
-    
+    let authToken = '';
+    let apiBase = ''; // set when logging in through the IP fallback
+
     // Login form
     let loginForm = {
         username: '',
@@ -16,14 +18,43 @@
     let ipLoading = false;
     
     // Current view
-    let currentView = 'login'; // login, dashboard, pending, pending-returns, lost-missing, history, lab-view, admin-management, change-password
+    let currentView = 'login'; // login, dashboard, printers, lost-missing, history, lab-view, admin-management, change-password
     let selectedLab = '';
-    let selectedFilter = 'all'; // all, borrowed, rejected, returned, pending, not_found
-    
+    let selectedFilter = 'all'; // all, borrowed, returned, not_found
+
     // Data
-    let pendingLoans = [];
-    let pendingReturns = [];
     let lostMissingItems = [];
+    let bookings = [];
+
+    // Printer control, mirrored from the public page so admins never have to
+    // leave the dashboard to stop a job or fix an access code.
+    // Booking calendar (same week view as the public page, with admin powers)
+    const DAY_START = 8;
+    const DAY_END = 22;
+    const HOURS = Array.from({ length: DAY_END - DAY_START }, (_, i) => DAY_START + i);
+    const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    let weekStart = startOfWeek(new Date());
+    let selectedBooking = null;
+    let showBookingForm = false;
+    let bookingForm = {
+        booked_by: '',
+        phone: '',
+        purpose: '',
+        date: toDateInput(new Date()),
+        start_hour: '10:00',
+        end_hour: '12:00'
+    };
+    let savingBooking = false;
+
+    let printers = [];
+    let printerTimer;
+    let cameraTimer;
+    // Bumped on a timer so the <img> refetches; the P1S manages ~0.5 fps
+    let cameraTick = Date.now();
+    let stoppingPrinter = '';
+    let editingCode = '';
+    let newCode = '';
+    let savingCode = false;
     let historyItems = [];
     let labLoans = [];
     let loading = false;
@@ -33,6 +64,11 @@
     // Search functionality for history
     let historySearchQuery = '';
     let filteredHistoryItems = [];
+
+    $: weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+    $: calendarColumns = weekDays.map((day) => ({ day, blocks: layOutDay(day, bookings) }));
+    $: weekLabel = `${weekDays[0].toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} - ` +
+                   `${weekDays[6].toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}`;
 
     // Simple reactive statement for history search
     $: updateFilteredHistoryItems(historyItems, historySearchQuery);
@@ -103,19 +139,71 @@
     // Lab options
     const labs = ['Main Lab', 'Mech Lab', 'Control Lab'];
 
-    onMount(() => {
-        // Check if admin is already logged in
+    onMount(async () => {
+        // Restore a previous session, if the token is still valid
         const savedAdmin = localStorage.getItem('adminInfo');
-        if (savedAdmin) {
+        const savedToken = localStorage.getItem('adminToken');
+        apiBase = localStorage.getItem('adminApiBase') || '';
+        if (savedAdmin && savedToken) {
             adminInfo = JSON.parse(savedAdmin);
+            authToken = savedToken;
             isLoggedIn = true;
             currentView = 'dashboard';
-            // Load initial data
-            loadPendingLoans();
-            loadPendingReturns();
-            loadLostMissingItems();
+            const response = await apiFetch('/api/admin/me');
+            if (response && response.ok) {
+                loadLostMissingItems();
+            }
         }
     });
+
+    // Authenticated fetch. Clears the session and returns to login on 401.
+    async function apiFetch(path, options = {}) {
+        const headers = { ...(options.headers || {}) };
+        if (authToken) {
+            headers['Authorization'] = `Bearer ${authToken}`;
+        }
+
+        let response;
+        try {
+            response = await fetch(`${apiBase}${path}`, { ...options, headers });
+        } catch (e) {
+            showMessage('Network error. Please try again.', 'error');
+            return null;
+        }
+
+        if (response.status === 401) {
+            clearSession();
+            showMessage('Your session expired. Please log in again.', 'error');
+            return null;
+        }
+        return response;
+    }
+
+    function saveSession(data, base = '') {
+        adminInfo = data.admin;
+        authToken = data.token;
+        apiBase = base;
+        localStorage.setItem('adminInfo', JSON.stringify(adminInfo));
+        localStorage.setItem('adminToken', authToken);
+        localStorage.setItem('adminApiBase', base);
+        isLoggedIn = true;
+        currentView = 'dashboard';
+        loginForm = { username: '', password: '' };
+        loadLostMissingItems();
+    }
+
+    function clearSession() {
+        clearInterval(printerTimer);
+        clearInterval(cameraTimer);
+        localStorage.removeItem('adminInfo');
+        localStorage.removeItem('adminToken');
+        localStorage.removeItem('adminApiBase');
+        adminInfo = null;
+        authToken = '';
+        apiBase = '';
+        isLoggedIn = false;
+        currentView = 'login';
+    }
 
     // Login function
     async function login() {
@@ -128,17 +216,8 @@
             });
 
             if (response.ok) {
-                const data = await response.json();
-                adminInfo = data.admin;
-                localStorage.setItem('adminInfo', JSON.stringify(adminInfo));
-                isLoggedIn = true;
-                currentView = 'dashboard';
+                saveSession(await response.json());
                 showMessage('Login successful!', 'success');
-                loginForm = { username: '', password: '' };
-                // Load initial data
-                loadPendingLoans();
-                loadPendingReturns();
-                loadLostMissingItems();
             } else {
                 const error = await response.json();
                 showMessage(error.error || 'Login failed', 'error');
@@ -162,25 +241,16 @@
         try {
             // Trim possible http(s) prefix
             const hostOnly = altHost.replace(/^https?:\/\//, '').replace(/\/.*/, '');
-            const url = `http://${hostOnly}/api/admin/login`;
-            const response = await fetch(url, {
+            const base = `http://${hostOnly}`;
+            const response = await fetch(`${base}/api/admin/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(loginForm)
             });
 
             if (response.ok) {
-                const data = await response.json();
-                adminInfo = data.admin;
-                localStorage.setItem('adminInfo', JSON.stringify(adminInfo));
-                isLoggedIn = true;
-                currentView = 'dashboard';
+                saveSession(await response.json(), base);
                 showMessage('Login successful (via IP)!', 'success');
-                loginForm = { username: '', password: '' };
-                // Load initial data
-                loadPendingLoans();
-                loadPendingReturns();
-                loadLostMissingItems();
             } else {
                 const error = await response.json().catch(() => ({}));
                 showMessage(error.error || `Login failed (HTTP ${response.status})`, 'error');
@@ -193,60 +263,22 @@
     }
 
     // Logout function
-    function logout() {
-        localStorage.removeItem('adminInfo');
-        isLoggedIn = false;
-        adminInfo = null;
-        currentView = 'login';
+    async function logout() {
+        await apiFetch('/api/admin/logout', { method: 'POST' });
+        clearSession();
         showMessage('Logged out successfully', 'success');
     }
 
-    // Load pending loans
-    async function loadPendingLoans() {
-        loading = true;
-        try {
-            const response = await fetch('/api/admin/loans/pending');
-            if (response.ok) {
-                pendingLoans = await response.json();
-            } else {
-                showMessage('Failed to load pending loans', 'error');
-            }
-        } catch (e) {
-            showMessage('Failed to load pending loans', 'error');
-        } finally {
-            loading = false;
-        }
-    }
-
-    // Load pending returns
-    async function loadPendingReturns() {
-        loading = true;
-        try {
-            const response = await fetch('/api/admin/loans/pending-returns');
-            if (response.ok) {
-                pendingReturns = await response.json();
-            } else {
-                showMessage('Failed to load pending returns', 'error');
-            }
-        } catch (e) {
-            showMessage('Failed to load pending returns', 'error');
-        } finally {
-            loading = false;
-        }
-    }
-
-    // Load lost/missing items
+    // Load missing items
     async function loadLostMissingItems() {
         loading = true;
         try {
-            const response = await fetch('/api/admin/loans/lost-missing');
-            if (response.ok) {
+            const response = await apiFetch('/api/admin/loans/lost-missing');
+            if (response && response.ok) {
                 lostMissingItems = await response.json();
-            } else {
-                showMessage('Failed to load lost/missing items', 'error');
+            } else if (response) {
+                showMessage('Failed to load missing items', 'error');
             }
-        } catch (e) {
-            showMessage('Failed to load lost/missing items', 'error');
         } finally {
             loading = false;
         }
@@ -256,14 +288,12 @@
     async function loadHistoryItems() {
         loading = true;
         try {
-            const response = await fetch('/api/admin/loans/history');
-            if (response.ok) {
+            const response = await apiFetch('/api/admin/loans/history');
+            if (response && response.ok) {
                 historyItems = await response.json();
-            } else {
+            } else if (response) {
                 showMessage('Failed to load item history', 'error');
             }
-        } catch (e) {
-            showMessage('Failed to load item history', 'error');
         } finally {
             loading = false;
         }
@@ -273,47 +303,14 @@
     async function loadLabLoans(lab, filter = 'all') {
         loading = true;
         try {
-            const response = await fetch(`/api/admin/loans/by-lab/${encodeURIComponent(lab)}?status=${filter}`);
-            if (response.ok) {
+            const response = await apiFetch(`/api/admin/loans/by-lab/${encodeURIComponent(lab)}?status=${filter}`);
+            if (response && response.ok) {
                 labLoans = await response.json();
                 selectedLab = lab;
                 selectedFilter = filter;
-            } else {
+            } else if (response) {
                 showMessage('Failed to load lab loans', 'error');
             }
-        } catch (e) {
-            showMessage('Failed to load lab loans', 'error');
-        } finally {
-            loading = false;
-        }
-    }
-
-    // Approve or deny loan
-    async function approveLoan(loanId, action) {
-        loading = true;
-        try {
-            const response = await fetch(`/api/admin/loans/${loanId}/approve`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: action,
-                    admin_name: adminInfo.name
-                })
-            });
-
-            if (response.ok) {
-                showMessage(`Loan ${action}d successfully!`, 'success');
-                if (currentView === 'pending') {
-                    loadPendingLoans();
-                } else if (currentView === 'lab-view') {
-                    loadLabLoans(selectedLab);
-                }
-            } else {
-                const error = await response.json();
-                showMessage(error.error || `Failed to ${action} loan`, 'error');
-            }
-        } catch (e) {
-            showMessage(`Failed to ${action} loan`, 'error');
         } finally {
             loading = false;
         }
@@ -323,7 +320,7 @@
     async function extendLoan(loanId, days, hours) {
         loading = true;
         try {
-            const response = await fetch(`/api/admin/loans/${loanId}/extend`, {
+            const response = await apiFetch(`/api/admin/loans/${loanId}/extend`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -333,144 +330,518 @@
                 })
             });
 
-            if (response.ok) {
+            if (response && response.ok) {
                 showMessage('Loan extended successfully!', 'success');
                 if (currentView === 'lab-view') {
                     loadLabLoans(selectedLab, selectedFilter);
                 }
-            } else {
+            } else if (response) {
                 const error = await response.json();
                 showMessage(error.error || 'Failed to extend loan', 'error');
             }
-        } catch (e) {
-            showMessage('Failed to extend loan', 'error');
         } finally {
             loading = false;
         }
     }
 
-    // Approve return request
-    async function approveReturn(loanId, action = 'approved') {
+    // Mark an item as missing - the admin could not find it in the lab
+    async function markAsMissing(loanId, itemName) {
+        if (!confirm(`Mark "${itemName}" as missing?\n\nIt will show up in the Missing Items list.`)) {
+            return;
+        }
+
         loading = true;
         try {
-            // Check if admin info is available
-            if (!adminInfo || !adminInfo.name) {
-                showMessage('Admin authentication required. Please log in again.', 'error');
-                return;
-            }
-
-            console.log('Approving return:', { loanId, action, adminName: adminInfo.name });
-
-            const response = await fetch(`/api/admin/loans/${loanId}/approve-return`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: action,
-                    admin_name: adminInfo.name
-                })
+            const response = await apiFetch(`/api/admin/loans/${loanId}/mark-missing`, {
+                method: 'POST'
             });
 
-            const result = await response.json();
-            console.log('Return approval response:', result);
-
-            if (response.ok) {
-                showMessage(result.message, 'success');
-                if (currentView === 'pending-returns') {
-                    loadPendingReturns();
-                } else if (currentView === 'lab-view') {
-                    loadLabLoans(selectedLab, selectedFilter);
-                }
-            } else {
-                console.error('Return approval error:', result);
-                showMessage(result.error || 'Failed to process return', 'error');
+            if (response && response.ok) {
+                showMessage('Item marked as missing', 'success');
+                refreshCurrentView();
+            } else if (response) {
+                const error = await response.json();
+                showMessage(error.error || 'Failed to mark item as missing', 'error');
             }
-        } catch (e) {
-            console.error('Return approval exception:', e);
-            showMessage('Network error. Failed to process return', 'error');
         } finally {
             loading = false;
         }
     }
 
-    // Mark item as found (restore from not_found status)
+    // Mark item as found (restore from missing status)
     async function markAsFound(loanId) {
         loading = true;
         try {
-            if (!adminInfo || !adminInfo.name) {
-                showMessage('Admin authentication required. Please log in again.', 'error');
-                return;
+            const response = await apiFetch(`/api/admin/loans/${loanId}/mark-found`, {
+                method: 'POST'
+            });
+
+            if (response && response.ok) {
+                showMessage('Item marked as found and restored to borrowed', 'success');
+                refreshCurrentView();
+            } else if (response) {
+                const error = await response.json();
+                showMessage(error.error || 'Failed to mark item as found', 'error');
             }
+        } finally {
+            loading = false;
+        }
+    }
 
-            console.log('Marking item as found:', { loanId, adminName: adminInfo.name });
+    // Reload whichever list is currently on screen
+    function refreshCurrentView() {
+        if (currentView === 'lost-missing') {
+            loadLostMissingItems();
+        } else if (currentView === 'lab-view') {
+            loadLabLoans(selectedLab, selectedFilter);
+        } else if (currentView === 'history') {
+            loadHistoryItems();
+        }
+    }
 
-            const response = await fetch(`/api/admin/loans/${loanId}/mark-found`, {
+    // Load Motion Capture Lab bookings (from a week ago onwards)
+    async function loadBookings() {
+        loading = true;
+        try {
+            const from = new Date();
+            from.setDate(from.getDate() - 7);
+            const response = await apiFetch(`/api/bookings?from=${from.toISOString()}`);
+            if (response && response.ok) {
+                bookings = await response.json();
+            } else if (response) {
+                showMessage('Failed to load bookings', 'error');
+            }
+        } finally {
+            loading = false;
+        }
+    }
+
+    async function deleteBooking(bookingId, bookedBy) {
+        if (!confirm(`Delete the Motion Capture Lab booking by ${bookedBy}?`)) {
+            return;
+        }
+
+        const response = await apiFetch(`/api/admin/bookings/${bookingId}`, { method: 'DELETE' });
+        if (!response) return;
+
+        if (response.ok) {
+            showMessage('Booking deleted', 'success');
+            loadBookings();
+        } else {
+            const error = await response.json();
+            showMessage(error.error || 'Failed to delete booking', 'error');
+        }
+    }
+
+    // --- booking calendar --------------------------------------------------
+
+    function startOfWeek(date) {
+        const d = new Date(date);
+        d.setHours(0, 0, 0, 0);
+        d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); // Monday first
+        return d;
+    }
+
+    function addDays(date, days) {
+        const d = new Date(date);
+        d.setDate(d.getDate() + days);
+        return d;
+    }
+
+    function toDateInput(date) {
+        const d = new Date(date);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+
+    function sameDay(a, b) {
+        return a.getFullYear() === b.getFullYear() &&
+               a.getMonth() === b.getMonth() &&
+               a.getDate() === b.getDate();
+    }
+
+    function isToday(date) {
+        return sameDay(date, new Date());
+    }
+
+    function bookingTime(value) {
+        return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    // One column per day with its bookings already positioned
+    function layOutDay(day, allBookings) {
+        return allBookings
+            .map((b) => ({ ...b, start: new Date(b.start_time), end: new Date(b.end_time) }))
+            .filter((b) => sameDay(b.start, day))
+            .map((b) => {
+                const from = Math.max(b.start.getHours() + b.start.getMinutes() / 60, DAY_START);
+                const to = Math.min(b.end.getHours() + b.end.getMinutes() / 60, DAY_END);
+                return {
+                    ...b,
+                    top: ((from - DAY_START) / (DAY_END - DAY_START)) * 100,
+                    height: (Math.max(to - from, 0.5) / (DAY_END - DAY_START)) * 100
+                };
+            });
+    }
+
+    function goToWeek(offset) {
+        weekStart = addDays(weekStart, offset * 7);
+    }
+
+    function openSlot(day, hour) {
+        bookingForm = {
+            ...bookingForm,
+            date: toDateInput(day),
+            start_hour: `${String(hour).padStart(2, '0')}:00`,
+            end_hour: `${String(Math.min(hour + 2, DAY_END)).padStart(2, '0')}:00`
+        };
+        showBookingForm = true;
+        selectedBooking = null;
+    }
+
+    // Admins can book on someone's behalf - people ask in person constantly
+    async function createBooking() {
+        const start = new Date(`${bookingForm.date}T${bookingForm.start_hour}`);
+        const end = new Date(`${bookingForm.date}T${bookingForm.end_hour}`);
+
+        if (!(end > start)) {
+            showMessage('End time must be after the start time', 'error');
+            return;
+        }
+
+        savingBooking = true;
+        try {
+            const response = await apiFetch('/api/bookings', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    admin_name: adminInfo.name
+                    booked_by: bookingForm.booked_by,
+                    phone: bookingForm.phone,
+                    purpose: bookingForm.purpose,
+                    start_time: start.toISOString(),
+                    end_time: end.toISOString()
                 })
             });
+            if (!response) return;
 
             const result = await response.json();
-            console.log('Mark as found response:', result);
-
             if (response.ok) {
-                showMessage(result.message, 'success');
-                // Refresh the lost/missing items view
-                if (currentView === 'lost-missing') {
-                    loadLostMissingItems();
-                }
+                showMessage('Booking added', 'success');
+                showBookingForm = false;
+                bookingForm = { ...bookingForm, purpose: '' };
+                weekStart = startOfWeek(start);
+                loadBookings();
             } else {
-                console.error('Mark as found error:', result);
-                showMessage(result.error || 'Failed to mark item as found', 'error');
+                showMessage(result.error || 'Could not add the booking', 'error');
             }
-        } catch (e) {
-            console.error('Mark as found exception:', e);
-            showMessage('Network error. Failed to mark item as found', 'error');
         } finally {
-            loading = false;
+            savingBooking = false;
         }
     }
 
-    // Cleanup denied loans
-    async function cleanupDeniedLoans() {
-        loading = true;
+    // Admins delete without needing the booker's phone number
+    async function deleteSelectedBooking() {
+        if (!selectedBooking) return;
+        const booking = selectedBooking;
+        if (!confirm(`Delete ${booking.booked_by}'s booking?\n\n${booking.purpose}`)) {
+            return;
+        }
+
+        const response = await apiFetch(`/api/admin/bookings/${booking.ID}`, { method: 'DELETE' });
+        if (!response) return;
+
+        if (response.ok) {
+            showMessage('Booking deleted', 'success');
+            selectedBooking = null;
+            loadBookings();
+        } else {
+            const error = await response.json();
+            showMessage(error.error || 'Could not delete the booking', 'error');
+        }
+    }
+
+    // --- 3D printers ------------------------------------------------------
+
+    async function loadPrinters() {
+        const response = await apiFetch('/api/printers');
+        if (response && response.ok) {
+            printers = await response.json();
+        }
+    }
+
+    function showPrinters() {
+        currentView = 'printers';
+        loadPrinters();
+        loadPrintJobs();
+        clearInterval(printerTimer);
+        clearInterval(cameraTimer);
+        printerTimer = setInterval(() => { loadPrinters(); loadPrintJobs(); }, 5000);
+        cameraTimer = setInterval(() => (cameraTick = Date.now()), 2000);
+    }
+
+    let printJobs = [];
+    let busyPrinter = '';
+
+    // Sending sliced files to a printer, so nobody has to switch wifi
+    let uploadFor = '';
+    let uploadFiles = {};      // printer id -> files already on the printer
+    let uploading = '';
+    let uploadProgress = 0;
+
+    // Every printer command goes through here so the UI stays consistent
+    async function printerCommand(printer, path, options, successMessage) {
+        busyPrinter = printer.id + path;
         try {
-            const response = await fetch('/api/admin/cleanup-denied', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
+            const response = await apiFetch(`/api/admin/printers/${printer.id}/${path}`, options);
+            if (!response) return;
+
+            const result = await response.json();
+            if (response.ok) {
+                showMessage(successMessage || result.message, 'success');
+                loadPrinters();
+            } else {
+                showMessage(result.error || 'The printer refused that command', 'error');
+            }
+        } finally {
+            busyPrinter = '';
+        }
+    }
+
+    function pausePrint(printer) {
+        printerCommand(printer, 'pause', { method: 'POST' }, `Paused ${printer.name}`);
+    }
+
+    function resumePrint(printer) {
+        printerCommand(printer, 'resume', { method: 'POST' }, `Resumed ${printer.name}`);
+    }
+
+    function toggleLight(printer) {
+        printerCommand(printer, 'light', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ on: !printer.light_on })
+        });
+    }
+
+    async function toggleUpload(printer) {
+        if (uploadFor === printer.id) {
+            uploadFor = '';
+            return;
+        }
+        uploadFor = printer.id;
+        loadPrinterFiles(printer);
+    }
+
+    async function loadPrinterFiles(printer) {
+        const response = await apiFetch(`/api/printers/${printer.id}/files`);
+        if (!response) return;
+        if (response.ok) {
+            uploadFiles = { ...uploadFiles, [printer.id]: await response.json() };
+        } else {
+            const error = await response.json();
+            showMessage(error.error || 'Could not list the printer files', 'error');
+        }
+    }
+
+    async function sendFile(printer, event) {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        if (!/\.(3mf|gcode)$/i.test(file.name)) {
+            showMessage('Only .3mf and .gcode files can be sent to a printer', 'error');
+            event.target.value = '';
+            return;
+        }
+
+        uploading = printer.id;
+        uploadProgress = 0;
+
+        const form = new FormData();
+        form.append('file', file);
+
+        try {
+            // XHR rather than fetch, because these files are big enough that a
+            // progress bar matters
+            const result = await new Promise((resolve) => {
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', `/api/printers/${printer.id}/files`);
+                xhr.setRequestHeader('Authorization', `Bearer ${authToken}`);
+                xhr.upload.onprogress = (e) => {
+                    if (e.lengthComputable) {
+                        uploadProgress = Math.round((e.loaded / e.total) * 100);
+                    }
+                };
+                xhr.onload = () => {
+                    let body = {};
+                    try {
+                        body = JSON.parse(xhr.responseText);
+                    } catch (e) {
+                        body = {};
+                    }
+                    resolve({ status: xhr.status, body });
+                };
+                xhr.onerror = () => resolve({ status: 0, body: {} });
+                xhr.send(form);
             });
 
-            if (response.ok) {
-                const result = await response.json();
-                showMessage(`Cleanup completed. ${result.deleted_count} denied loans removed.`, 'success');
+            if (result.status === 401) {
+                clearSession();
+                showMessage('Your session expired. Log in again.', 'error');
+            } else if (result.status === 200) {
+                showMessage(result.body.message || 'File sent to the printer', 'success');
+                loadPrinterFiles(printer);
             } else {
-                const error = await response.json();
-                showMessage(error.error || 'Failed to cleanup', 'error');
+                showMessage(result.body.error || 'The printer would not accept that file', 'error');
             }
-        } catch (e) {
-            showMessage('Failed to cleanup', 'error');
         } finally {
-            loading = false;
+            uploading = '';
+            uploadProgress = 0;
+            event.target.value = '';
         }
+    }
+
+    async function deletePrinterFile(printer, name) {
+        if (!confirm(`Delete ${name} from ${printer.name}?`)) return;
+
+        const response = await apiFetch(
+            `/api/admin/printers/${printer.id}/files/${encodeURIComponent(name)}`,
+            { method: 'DELETE' });
+        if (!response) return;
+
+        if (response.ok) {
+            showMessage('File deleted from the printer', 'success');
+            loadPrinterFiles(printer);
+        } else {
+            const error = await response.json();
+            showMessage(error.error || 'Could not delete the file', 'error');
+        }
+    }
+
+    function fileSize(bytes) {
+        if (bytes > 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+        return `${Math.max(Math.round(bytes / 1024), 1)} KB`;
+    }
+
+    async function loadPrintJobs() {
+        const response = await apiFetch('/api/admin/print-jobs');
+        if (response && response.ok) {
+            printJobs = await response.json();
+        }
+    }
+
+    function jobDuration(job) {
+        if (!job.ended_at) return 'running';
+        const mins = Math.round((new Date(job.ended_at) - new Date(job.started_at)) / 60000);
+        if (mins < 60) return `${mins} min`;
+        return `${Math.floor(mins / 60)}h ${mins % 60}m`;
+    }
+
+    async function stopPrint(printer) {
+        const job = printer.file_name || 'the current job';
+        if (!confirm(`Stop ${job} on ${printer.name}?\n\nThis cannot be undone - the print will be cancelled.`)) {
+            return;
+        }
+
+        stoppingPrinter = printer.id;
+        try {
+            const response = await apiFetch(`/api/admin/printers/${printer.id}/stop`, {
+                method: 'POST'
+            });
+            if (!response) return;
+
+            const result = await response.json();
+            if (response.ok) {
+                showMessage(`Stop command sent to ${printer.name}`, 'success');
+                loadPrinters();
+            } else {
+                showMessage(result.error || 'Could not stop the print', 'error');
+            }
+        } finally {
+            stoppingPrinter = '';
+        }
+    }
+
+    async function savePrinterCode(printer) {
+        if (!newCode.trim()) {
+            showMessage('Enter the new access code from the printer screen', 'error');
+            return;
+        }
+
+        savingCode = true;
+        try {
+            const response = await apiFetch(`/api/admin/printers/${printer.id}/access-code`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ access_code: newCode.trim() })
+            });
+            if (!response) return;
+
+            const result = await response.json();
+            if (response.ok) {
+                showMessage(`${printer.name}: access code updated, reconnecting...`, 'success');
+                editingCode = '';
+                newCode = '';
+                setTimeout(loadPrinters, 4000);
+                setTimeout(loadPrinters, 12000);
+            } else {
+                showMessage(result.error || 'Could not update the access code', 'error');
+            }
+        } finally {
+            savingCode = false;
+        }
+    }
+
+    function printerIsPrinting(printer) {
+        return printer.online && printer.state === 'RUNNING';
+    }
+
+    function printerStateLabel(printer) {
+        if (!printer.online) return 'Offline';
+        switch (printer.state) {
+            case 'RUNNING': return 'Printing';
+            case 'FINISH': return 'Finished';
+            case 'FAILED': return 'Failed';
+            case 'PAUSE': return 'Paused';
+            case 'PREPARE': return 'Preparing';
+            case 'SLICING': return 'Slicing';
+            default: return printer.state || 'Idle';
+        }
+    }
+
+    function printerStateClass(printer) {
+        if (!printer.online) return 'offline';
+        switch (printer.state) {
+            case 'RUNNING': return 'running';
+            case 'FAILED': return 'failed';
+            case 'PAUSE': return 'paused';
+            case 'FINISH': return 'finished';
+            default: return 'idle';
+        }
+    }
+
+    function formatRemaining(minutes) {
+        if (!minutes || minutes <= 0) return '';
+        if (minutes < 60) return `${minutes} min left`;
+        const hours = Math.floor(minutes / 60);
+        const rest = minutes % 60;
+        return rest ? `${hours}h ${rest}m left` : `${hours}h left`;
     }
 
     // Export data as CSV
-    async function exportCSV() {
+    async function exportCSV(path = '/api/admin/export-csv', filename = 'robotics_research_centre_loans.csv') {
         try {
-            const response = await fetch('/api/admin/export-csv');
-            if (response.ok) {
+            const response = await apiFetch(path);
+            if (response && response.ok) {
                 const blob = await response.blob();
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = 'robotics_research_centre_loans.csv';
+                a.download = filename;
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);
                 window.URL.revokeObjectURL(url);
                 showMessage('Data exported successfully!', 'success');
-            } else {
+            } else if (response) {
                 showMessage('Failed to export data', 'error');
             }
         } catch (e) {
@@ -508,8 +879,18 @@
         }
     }
 
+    // An item is due at the END of its return date, so something due today is
+    // not late yet. Matches the backend and the admin sort order.
+    function dueDeadline(returnDate) {
+        const due = new Date(returnDate);
+        if (isNaN(due)) return null;
+        due.setHours(23, 59, 59, 999);
+        return due;
+    }
+
     function isOverdue(returnDate) {
-        return new Date(returnDate) < new Date();
+        const deadline = dueDeadline(returnDate);
+        return deadline !== null && deadline < new Date();
     }
 
     async function copyToClipboard(text) {
@@ -532,19 +913,14 @@
         }
     }
 
-    function showPendingLoans() {
-        currentView = 'pending';
-        loadPendingLoans();
-    }
-
-    function showPendingReturns() {
-        currentView = 'pending-returns';
-        loadPendingReturns();
-    }
-
     function showLostMissingItems() {
         currentView = 'lost-missing';
         loadLostMissingItems();
+    }
+
+    function showBookings() {
+        currentView = 'bookings';
+        loadBookings();
     }
 
     function showItemHistory() {
@@ -565,6 +941,8 @@
 
     function goToDashboard() {
         currentView = 'dashboard';
+        clearInterval(printerTimer);
+        clearInterval(cameraTimer);
     }
 
     // Admin Management Functions
@@ -580,14 +958,10 @@
     async function loadAdminList() {
         if (!adminInfo?.is_super_admin) return;
         
-        try {
-            const response = await fetch(`/api/admin/list?requesting_username=${adminInfo.username}`);
-            if (response.ok) {
-                adminList = await response.json();
-            } else {
-                showMessage('Failed to load admin list', 'error');
-            }
-        } catch (error) {
+        const response = await apiFetch('/api/admin/list');
+        if (response && response.ok) {
+            adminList = await response.json();
+        } else if (response) {
             showMessage('Failed to load admin list', 'error');
         }
     }
@@ -595,30 +969,21 @@
     async function createAdmin() {
         if (!adminInfo?.is_super_admin) return;
         
-        try {
-            const response = await fetch('/api/admin/create', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    requesting_username: adminInfo.username,
-                    ...createAdminForm
-                })
-            });
+        const response = await apiFetch('/api/admin/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(createAdminForm)
+        });
+        if (!response) return;
 
-            const result = await response.json();
-            
-            if (response.ok) {
-                showMessage('Admin created successfully', 'success');
-                showCreateAdminForm = false;
-                createAdminForm = { username: '', password: '', name: '', is_super_admin: false };
-                loadAdminList();
-            } else {
-                showMessage(result.error || 'Failed to create admin', 'error');
-            }
-        } catch (error) {
-            showMessage('Failed to create admin', 'error');
+        const result = await response.json();
+        if (response.ok) {
+            showMessage('Admin created successfully', 'success');
+            showCreateAdminForm = false;
+            createAdminForm = { username: '', password: '', name: '', is_super_admin: false };
+            loadAdminList();
+        } else {
+            showMessage(result.error || 'Failed to create admin', 'error');
         }
     }
 
@@ -628,30 +993,28 @@
             return;
         }
 
-        try {
-            const response = await fetch('/api/admin/change-password', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    username: adminInfo.username,
-                    old_password: changePasswordForm.old_password,
-                    new_password: changePasswordForm.new_password
-                })
-            });
+        if (changePasswordForm.new_password.length < 8) {
+            showMessage('New password must be at least 8 characters long', 'error');
+            return;
+        }
 
-            const result = await response.json();
-            
-            if (response.ok) {
-                showMessage('Password changed successfully', 'success');
-                changePasswordForm = { old_password: '', new_password: '', confirm_password: '' };
-                currentView = 'dashboard';
-            } else {
-                showMessage(result.error || 'Failed to change password', 'error');
-            }
-        } catch (error) {
-            showMessage('Failed to change password', 'error');
+        const response = await apiFetch('/api/admin/change-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                old_password: changePasswordForm.old_password,
+                new_password: changePasswordForm.new_password
+            })
+        });
+        if (!response) return;
+
+        const result = await response.json();
+        if (response.ok) {
+            showMessage('Password changed successfully', 'success');
+            changePasswordForm = { old_password: '', new_password: '', confirm_password: '' };
+            currentView = 'dashboard';
+        } else {
+            showMessage(result.error || 'Failed to change password', 'error');
         }
     }
 
@@ -662,27 +1025,18 @@
             return;
         }
 
-        try {
-            const response = await fetch('/api/admin/delete-all-items', {
-                method: 'DELETE',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    requesting_username: adminInfo.username,
-                    confirm_delete: true
-                })
-            });
+        const response = await apiFetch('/api/admin/delete-all-items', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ confirm_delete: true })
+        });
+        if (!response) return;
 
-            const result = await response.json();
-            
-            if (response.ok) {
-                showMessage(`Successfully deleted ${result.deleted_count} items`, 'success');
-            } else {
-                showMessage(result.error || 'Failed to delete items', 'error');
-            }
-        } catch (error) {
-            showMessage('Failed to delete items', 'error');
+        const result = await response.json();
+        if (response.ok) {
+            showMessage(`Successfully deleted ${result.deleted_count} items`, 'success');
+        } else {
+            showMessage(result.error || 'Failed to delete items', 'error');
         }
     }
 
@@ -695,44 +1049,25 @@
             return;
         }
 
-        // Prevent deleting main super admin
-        if (adminUsername === 'Srinath') {
-            showMessage('Cannot delete the main super admin account', 'error');
-            return;
-        }
-        
+
         if (!confirm(`⚠️ WARNING: This will permanently delete the admin account!\n\nAdmin: ${adminName} (@${adminUsername})\n\nThis action cannot be undone. Are you sure you want to continue?`)) {
             return;
         }
 
-        try {
-            const response = await fetch(`/api/admin/delete/${adminId}`, {
-                method: 'DELETE',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    requesting_username: adminInfo.username
-                })
-            });
+        const response = await apiFetch(`/api/admin/delete/${adminId}`, {
+            method: 'DELETE'
+        });
+        if (!response) return;
 
-            const result = await response.json();
-            
-            if (response.ok) {
-                showMessage(`Successfully deleted admin: ${result.deleted_admin.name}`, 'success');
-                loadAdminList(); // Reload the admin list
-            } else {
-                showMessage(result.error || 'Failed to delete admin', 'error');
-            }
-        } catch (error) {
-            showMessage('Failed to delete admin', 'error');
+        const result = await response.json();
+        if (response.ok) {
+            showMessage(`Successfully deleted admin: ${result.deleted_admin.name}`, 'success');
+            loadAdminList(); // Reload the admin list
+        } else {
+            showMessage(result.error || 'Failed to delete admin', 'error');
         }
     }
 
-    // Reactive statements
-    $: if (currentView === 'pending') {
-        loadPendingLoans();
-    }
 </script>
 
 <div class="admin-container">
@@ -818,30 +1153,10 @@
                 </button>
                 <button 
                     class="tab-btn" 
-                    class:active={currentView === 'pending'}
-                    on:click={showPendingLoans}
-                >
-                    Borrow Pending Requests
-                    {#if pendingLoans.length > 0}
-                        <span class="badge">{pendingLoans.length}</span>
-                    {/if}
-                </button>
-                <button 
-                    class="tab-btn" 
-                    class:active={currentView === 'pending-returns'}
-                    on:click={showPendingReturns}
-                >
-                    Return Pending Requests
-                    {#if pendingReturns.length > 0}
-                        <span class="badge">{pendingReturns.length}</span>
-                    {/if}
-                </button>
-                <button 
-                    class="tab-btn" 
                     class:active={currentView === 'lost-missing'}
                     on:click={showLostMissingItems}
                 >
-                    🔍 Lost/Missing Items
+                    🔍 Missing Items
                     {#if lostMissingItems.length > 0}
                         <span class="badge">{lostMissingItems.length}</span>
                     {/if}
@@ -855,6 +1170,20 @@
                         {lab}
                     </button>
                 {/each}
+                <button 
+                    class="tab-btn" 
+                    class:active={currentView === 'printers'}
+                    on:click={showPrinters}
+                >
+                    🖨️ Printers
+                </button>
+                <button 
+                    class="tab-btn" 
+                    class:active={currentView === 'bookings'}
+                    on:click={showBookings}
+                >
+                    🎥 Mocap Bookings
+                </button>
                 <button 
                     class="tab-btn" 
                     class:active={currentView === 'history'}
@@ -886,19 +1215,19 @@
                     <h2>System Overview</h2>
                     <div class="overview-cards">
                         <div class="card">
-                            <h3>📋 Pending Requests</h3>
-                            <p class="stat-number">{pendingLoans.length}</p>
-                            <button class="card-btn" on:click={showPendingLoans}>Review</button>
-                        </div>
-                        <div class="card">
-                            <h3>🔄 Pending Returns</h3>
-                            <p class="stat-number">{pendingReturns.length}</p>
-                            <button class="card-btn" on:click={showPendingReturns}>Review</button>
-                        </div>
-                        <div class="card">
-                            <h3>🔍 Lost/Missing Items</h3>
+                            <h3>🔍 Missing Items</h3>
                             <p class="stat-number">{lostMissingItems.length}</p>
                             <button class="card-btn" on:click={showLostMissingItems}>Review</button>
+                        </div>
+                        <div class="card">
+                            <h3>🖨️ 3D Printers</h3>
+                            <p>Live status, stop a print</p>
+                            <button class="card-btn" on:click={showPrinters}>Manage</button>
+                        </div>
+                        <div class="card">
+                            <h3>🎥 Mocap Lab</h3>
+                            <p>Motion Capture Lab bookings</p>
+                            <button class="card-btn" on:click={showBookings}>Manage</button>
                         </div>
                         {#each labs as lab}
                             <div class="card">
@@ -909,179 +1238,25 @@
                         {/each}
                     </div>
                     <div class="admin-actions">
-                        <button class="cleanup-btn" on:click={cleanupDeniedLoans}>
-                            🗑️ Cleanup Denied Loans (24h+)
+                        <button class="export-btn" on:click={() => exportCSV()}>
+                            📊 Export Loans (CSV)
                         </button>
-                        <button class="export-btn" on:click={exportCSV}>
-                            📊 Export All Data (CSV)
+                        <button class="export-btn" on:click={() => exportCSV('/api/admin/export-bookings-csv', 'motion_capture_lab_bookings.csv')}>
+                            🎥 Export Bookings (CSV)
                         </button>
                     </div>
                 </div>
             {/if}
 
-            <!-- Pending Loans View -->
-            {#if currentView === 'pending'}
-                <div class="loans-content">
-                    <h2>📋 Pending Loan Requests</h2>
-                    {#if loading}
-                        <p>Loading pending requests...</p>
-                    {:else if pendingLoans.length === 0}
-                        <p class="no-items">No pending requests.</p>
-                    {:else}
-                        <div class="loans-grid">
-                            {#each pendingLoans as loan}
-                                <div class="loan-card pending">
-                                    <div class="loan-header">
-                                        <div class="loan-title-section">
-                                            <h3>{loan.item_name}</h3>
-                                            {#if loan.photo_filename}
-                                                <div class="item-image">
-                                                    <img 
-                                                        src="/api/photos/{loan.photo_filename}" 
-                                                        alt="{loan.item_name}"
-                                                        on:error={(e) => e.target.style.display = 'none'}
-                                                    />
-                                                </div>
-                                            {:else}
-                                                <div class="item-image placeholder">
-                                                    <span>📷</span>
-                                                </div>
-                                            {/if}
-                                        </div>
-                                        <div class="status-badges">
-                                            <span class="status-badge pending">Pending</span>
-                                        </div>
-                                    </div>
-                                    <div class="loan-details">
-                                        <p><strong>Borrower:</strong> {loan.borrower_name}</p>
-                                        <p><strong>Phone:</strong> 
-                                            <span 
-                                                class="clickable-phone" 
-                                                role="button"
-                                                tabindex="0"
-                                                on:click={() => copyToClipboard(loan.borrower_phone)}
-                                                on:keydown={(e) => e.key === 'Enter' && copyToClipboard(loan.borrower_phone)}
-                                                title="Click to copy phone number"
-                                            >
-                                                {loan.borrower_phone}
-                                            </span>
-                                        </p>
-                                        <p><strong>Lab:</strong> {loan.lab_location}</p>
-                                        <p><strong>Quantity:</strong> {loan.quantity_borrowed}</p>
-                                        <p><strong>Purpose:</strong> {loan.purpose}</p>
-                                        <p><strong>Expected Return:</strong> {formatExpectedReturn(loan.expected_return_date)}</p>
-                                        <p><strong>Requested:</strong> {formatDate(loan.CreatedAt)}</p>
-                                    </div>
-                                    <div class="loan-actions">
-                                        <button 
-                                            class="approve-btn" 
-                                            on:click={() => approveLoan(loan.ID, 'approve')}
-                                            disabled={loading}
-                                        >
-                                            ✅ Approve
-                                        </button>
-                                        <button 
-                                            class="deny-btn" 
-                                            on:click={() => approveLoan(loan.ID, 'deny')}
-                                            disabled={loading}
-                                        >
-                                            ❌ Deny
-                                        </button>
-                                    </div>
-                                </div>
-                            {/each}
-                        </div>
-                    {/if}
-                </div>
-            {/if}
-
-            <!-- Pending Returns View -->
-            {#if currentView === 'pending-returns'}
-                <div class="loans-content">
-                    <h2>🔄 Pending Return Requests</h2>
-                    {#if loading}
-                        <p>Loading pending returns...</p>
-                    {:else if pendingReturns.length === 0}
-                        <p class="no-items">No pending return requests.</p>
-                    {:else}
-                        <div class="loans-grid">
-                            {#each pendingReturns as loan}
-                                <div class="loan-card return-pending">
-                                    <div class="loan-header">
-                                        <div class="loan-title-section">
-                                            <h3>{loan.item_name}</h3>
-                                            {#if loan.photo_filename}
-                                                <div class="item-image">
-                                                    <img 
-                                                        src="/api/photos/{loan.photo_filename}" 
-                                                        alt="{loan.item_name}"
-                                                        on:error={(e) => e.target.style.display = 'none'}
-                                                    />
-                                                </div>
-                                            {:else}
-                                                <div class="item-image placeholder">
-                                                    <span>📷</span>
-                                                </div>
-                                            {/if}
-                                        </div>
-                                        <div class="status-badges">
-                                            <span class="status-badge return-pending">Return Pending</span>
-                                        </div>
-                                    </div>
-                                    <div class="loan-details">
-                                        <p><strong>Borrower:</strong> {loan.borrower_name}</p>
-                                        <p><strong>Phone:</strong> 
-                                            <span 
-                                                class="clickable-phone" 
-                                                role="button"
-                                                tabindex="0"
-                                                on:click={() => copyToClipboard(loan.borrower_phone)}
-                                                on:keydown={(e) => e.key === 'Enter' && copyToClipboard(loan.borrower_phone)}
-                                                title="Click to copy phone number"
-                                            >
-                                                {loan.borrower_phone}
-                                            </span>
-                                        </p>
-                                        <p><strong>Lab:</strong> {loan.lab_location}</p>
-                                        <p><strong>Quantity:</strong> {loan.quantity_borrowed}</p>
-                                        <p><strong>Expected Return:</strong> {formatExpectedReturn(loan.expected_return_date)}</p>
-                                        <p><strong>Return Requested:</strong> {formatDate(loan.return_requested_at)}</p>
-                                        {#if isOverdue(loan.expected_return_date)}
-                                            <p class="overdue-text"><strong>Status:</strong> OVERDUE</p>
-                                        {/if}
-                                    </div>
-                                    <div class="loan-actions">
-                                        <button 
-                                            class="approve-btn" 
-                                            on:click={() => approveReturn(loan.ID, 'approved')}
-                                            disabled={loading}
-                                        >
-                                            ✅ Approve Return
-                                        </button>
-                                        <button 
-                                            class="not-found-btn" 
-                                            on:click={() => approveReturn(loan.ID, 'not_found')}
-                                            disabled={loading}
-                                        >
-                                            ❌ Mark as Not Found
-                                        </button>
-                                    </div>
-                                </div>
-                            {/each}
-                        </div>
-                    {/if}
-                </div>
-            {/if}
-
-            <!-- Lost/Missing Items View -->
+            <!-- Missing Items View -->
             {#if currentView === 'lost-missing'}
                 <div class="loans-content">
-                    <h2>🔍 Lost/Missing Items</h2>
-                    <p class="subtitle-text">Items marked as not found or with pending return requests</p>
+                    <h2>🔍 Missing Items</h2>
+                    <p class="subtitle-text">Items an admin could not find in the lab</p>
                     {#if loading}
-                        <p>Loading lost/missing items...</p>
+                        <p>Loading missing items...</p>
                     {:else if lostMissingItems.length === 0}
-                        <p class="no-items">No lost or missing items found.</p>
+                        <p class="no-items">No missing items.</p>
                     {:else}
                         <div class="loans-grid">
                             {#each lostMissingItems as loan}
@@ -1104,11 +1279,7 @@
                                             {/if}
                                         </div>
                                         <div class="status-badges">
-                                            {#if loan.status === 'not_found'}
-                                                <span class="status-badge not-found">Not Found</span>
-                                            {:else if loan.return_requested}
-                                                <span class="status-badge return-pending">Return Pending</span>
-                                            {/if}
+                                            <span class="status-badge not-found">Missing</span>
                                         </div>
                                     </div>
                                     <div class="loan-details">
@@ -1128,37 +1299,12 @@
                                         <p><strong>Lab:</strong> {loan.lab_location}</p>
                                         <p><strong>Quantity:</strong> {loan.quantity_borrowed}</p>
                                         <p><strong>Expected Return:</strong> {formatExpectedReturn(loan.expected_return_date)}</p>
-                                        {#if loan.status === 'not_found'}
-                                            <p><strong>Status:</strong> Marked as not found</p>
-                                        {:else}
-                                            <p><strong>Status:</strong> Return requested, awaiting approval</p>
-                                        {/if}
+                                        <p><strong>Status:</strong> Marked as missing{#if loan.approved_by} by {loan.approved_by}{/if}</p>
                                         <p><strong>Borrowed:</strong> {formatDate(loan.CreatedAt)}</p>
                                     </div>
-                                    {#if loan.return_requested && loan.return_approval_status === 'pending'}
-                                        <div class="return-section">
-                                            <p class="return-notice">🔄 Return requested - waiting for approval</p>
-                                            <div class="return-actions">
-                                                <button 
-                                                    class="approve-btn" 
-                                                    on:click={() => approveReturn(loan.ID, 'approved')}
-                                                    disabled={loading}
-                                                >
-                                                    ✅ Approve Return
-                                                </button>
-                                                <button 
-                                                    class="not-found-btn" 
-                                                    on:click={() => approveReturn(loan.ID, 'not_found')}
-                                                    disabled={loading}
-                                                >
-                                                    ❌ Mark as Not Found
-                                                </button>
-                                            </div>
-                                        </div>
-                                    {/if}
                                     {#if loan.status === 'not_found'}
                                         <div class="found-section">
-                                            <p class="found-notice">🔍 Item marked as not found</p>
+                                            <p class="found-notice">🔍 Item marked as missing</p>
                                             <div class="found-actions">
                                                 <button 
                                                     class="found-btn" 
@@ -1177,11 +1323,482 @@
                 </div>
             {/if}
 
+            <!-- 3D Printers View -->
+            {#if currentView === 'printers'}
+                <div class="loans-content">
+                    <h2>🖨️ 3D Printers</h2>
+                    <p class="subtitle-text">
+                        Live status, refreshing every few seconds.
+                        <a class="calendar-link" href="/printers" target="_blank" rel="noopener">Open the full page →</a>
+                    </p>
+
+                    {#if printers.length === 0}
+                        <p class="no-items">No printers are configured.</p>
+                    {:else}
+                        <div class="printer-admin-grid">
+                            {#each printers as printer, i (printer.id)}
+                                <div class="printer-admin-card {printerStateClass(printer)}" style="--i: {i}">
+                                    <div class="pa-head">
+                                        <img src="/P1S.png" alt="" class="pa-image" />
+                                        <div class="pa-title">
+                                            <h3>{printer.name}</h3>
+                                            <span class="pa-avail {printerIsPrinting(printer) ? 'busy' : 'free'}">
+                                                {printer.online ? (printerIsPrinting(printer) ? 'In use' : 'Free') : 'Unknown'}
+                                            </span>
+                                        </div>
+                                        <span class="pa-state {printerStateClass(printer)}">
+                                            {printerStateLabel(printer)}
+                                        </span>
+                                    </div>
+
+                                    <div class="pa-camera">
+                                        {#if printer.camera_online}
+                                            <img
+                                                src="/api/printers/{printer.id}/snapshot?t={cameraTick}"
+                                                alt="Camera view of {printer.name}"
+                                            />
+                                        {:else}
+                                            <div class="pa-camera-empty">
+                                                <img src="/P1S.png" alt="" />
+                                                <p>No camera image</p>
+                                            </div>
+                                        {/if}
+                                    </div>
+
+                                    {#if printer.faults && printer.faults.length > 0}
+                                        <div class="pa-faults">
+                                            <strong>⚠️ Printer reported {printer.faults.length} fault{printer.faults.length > 1 ? 's' : ''}</strong>
+                                            {#each printer.faults as fault}
+                                                <a class="pa-fault {fault.severity}" href={fault.url} target="_blank" rel="noopener">
+                                                    <span class="pa-fault-sev">{fault.severity}</span>
+                                                    <span class="pa-fault-code">{fault.code}</span>
+                                                    <span class="pa-fault-link">look up →</span>
+                                                </a>
+                                            {/each}
+                                        </div>
+                                    {/if}
+
+                                    {#if printer.access_code_problem}
+                                        <div class="pa-warning">
+                                            <strong>⚠️ Access code changed</strong>
+                                            <p>{printer.name} is refusing our access code - LAN mode was probably toggled.</p>
+                                            {#if editingCode === printer.id}
+                                                <div class="pa-code-form">
+                                                    <input
+                                                        type="text"
+                                                        bind:value={newCode}
+                                                        placeholder="New access code"
+                                                        autocomplete="off"
+                                                    />
+                                                    <button class="pa-save" on:click={() => savePrinterCode(printer)} disabled={savingCode}>
+                                                        {savingCode ? 'Saving...' : 'Save'}
+                                                    </button>
+                                                    <button class="pa-cancel" on:click={() => (editingCode = '')}>Cancel</button>
+                                                </div>
+                                            {:else}
+                                                <button class="pa-fix" on:click={() => { editingCode = printer.id; newCode = ''; }}>
+                                                    Update access code
+                                                </button>
+                                            {/if}
+                                        </div>
+                                    {/if}
+
+                                    {#if printer.online}
+                                        {#if printerIsPrinting(printer)}
+                                            <div class="pa-progress-row">
+                                                <div class="pa-progress-bar">
+                                                    <div class="pa-progress-fill" style="width: {printer.progress}%"></div>
+                                                </div>
+                                                <span class="pa-progress-text">{printer.progress}%</span>
+                                            </div>
+                                            {#if printer.remaining_minutes > 0}
+                                                <p class="pa-remaining">{formatRemaining(printer.remaining_minutes)}</p>
+                                            {/if}
+                                        {/if}
+
+                                        {#if printer.file_name}
+                                            <p class="pa-file" title={printer.file_name}>📄 {printer.file_name}</p>
+                                        {/if}
+
+
+
+                                    {#if (printer.ams && printer.ams.length > 0) || printer.external_spool}
+                                        <div class="pa-ams">
+                                            {#each printer.ams as unit}
+                                                <div class="pa-ams-head">
+                                                    <span class="pa-ams-title">AMS {unit.id + 1}</span>
+                                                    {#if unit.humidity}
+                                                        <span class="pa-ams-meta" title="The AMS reports humidity on its own 1-5 scale">
+                                                            💧 {unit.humidity}/5
+                                                        </span>
+                                                    {/if}
+                                                    {#if unit.temp}
+                                                        <span class="pa-ams-meta">🌡️ {unit.temp}°C</span>
+                                                    {/if}
+                                                </div>
+
+                                                <div class="pa-ams-slots">
+                                                    {#each unit.slots as slot}
+                                                        <div
+                                                            class="pa-ams-slot"
+                                                            class:empty={slot.empty}
+                                                            class:active={slot.active}
+                                                            title={slot.empty
+                                                                ? `Slot ${slot.slot}: empty`
+                                                                : `Slot ${slot.slot}: ${slot.material}${slot.remain >= 0 ? ', ' + slot.remain + '% left' : ', amount unknown'}${slot.active ? ' (in use)' : ''}`}
+                                                        >
+                                                            <span class="pa-ams-top">
+                                                                <span class="pa-ams-swatch" style="background: {slot.color || 'transparent'}"></span>
+                                                                <span class="pa-ams-num">{slot.slot}</span>
+                                                                {#if slot.active}<span class="pa-ams-dot" title="Currently feeding"></span>{/if}
+                                                            </span>
+
+                                                            <span class="pa-ams-mat">{slot.empty ? 'Empty' : slot.material}</span>
+
+                                                            {#if slot.remain >= 0}
+                                                                <span class="pa-ams-bar">
+                                                                    <span class="pa-ams-fill" style="width: {slot.remain}%"></span>
+                                                                </span>
+                                                                <span class="pa-ams-pct">{slot.remain}%</span>
+                                                            {:else if !slot.empty}
+                                                                <span class="pa-ams-pct unknown" title="No RFID tag, so the printer cannot tell">? left</span>
+                                                            {/if}
+                                                        </div>
+                                                    {/each}
+                                                </div>
+                                            {/each}
+
+                                            {#if printer.external_spool && !printer.external_spool.empty}
+                                                <div class="pa-ams-ext">
+                                                    <span class="pa-ams-swatch" style="background: {printer.external_spool.color || 'transparent'}"></span>
+                                                    <span class="pa-ams-ext-label">External spool</span>
+                                                    <span class="pa-ams-ext-mat">{printer.external_spool.material}</span>
+                                                    {#if printer.external_spool.remain >= 0}
+                                                        <span class="pa-ams-pct">{printer.external_spool.remain}%</span>
+                                                    {/if}
+                                                </div>
+                                            {/if}
+                                        </div>
+                                    {/if}
+
+                                        <div class="pa-temps">
+                                            <span>🔥 {printer.nozzle_temp.toFixed(0)}°C</span>
+                                            <span>🛏️ {printer.bed_temp.toFixed(0)}°C</span>
+                                            {#if printer.chamber_temp > 0}
+                                                <span>📦 {printer.chamber_temp.toFixed(0)}°C</span>
+                                            {/if}
+                                        </div>
+
+                                        <div class="pa-actions">
+                                            <button
+                                                class="pa-light"
+                                                class:on={printer.light_on}
+                                                on:click={() => toggleLight(printer)}
+                                                disabled={busyPrinter === printer.id + 'light'}
+                                                title="Chamber light - the camera is useless in the dark"
+                                            >
+                                                {printer.light_on ? '💡 Light on' : '🌑 Light off'}
+                                            </button>
+
+                                            {#if printerIsPrinting(printer)}
+                                                <button
+                                                    class="pa-pause"
+                                                    on:click={() => pausePrint(printer)}
+                                                    disabled={busyPrinter === printer.id + 'pause'}
+                                                >
+                                                    ⏸ Pause
+                                                </button>
+                                            {:else if printer.state === 'PAUSE'}
+                                                <button
+                                                    class="pa-resume"
+                                                    on:click={() => resumePrint(printer)}
+                                                    disabled={busyPrinter === printer.id + 'resume'}
+                                                >
+                                                    ▶ Resume
+                                                </button>
+                                            {/if}
+                                        </div>
+
+                                        {#if printerIsPrinting(printer) || printer.state === 'PAUSE'}
+                                            <button
+                                                class="pa-stop"
+                                                on:click={() => stopPrint(printer)}
+                                                disabled={stoppingPrinter === printer.id}
+                                            >
+                                                {stoppingPrinter === printer.id ? 'Stopping...' : '⏹ Stop Print'}
+                                            </button>
+                                        {/if}
+
+                                        <button class="pa-send-toggle" on:click={() => toggleUpload(printer)}>
+                                            {uploadFor === printer.id ? '✕ Close files' : '📤 Send a file'}
+                                        </button>
+
+                                        {#if uploadFor === printer.id}
+                                            <div class="pa-send">
+                                                <p class="pa-send-hint">
+                                                    File names should start with the owner's name, e.g.
+                                                    <code>srinath_bracket.3mf</code>. The file lands on the
+                                                    printer - start it from the screen once the plate is clear.
+                                                </p>
+
+                                                <label class="pa-file-pick">
+                                                    <input
+                                                        type="file"
+                                                        accept=".3mf,.gcode"
+                                                        on:change={(e) => sendFile(printer, e)}
+                                                        disabled={uploading === printer.id}
+                                                    />
+                                                    <span>
+                                                        {uploading === printer.id
+                                                            ? `Sending... ${uploadProgress}%`
+                                                            : 'Choose a .3mf or .gcode file'}
+                                                    </span>
+                                                </label>
+
+                                                {#if uploading === printer.id}
+                                                    <div class="pa-upload-bar">
+                                                        <div class="pa-upload-fill" style="width: {uploadProgress}%"></div>
+                                                    </div>
+                                                {/if}
+
+                                                {#if uploadFiles[printer.id]}
+                                                    {#if uploadFiles[printer.id].length === 0}
+                                                        <p class="pa-send-empty">No printable files on this printer.</p>
+                                                    {:else}
+                                                        <ul class="pa-file-list">
+                                                            {#each uploadFiles[printer.id] as file}
+                                                                <li>
+                                                                    <span class="pa-file-name" title={file.name}>{file.name}</span>
+                                                                    <span class="pa-file-size">{fileSize(file.size)}</span>
+                                                                    <button
+                                                                        class="pa-file-del"
+                                                                        on:click={() => deletePrinterFile(printer, file.name)}
+                                                                        title="Delete from the printer"
+                                                                    >🗑️</button>
+                                                                </li>
+                                                            {/each}
+                                                        </ul>
+                                                    {/if}
+                                                {/if}
+                                            </div>
+                                        {/if}
+
+                                        {#if printer.last_action_by}
+                                            <p class="pa-last">Last stopped by {printer.last_action_by}</p>
+                                        {/if}
+                                    {:else}
+                                        <p class="pa-offline">Not responding - switched off or off the network.</p>
+                                    {/if}
+                                </div>
+                            {/each}
+                        </div>
+                    {/if}
+
+                    <div class="joblog-head">
+                        <h3>📝 Print log</h3>
+                        <a class="calendar-link" href="/api/admin/export-print-jobs-csv">Export CSV</a>
+                    </div>
+                    <p class="subtitle-text">
+                        Recorded automatically from the printers - nobody fills in a form.
+                        Whose print it is comes from the file name.
+                    </p>
+
+                    {#if printJobs.length === 0}
+                        <p class="no-items">No prints recorded yet.</p>
+                    {:else}
+                        <div class="joblog">
+                            {#each printJobs.slice(0, 40) as job}
+                                <div class="joblog-row {job.result}">
+                                    <span class="joblog-when">
+                                        {new Date(job.started_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
+                                        {new Date(job.started_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    </span>
+                                    <span class="joblog-printer">{job.printer_name}</span>
+                                    <span class="joblog-file" title={job.file_name}>{job.file_name || '(unnamed)'}</span>
+                                    <span class="joblog-dur">{jobDuration(job)}</span>
+                                    <span class="joblog-result {job.result}">
+                                        {job.result}{#if job.stopped_by} by {job.stopped_by}{/if}
+                                    </span>
+                                </div>
+                            {/each}
+                        </div>
+                    {/if}
+                </div>
+            {/if}
+
+            <!-- Motion Capture Lab Bookings View -->
+            {#if currentView === 'bookings'}
+                <div class="loans-content">
+                    <h2>🎥 Motion Capture Lab Bookings</h2>
+                    <p class="subtitle-text">
+                        Bookings from the last week onwards.
+                        <a class="calendar-link" href="/mocap" target="_blank" rel="noopener">Open calendar view →</a>
+                    </p>
+                    <div class="cal-toolbar">
+                        <div class="cal-nav">
+                            <button on:click={() => goToWeek(-1)} aria-label="Previous week">◀</button>
+                            <button class="cal-today" on:click={() => (weekStart = startOfWeek(new Date()))}>Today</button>
+                            <button on:click={() => goToWeek(1)} aria-label="Next week">▶</button>
+                            <span class="cal-label">{weekLabel}</span>
+                        </div>
+                        <button class="cal-add" on:click={() => { showBookingForm = !showBookingForm; selectedBooking = null; }}>
+                            {showBookingForm ? '✕ Close' : '➕ Add Booking'}
+                        </button>
+                    </div>
+
+                    {#if showBookingForm}
+                        <form class="cal-form" on:submit|preventDefault={createBooking}>
+                            <p class="cal-form-hint">Booking on someone's behalf - click a slot in the calendar to prefill the time.</p>
+                            <div class="cal-form-row">
+                                <label>
+                                    Name
+                                    <input type="text" bind:value={bookingForm.booked_by} required placeholder="Who is it for" />
+                                </label>
+                                <label>
+                                    Phone
+                                    <input type="tel" bind:value={bookingForm.phone} required placeholder="Their number" />
+                                </label>
+                            </div>
+                            <div class="cal-form-row">
+                                <label>
+                                    Date
+                                    <input type="date" bind:value={bookingForm.date} required />
+                                </label>
+                                <label>
+                                    From
+                                    <input type="time" bind:value={bookingForm.start_hour} required step="900" />
+                                </label>
+                                <label>
+                                    To
+                                    <input type="time" bind:value={bookingForm.end_hour} required step="900" />
+                                </label>
+                            </div>
+                            <label class="cal-form-full">
+                                Purpose
+                                <input type="text" bind:value={bookingForm.purpose} required placeholder="What for" />
+                            </label>
+                            <button type="submit" class="cal-save" disabled={savingBooking}>
+                                {savingBooking ? 'Adding...' : 'Add Booking'}
+                            </button>
+                        </form>
+                    {/if}
+
+                    {#if selectedBooking}
+                        <div class="cal-details">
+                            <h3>{selectedBooking.purpose}</h3>
+                            <p><strong>Booked by:</strong> {selectedBooking.booked_by}</p>
+                            <p><strong>When:</strong>
+                                {new Date(selectedBooking.start_time).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'short' })},
+                                {bookingTime(selectedBooking.start_time)} - {bookingTime(selectedBooking.end_time)}</p>
+                            <p><strong>Contact:</strong>
+                                <span
+                                    class="clickable-phone"
+                                    role="button"
+                                    tabindex="0"
+                                    on:click={() => copyToClipboard(selectedBooking.phone)}
+                                    on:keydown={(e) => e.key === 'Enter' && copyToClipboard(selectedBooking.phone)}
+                                >{selectedBooking.phone}</span>
+                            </p>
+                            <div class="cal-details-actions">
+                                <button class="cal-delete" on:click={deleteSelectedBooking}>🗑️ Delete Booking</button>
+                                <button class="cal-close" on:click={() => (selectedBooking = null)}>Close</button>
+                            </div>
+                        </div>
+                    {/if}
+
+                    <div class="cal">
+                        <div class="cal-head">
+                            <div class="cal-gutter"></div>
+                            {#each weekDays as day}
+                                <div class="cal-day-head" class:today={isToday(day)}>
+                                    <span class="cal-day-name">{DAY_NAMES[day.getDay()]}</span>
+                                    <span class="cal-day-num">{day.getDate()}</span>
+                                </div>
+                            {/each}
+                        </div>
+                        <div class="cal-body">
+                            <div class="cal-gutter">
+                                {#each HOURS as hour}
+                                    <div class="cal-time">{String(hour).padStart(2, '0')}:00</div>
+                                {/each}
+                            </div>
+                            {#each calendarColumns as column}
+                                <div class="cal-col" class:today={isToday(column.day)}>
+                                    {#each HOURS as hour}
+                                        <button
+                                            class="cal-cell"
+                                            on:click={() => openSlot(column.day, hour)}
+                                            aria-label="Add a booking at {String(hour).padStart(2, '0')}:00 on {column.day.toDateString()}"
+                                        ></button>
+                                    {/each}
+                                    {#each column.blocks as block (block.ID)}
+                                        <button
+                                            class="cal-block"
+                                            style="top: {block.top}%; height: {block.height}%;"
+                                            on:click={() => { selectedBooking = block; showBookingForm = false; }}
+                                        >
+                                            <span class="cal-block-time">{bookingTime(block.start)} - {bookingTime(block.end)}</span>
+                                            <span class="cal-block-name">{block.booked_by}</span>
+                                            <span class="cal-block-purpose">{block.purpose}</span>
+                                        </button>
+                                    {/each}
+                                </div>
+                            {/each}
+                        </div>
+                    </div>
+
+                    <h3 class="cal-list-title">All bookings</h3>
+
+                    {#if loading}
+                        <p>Loading bookings...</p>
+                    {:else if bookings.length === 0}
+                        <p class="no-items">No bookings.</p>
+                    {:else}
+                        <div class="bookings-list">
+                            {#each bookings as booking}
+                                <div class="booking-row" class:past={new Date(booking.end_time) < new Date()}>
+                                    <div class="booking-when">
+                                        <span class="booking-date">
+                                            {new Date(booking.start_time).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}
+                                        </span>
+                                        <span class="booking-time">
+                                            {new Date(booking.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                            -
+                                            {new Date(booking.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                        </span>
+                                    </div>
+                                    <div class="booking-info">
+                                        <p class="booking-purpose">{booking.purpose}</p>
+                                        <p class="booking-by">
+                                            {booking.booked_by} ·
+                                            <span 
+                                                class="clickable-phone" 
+                                                role="button"
+                                                tabindex="0"
+                                                on:click={() => copyToClipboard(booking.phone)}
+                                                on:keydown={(e) => e.key === 'Enter' && copyToClipboard(booking.phone)}
+                                                title="Click to copy phone number"
+                                            >{booking.phone}</span>
+                                        </p>
+                                    </div>
+                                    <button 
+                                        class="delete-admin-btn" 
+                                        on:click={() => deleteBooking(booking.ID, booking.booked_by)}
+                                    >
+                                        🗑️ Delete
+                                    </button>
+                                </div>
+                            {/each}
+                        </div>
+                    {/if}
+                </div>
+            {/if}
+
             <!-- Item History View -->
             {#if currentView === 'history'}
                 <div class="loans-content">
                     <h2>📚 Complete Item History</h2>
-                    <p class="subtitle-text">Chronological history of all items - borrowed, returned, lost, and found</p>
+                    <p class="subtitle-text">Chronological history of all items - borrowed, returned and missing</p>
                     
                     <!-- Search functionality for history -->
                     <div class="history-search-container">
@@ -1252,21 +1869,17 @@
                                             </div>
                                             <div class="history-status-badges">
                                                 <span class="status-badge {item.status}">
-                                                    {#if item.status === 'approved'}
-                                                        📋 Borrowed
-                                                    {:else if item.status === 'returned'}
+                                                    {#if item.status === 'returned'}
                                                         ✅ Returned
                                                     {:else if item.status === 'not_found'}
-                                                        ❌ Lost/Missing
-                                                    {:else if item.status === 'denied'}
-                                                        ❌ Denied
-                                                    {:else if item.status === 'pending'}
-                                                        ⏳ Pending
+                                                        ❌ Missing
+                                                    {:else if item.status === 'active'}
+                                                        📋 Borrowed
                                                     {:else}
                                                         {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
                                                     {/if}
                                                 </span>
-                                                {#if item.status === 'approved' && isOverdue(item.expected_return_date) && item.status !== 'returned'}
+                                                {#if item.status === 'active' && isOverdue(item.expected_return_date)}
                                                     <span class="overdue-badge">OVERDUE</span>
                                                 {/if}
                                             </div>
@@ -1275,19 +1888,15 @@
                                                     {#if item.status === 'returned'}
                                                         Returned:
                                                     {:else if item.status === 'not_found'}
-                                                        Marked Lost:
-                                                    {:else if item.status === 'denied'}
-                                                        Denied:
-                                                    {:else if item.approved_at}
-                                                        Approved:
+                                                        Marked Missing:
                                                     {:else}
-                                                        Requested:
+                                                        Borrowed:
                                                     {/if}
                                                 </span>
                                                 <span class="date-value">
-                                                    {#if item.status === 'returned' && item.return_approved_at}
-                                                        {formatDate(item.return_approved_at)}
-                                                    {:else if item.approved_at}
+                                                    {#if item.status === 'returned' && item.returned_at}
+                                                        {formatDate(item.returned_at)}
+                                                    {:else if item.status === 'not_found' && item.approved_at}
                                                         {formatDate(item.approved_at)}
                                                     {:else}
                                                         {formatDate(item.CreatedAt)}
@@ -1317,7 +1926,7 @@
                                                     <p><strong>Quantity:</strong> {item.quantity_borrowed}</p>
                                                     <p><strong>Purpose:</strong> {item.purpose}</p>
                                                     {#if item.approved_by}
-                                                        <p><strong>Approved by:</strong> {item.approved_by}</p>
+                                                        <p><strong>Last handled by:</strong> {item.approved_by}</p>
                                                     {/if}
                                                 </div>
                                                 <div class="detail-group">
@@ -1325,11 +1934,8 @@
                                                     {#if item.expected_return_date}
                                                         <p><strong>Expected Return:</strong> {formatExpectedReturn(item.expected_return_date)}</p>
                                                     {/if}
-                                                    {#if item.return_requested_at}
-                                                        <p><strong>Return Requested:</strong> {formatDate(item.return_requested_at)}</p>
-                                                    {/if}
-                                                    {#if item.status === 'returned' && item.return_approved_at}
-                                                        <p><strong>Return Date:</strong> {formatDate(item.return_approved_at)}</p>
+                                                    {#if item.status === 'returned' && item.returned_at}
+                                                        <p><strong>Return Date:</strong> {formatDate(item.returned_at)}</p>
                                                     {/if}
                                                     {#if item.status === 'returned' && isOverdue(item.expected_return_date)}
                                                         <p><strong>Return Status:</strong> <span class="overdue-mark">⚠️ Returned Overdue</span></p>
@@ -1369,20 +1975,6 @@
                         </button>
                         <button 
                             class="filter-btn" 
-                            class:active={selectedFilter === 'pending'}
-                            on:click={() => filterLabLoans('pending')}
-                        >
-                            Pending
-                        </button>
-                        <button 
-                            class="filter-btn" 
-                            class:active={selectedFilter === 'rejected'}
-                            on:click={() => filterLabLoans('rejected')}
-                        >
-                            Rejected
-                        </button>
-                        <button 
-                            class="filter-btn" 
                             class:active={selectedFilter === 'returned'}
                             on:click={() => filterLabLoans('returned')}
                         >
@@ -1393,7 +1985,7 @@
                             class:active={selectedFilter === 'not_found'}
                             on:click={() => filterLabLoans('not_found')}
                         >
-                            Not Found
+                            Missing
                         </button>
                     </div>
 
@@ -1406,8 +1998,7 @@
                             {#each labLoans as loan}
                                 <div 
                                     class="loan-card" 
-                                    class:overdue={isOverdue(loan.expected_return_date) && loan.approval_status === 'approved' && loan.status !== 'returned'}
-                                    class:rejected={loan.approval_status === 'denied'}
+                                    class:overdue={isOverdue(loan.expected_return_date) && loan.status === 'active'}
                                 >
                                     <div class="loan-header">
                                         <div class="loan-title-section">
@@ -1427,10 +2018,14 @@
                                             {/if}
                                         </div>
                                         <div class="status-badges">
-                                            <span class="status-badge {loan.approval_status}">
-                                                {loan.approval_status.charAt(0).toUpperCase() + loan.approval_status.slice(1)}
-                                            </span>
-                                            {#if isOverdue(loan.expected_return_date) && loan.approval_status === 'approved' && loan.status !== 'returned'}
+                                            {#if loan.status === 'not_found'}
+                                                <span class="status-badge not-found">Missing</span>
+                                            {:else if loan.status === 'returned'}
+                                                <span class="status-badge returned">Returned</span>
+                                            {:else}
+                                                <span class="status-badge approved">Borrowed</span>
+                                            {/if}
+                                            {#if isOverdue(loan.expected_return_date) && loan.status === 'active'}
                                                 <span class="overdue-badge">OVERDUE</span>
                                             {/if}
                                         </div>
@@ -1454,10 +2049,10 @@
                                         <p><strong>Expected Return:</strong> {formatExpectedReturn(loan.expected_return_date)}</p>
                                         <p><strong>Borrowed:</strong> {formatDate(loan.CreatedAt)}</p>
                                         {#if loan.approved_by}
-                                            <p><strong>Approved by:</strong> {loan.approved_by}</p>
+                                            <p><strong>Last handled by:</strong> {loan.approved_by}</p>
                                         {/if}
                                     </div>
-                                    {#if loan.approval_status === 'approved'}
+                                    {#if loan.status === 'active'}
                                         <div class="loan-actions">
                                             <div class="extend-controls">
                                                 <label>Extend by:</label>
@@ -1493,59 +2088,34 @@
                                             >
                                                 📅 Extend
                                             </button>
+                                            <button
+                                                class="not-found-btn"
+                                                on:click={() => markAsMissing(loan.ID, loan.item_name)}
+                                                disabled={loading}
+                                            >
+                                                ❓ Can't Find This Item
+                                            </button>
                                         </div>
                                     {/if}
-                                    {#if loan.return_requested && loan.return_approval_status === 'pending'}
+                                    {#if loan.status === 'returned'}
                                         <div class="return-section">
-                                            <p class="return-notice">🔄 Return requested - waiting for approval</p>
-                                            <div class="return-actions">
-                                                <button 
-                                                    class="approve-btn" 
-                                                    on:click={() => approveReturn(loan.ID, 'approved')}
-                                                    disabled={loading}
-                                                >
-                                                    ✅ Approve Return
-                                                </button>
-                                                <button 
-                                                    class="not-found-btn" 
-                                                    on:click={() => approveReturn(loan.ID, 'not_found')}
-                                                    disabled={loading}
-                                                >
-                                                    ❌ Mark as Not Found
-                                                </button>
-                                            </div>
-                                        </div>
-                                    {:else if loan.return_requested && loan.return_approval_status === 'approved'}
-                                        <div class="return-section">
-                                            <p class="return-status approved">✅ Return approved - Item returned</p>
-                                            {#if loan.return_approved_at}
-                                                <p class="return-date"><strong>Return Date:</strong> {formatDate(loan.return_approved_at)}</p>
-                                            {/if}
+                                            <p class="return-status approved">✅ Returned{#if loan.returned_at} on {formatDate(loan.returned_at)}{/if}</p>
                                             {#if isOverdue(loan.expected_return_date)}
                                                 <p class="overdue-returned"><strong>Status:</strong> <span class="overdue-mark">⚠️ Returned Overdue</span></p>
                                             {/if}
                                         </div>
-                                    {:else if loan.return_requested && loan.return_approval_status === 'not_found'}
-                                        <div class="return-section">
-                                            <p class="return-status not-found">❌ Item marked as not found</p>
-                                        </div>
-                                    {/if}
-                                    {#if loan.approval_status === 'pending'}
-                                        <div class="loan-actions">
-                                            <button 
-                                                class="approve-btn" 
-                                                on:click={() => approveLoan(loan.ID, 'approve')}
-                                                disabled={loading}
-                                            >
-                                                ✅ Approve
-                                            </button>
-                                            <button 
-                                                class="deny-btn" 
-                                                on:click={() => approveLoan(loan.ID, 'deny')}
-                                                disabled={loading}
-                                            >
-                                                ❌ Deny
-                                            </button>
+                                    {:else if loan.status === 'not_found'}
+                                        <div class="found-section">
+                                            <p class="found-notice">🔍 Item marked as missing</p>
+                                            <div class="found-actions">
+                                                <button
+                                                    class="found-btn"
+                                                    on:click={() => markAsFound(loan.ID)}
+                                                    disabled={loading}
+                                                >
+                                                    ✅ Mark as Found
+                                                </button>
+                                            </div>
                                         </div>
                                     {/if}
                                 </div>
@@ -1704,7 +2274,9 @@
                                             </p>
                                         </div>
                                         <div class="admin-actions">
-                                            {#if admin.username !== adminInfo.username && admin.username !== 'Srinath'}
+                                            {#if admin.username === adminInfo.username}
+                                                <span class="current-user-badge">You</span>
+                                            {:else}
                                                 <button 
                                                     class="delete-admin-btn" 
                                                     on:click={() => deleteAdmin(admin.id, admin.name, admin.username)}
@@ -1712,10 +2284,6 @@
                                                 >
                                                     🗑️ Delete
                                                 </button>
-                                            {:else if admin.username === adminInfo.username}
-                                                <span class="current-user-badge">You</span>
-                                            {:else if admin.username === 'Srinath'}
-                                                <span class="protected-user-badge">Protected</span>
                                             {/if}
                                         </div>
                                     </div>
@@ -1757,8 +2325,8 @@
 
 <style>
     :global(body) {
-        background: #1e1e2e;
-        color: #cdd6f4;
+        background: var(--ctp-base);
+        color: var(--ctp-text);
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         margin: 0;
         padding: 0;
@@ -1770,7 +2338,7 @@
         margin: 0 auto;
         padding: clamp(15px, 3vw, 30px);
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-        background: #181825;
+        background: var(--ctp-mantle);
         height: 100vh;
         overflow-y: auto;
     }
@@ -1788,13 +2356,13 @@
     .message.success {
         background-color: rgba(166, 227, 161, 0.15);
         border: 1px solid rgba(166, 227, 161, 0.4);
-        color: #a6e3a1;
+        color: var(--ctp-green);
     }
 
     .message.error {
         background-color: rgba(243, 139, 168, 0.15);
         border: 1px solid rgba(243, 139, 168, 0.4);
-        color: #f38ba8;
+        color: var(--ctp-red);
     }
 
     @keyframes slideDown {
@@ -1822,8 +2390,8 @@
         position: absolute;
         top: -10px;
         right: -10px;
-        background: #f38ba8;
-        color: #1e1e2e;
+        background: var(--ctp-red);
+        color: var(--ctp-base);
         border: none;
         border-radius: 50%;
         width: 32px;
@@ -1839,7 +2407,7 @@
     }
 
     .close-btn:hover {
-        background: #eba0ac;
+        background: var(--ctp-maroon);
         transform: scale(1.1);
     }
 
@@ -1852,17 +2420,17 @@
 
     .login-header h1 {
         margin: 0;
-        color: #cdd6f4;
+        color: var(--ctp-text);
         font-size: clamp(1.6rem, 4vw, 2.2rem);
         font-weight: 600;
     }
 
     .login-form {
-        background: #11111b;
+        background: var(--ctp-crust);
         padding: clamp(30px, 6vw, 50px);
         border-radius: 12px;
         box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
-        border: 1px solid #313244;
+        border: 1px solid var(--ctp-surface0);
     }
 
     .form-group {
@@ -1874,32 +2442,32 @@
         display: block;
         margin-bottom: 8px;
         font-weight: 600;
-        color: #cdd6f4;
+        color: var(--ctp-text);
         font-size: clamp(0.9rem, 2vw, 1rem);
     }
 
     .form-group input {
         width: 100%;
         padding: clamp(10px, 2.5vw, 14px);
-        border: 2px solid #313244;
+        border: 2px solid var(--ctp-surface0);
         border-radius: 8px;
         font-size: clamp(0.9rem, 2vw, 1rem);
         box-sizing: border-box;
-        background: #1e1e2e;
-        color: #cdd6f4;
+        background: var(--ctp-base);
+        color: var(--ctp-text);
         transition: all 0.3s ease;
     }
 
     .form-group input:focus {
-        border-color: #f2cdcd;
+        border-color: var(--ctp-flamingo);
         outline: none;
         box-shadow: 0 0 0 3px rgba(242, 205, 205, 0.25);
     }
 
     .login-btn {
         width: 100%;
-        background: linear-gradient(135deg, #f2cdcd, #eba0ac);
-        color: #11111b;
+        background: linear-gradient(135deg, var(--ctp-flamingo), var(--ctp-maroon));
+        color: var(--ctp-crust);
         border: none;
         padding: clamp(12px, 3vw, 18px);
         border-radius: 8px;
@@ -1910,17 +2478,17 @@
     }
 
     .login-btn:hover {
-        background: linear-gradient(135deg, #eba0ac, #f5c2e7);
+        background: linear-gradient(135deg, var(--ctp-maroon), var(--ctp-pink));
         transform: translateY(-1px);
         box-shadow: 0 8px 25px rgba(242, 205, 205, 0.3);
     }
 
     .login-btn:disabled {
-        background: #313244;
+        background: var(--ctp-surface0);
         cursor: not-allowed;
         transform: none;
         box-shadow: none;
-        color: #a6adc8;
+        color: var(--ctp-subtext0);
     }
 
     /* Dashboard styles */
@@ -1930,7 +2498,7 @@
         align-items: center;
         margin-bottom: clamp(20px, 4vw, 40px);
         padding-bottom: 20px;
-        border-bottom: 2px solid #313244;
+        border-bottom: 2px solid var(--ctp-surface0);
         flex-wrap: wrap;
         gap: 15px;
     }
@@ -1951,7 +2519,7 @@
 
     .dashboard-header h1 {
         margin: 0;
-        color: #cdd6f4;
+        color: var(--ctp-text);
         font-size: clamp(1.4rem, 3.5vw, 2rem);
         font-weight: 600;
         line-height: 1.2;
@@ -1965,15 +2533,15 @@
     }
 
     .admin-info h1 {
-        color: #cdd6f4;
+        color: var(--ctp-text);
         margin: 0;
         font-size: clamp(1.8rem, 4vw, 2.5rem);
         font-weight: 600;
     }
 
     .logout-btn {
-        background: linear-gradient(135deg, #f38ba8, #eba0ac);
-        color: #11111b;
+        background: linear-gradient(135deg, var(--ctp-red), var(--ctp-maroon));
+        color: var(--ctp-crust);
         border: none;
         padding: clamp(8px, 2vw, 12px) clamp(12px, 3vw, 20px);
         border-radius: 8px;
@@ -1984,7 +2552,7 @@
     }
 
     .logout-btn:hover {
-        background: linear-gradient(135deg, #eba0ac, #f5c2e7);
+        background: linear-gradient(135deg, var(--ctp-maroon), var(--ctp-pink));
         transform: translateY(-1px);
         box-shadow: 0 4px 15px rgba(243, 139, 168, 0.3);
     }
@@ -1992,40 +2560,81 @@
     /* Navigation tabs */
     .nav-tabs {
         display: flex;
-        gap: clamp(5px, 1vw, 15px);
-        margin-bottom: clamp(20px, 4vw, 40px);
-        border-bottom: 2px solid #313244;
+        gap: clamp(4px, 0.8vw, 10px);
+        margin-bottom: clamp(18px, 3vw, 32px);
+        border-bottom: 2px solid var(--ctp-surface0);
         overflow-x: auto;
+        scroll-snap-type: x proximity;
+        -webkit-overflow-scrolling: touch;
+        /* The tab strip is the primary navigation - keep it in reach */
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        background: linear-gradient(var(--ctp-base) 70%, transparent);
+        padding-bottom: 2px;
+    }
+
+    .nav-tabs::-webkit-scrollbar {
+        height: 4px;
     }
 
     .tab-btn {
         background: none;
         border: none;
-        padding: clamp(12px, 3vw, 18px) clamp(15px, 3vw, 25px);
+        padding: clamp(10px, 2vw, 15px) clamp(12px, 2vw, 20px);
         cursor: pointer;
         border-bottom: 3px solid transparent;
-        font-size: clamp(0.9rem, 2vw, 1.1rem);
+        font-size: clamp(0.85rem, 1.7vw, 1rem);
         position: relative;
-        color: #a6adc8;
-        transition: all 0.3s ease;
+        color: var(--ctp-subtext0);
         white-space: nowrap;
-        font-weight: 500;
-    }
-
-    .tab-btn.active {
-        border-bottom-color: #f2cdcd;
-        color: #f2cdcd;
-        font-weight: 600;
+        font-weight: 550;
+        font-family: inherit;
+        border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+        scroll-snap-align: start;
+        transition:
+            color var(--fast) var(--ease),
+            background-color var(--fast) var(--ease),
+            transform var(--fast) var(--ease);
     }
 
     .tab-btn:hover {
-        background: rgba(242, 205, 205, 0.1);
-        color: #cdd6f4;
+        color: var(--ctp-text);
+        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
+        transform: translateY(-2px);
+    }
+
+    /* The underline grows out from the middle rather than snapping in */
+    .tab-btn::after {
+        content: '';
+        position: absolute;
+        left: 12%;
+        right: 12%;
+        bottom: -2px;
+        height: 3px;
+        border-radius: var(--radius-pill);
+        background: var(--ctp-mauve);
+        transform: scaleX(0);
+        transition: transform var(--normal) var(--ease);
+    }
+
+    .tab-btn:hover::after {
+        transform: scaleX(0.5);
+    }
+
+    .tab-btn.active::after {
+        transform: scaleX(1);
+    }
+
+    .tab-btn.active {
+        border-bottom-color: var(--ctp-flamingo);
+        color: var(--ctp-flamingo);
+        font-weight: 600;
     }
 
     .badge {
-        background: #f38ba8;
-        color: #11111b;
+        background: var(--ctp-red);
+        color: var(--ctp-crust);
         border-radius: 12px;
         padding: 3px 8px;
         font-size: clamp(10px, 1.5vw, 12px);
@@ -2036,42 +2645,48 @@
     /* Dashboard overview */
     .overview-cards {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-        gap: clamp(15px, 3vw, 25px);
+        /* min() keeps a single column from overflowing a narrow phone */
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+        gap: clamp(12px, 2vw, 20px);
         margin-top: 20px;
     }
 
     .card {
-        background: #11111b;
-        padding: clamp(25px, 5vw, 40px);
-        border-radius: 12px;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        background:
+            linear-gradient(180deg, rgba(205, 214, 244, 0.04), transparent 60%),
+            var(--ctp-mantle);
+        padding: clamp(18px, 3.5vw, 30px);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-sm);
         text-align: center;
-        border: 1px solid #313244;
-        transition: all 0.3s ease;
+        border: 1px solid var(--ctp-surface0);
+        transition:
+            transform var(--normal) var(--ease),
+            box-shadow var(--normal) var(--ease),
+            border-color var(--normal) var(--ease);
     }
 
     .card:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
-        border-color: #f2cdcd;
+        transform: translateY(-4px) scale(1.015);
+        border-color: color-mix(in srgb, var(--ctp-mauve) 45%, var(--ctp-surface1));
+        box-shadow: var(--shadow);
     }
 
     .stat-number {
         font-size: clamp(2.5rem, 8vw, 4rem);
         font-weight: 700;
-        color: #f2cdcd;
+        color: var(--ctp-flamingo);
         margin: 15px 0;
     }
 
     .card h3 {
-        color: #cdd6f4;
+        color: var(--ctp-text);
         margin-bottom: 15px;
         font-size: clamp(1.1rem, 2.5vw, 1.3rem);
     }
 
     .card-btn {
-        background: linear-gradient(135deg, #f2cdcd, #eba0ac);
+        background: linear-gradient(135deg, var(--ctp-flamingo), var(--ctp-maroon));
         color: white;
         border: none;
         padding: clamp(8px, 2vw, 12px) clamp(16px, 3vw, 24px);
@@ -2083,7 +2698,7 @@
     }
 
     .card-btn:hover {
-        background: linear-gradient(135deg, #eba0ac, #f5c2e7);
+        background: linear-gradient(135deg, var(--ctp-maroon), var(--ctp-pink));
         transform: translateY(-1px);
         box-shadow: 0 4px 15px rgba(31, 111, 235, 0.3);
     }
@@ -2097,9 +2712,9 @@
     }
 
     .filter-btn {
-        background: #11111b;
-        border: 2px solid #313244;
-        color: #a6adc8;
+        background: var(--ctp-crust);
+        border: 2px solid var(--ctp-surface0);
+        color: var(--ctp-subtext0);
         padding: clamp(6px, 1.5vw, 10px) clamp(12px, 3vw, 18px);
         border-radius: 20px;
         cursor: pointer;
@@ -2109,14 +2724,14 @@
     }
 
     .filter-btn:hover {
-        background: #313244;
-        border-color: #f2cdcd;
-        color: #cdd6f4;
+        background: var(--ctp-surface0);
+        border-color: var(--ctp-flamingo);
+        color: var(--ctp-text);
     }
 
     .filter-btn.active {
-        background: #f2cdcd;
-        border-color: #f2cdcd;
+        background: var(--ctp-flamingo);
+        border-color: var(--ctp-flamingo);
         color: white;
         font-weight: 600;
     }
@@ -2130,19 +2745,19 @@
     }
 
     .loan-card {
-        background: #11111b;
+        background: var(--ctp-crust);
         border-radius: 12px;
         padding: clamp(18px, 4vw, 25px);
         box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-        border-left: 5px solid #f2cdcd;
-        border: 1px solid #313244;
+        border-left: 5px solid var(--ctp-flamingo);
+        border: 1px solid var(--ctp-surface0);
         transition: all 0.3s ease;
     }
 
     .loan-card:hover {
         transform: translateY(-2px);
         box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
-        border-color: #f2cdcd;
+        border-color: var(--ctp-flamingo);
     }
 
     .loan-card.pending {
@@ -2154,6 +2769,1061 @@
     .loan-card.overdue {
         border-left-color: #f85149;
         background: rgba(248, 81, 73, 0.05);
+    }
+
+    /* --- printer cards in the admin dashboard --- */
+    .printer-admin-grid {
+        display: grid;
+        /* min() stops a single column overflowing a narrow phone; the 460px
+           cap stops three cards stretching absurdly wide on a large monitor */
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 460px));
+        justify-content: center;
+        gap: 14px;
+    }
+
+    .printer-admin-card {
+        --accent: var(--ctp-overlay0);
+        background:
+            linear-gradient(180deg, rgba(205, 214, 244, 0.035), transparent 55%),
+            var(--ctp-mantle);
+        border: 1px solid var(--ctp-surface0);
+        border-left: 4px solid var(--accent);
+        border-radius: var(--radius-lg);
+        padding: 16px;
+        box-shadow: var(--shadow-sm);
+        transition:
+            transform var(--normal) var(--ease),
+            box-shadow var(--normal) var(--ease);
+        animation: rise var(--slow) var(--ease) both;
+        animation-delay: calc(var(--i, 0) * 70ms);
+    }
+
+    .printer-admin-card:hover {
+        transform: translateY(-3px);
+        box-shadow: var(--shadow);
+    }
+
+    .printer-admin-card.running { --accent: var(--ctp-green); }
+    .printer-admin-card.failed { --accent: var(--ctp-red); }
+    .printer-admin-card.paused { --accent: var(--ctp-yellow); }
+    .printer-admin-card.finished { --accent: var(--ctp-blue); }
+    .printer-admin-card.idle { --accent: var(--ctp-sapphire); }
+    .printer-admin-card.offline { opacity: 0.62; }
+
+    .pa-head {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 12px;
+    }
+
+    .pa-image {
+        width: 40px;
+        height: 40px;
+        object-fit: contain;
+        flex-shrink: 0;
+        transition: transform var(--normal) var(--ease);
+    }
+
+    .printer-admin-card:hover .pa-image {
+        transform: scale(1.1) rotate(-3deg);
+    }
+
+    .pa-title {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .pa-title h3 {
+        margin: 0;
+        font-size: 1rem;
+        color: var(--ctp-text);
+    }
+
+    .pa-avail {
+        font-size: 0.8rem;
+        font-weight: 650;
+    }
+
+    .pa-avail.free { color: var(--ctp-green); }
+    .pa-avail.busy { color: var(--ctp-peach); }
+
+    .printer-admin-card.running .pa-avail.busy::before {
+        content: '';
+        display: inline-block;
+        width: 7px;
+        height: 7px;
+        margin-right: 6px;
+        border-radius: 50%;
+        background: var(--ctp-peach);
+        animation: soft-pulse 1.8s ease-in-out infinite;
+    }
+
+    .pa-state {
+        font-size: 0.72rem;
+        padding: 4px 10px;
+        border-radius: var(--radius-pill);
+        background: var(--ctp-surface0);
+        color: var(--ctp-text);
+        white-space: nowrap;
+    }
+
+    .pa-state.running { background: var(--ctp-green); color: var(--ctp-crust); }
+    .pa-state.failed { background: var(--ctp-red); color: var(--ctp-crust); }
+    .pa-state.paused { background: var(--ctp-yellow); color: var(--ctp-crust); }
+    .pa-state.finished { background: var(--ctp-blue); color: var(--ctp-crust); }
+
+    .pa-camera {
+        aspect-ratio: 16 / 9;
+        background: var(--ctp-crust);
+        border: 1px solid var(--ctp-surface0);
+        border-radius: var(--radius);
+        overflow: hidden;
+        margin-bottom: 12px;
+    }
+
+    .pa-camera img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+        animation: fade var(--normal) var(--ease);
+        transition: transform var(--slow) var(--ease);
+    }
+
+    .printer-admin-card:hover .pa-camera img {
+        transform: scale(1.03);
+    }
+
+    .pa-camera-empty {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: var(--ctp-overlay0);
+    }
+
+    /* Beat the ".pa-camera img" rule above, which would stretch the icon */
+    .pa-camera-empty img {
+        width: 60px;
+        height: 60px;
+        object-fit: contain;
+        opacity: 0.35;
+    }
+
+    .pa-camera-empty p {
+        margin: 4px 0 0;
+        font-size: 0.78rem;
+    }
+
+    .pa-progress-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .pa-progress-bar {
+        flex: 1;
+        height: 8px;
+        background: var(--ctp-surface0);
+        border-radius: var(--radius-pill);
+        overflow: hidden;
+    }
+
+    .pa-progress-fill {
+        height: 100%;
+        border-radius: var(--radius-pill);
+        background: linear-gradient(90deg, var(--ctp-green), var(--ctp-teal));
+        transition: width var(--slow) var(--ease);
+    }
+
+    .pa-progress-text {
+        font-size: 0.8rem;
+        color: var(--ctp-subtext0);
+        min-width: 36px;
+        text-align: right;
+    }
+
+    .pa-remaining {
+        margin: 6px 0 0;
+        font-size: 0.85rem;
+        color: var(--ctp-green);
+    }
+
+    .pa-file {
+        margin: 8px 0 0;
+        font-size: 0.8rem;
+        color: var(--ctp-subtext0);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .pa-temps {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 10px;
+        font-size: 0.78rem;
+        color: var(--ctp-subtext0);
+    }
+
+
+
+
+    /* --- AMS ------------------------------------------------------------ */
+    .pa-ams {
+        margin-top: 12px;
+        padding: 10px;
+        border: 1px solid var(--ctp-surface0);
+        border-radius: var(--radius-sm);
+        background: var(--ctp-crust);
+    }
+
+    .pa-ams-head {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-bottom: 8px;
+    }
+
+    .pa-ams-title {
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.6px;
+        text-transform: uppercase;
+        color: var(--ctp-teal);
+    }
+
+    .pa-ams-meta {
+        font-size: 0.7rem;
+        color: var(--ctp-subtext0);
+    }
+
+    .pa-ams-slots {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+        gap: 6px;
+    }
+
+    .pa-ams-slot {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding: 7px;
+        border: 1px solid var(--ctp-surface1);
+        border-radius: var(--radius-sm);
+        background: var(--ctp-mantle);
+        min-width: 0;
+    }
+
+    .pa-ams-slot.active {
+        border-color: var(--ctp-green);
+        box-shadow: 0 0 0 1px var(--ctp-green) inset;
+    }
+
+    .pa-ams-slot.empty { opacity: 0.45; }
+
+    .pa-ams-top {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
+
+    .pa-ams-swatch {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        border: 1px solid var(--ctp-surface2);
+        flex-shrink: 0;
+    }
+
+    .pa-ams-num {
+        font-size: 0.65rem;
+        color: var(--ctp-overlay0);
+        font-weight: 700;
+    }
+
+    .pa-ams-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--ctp-green);
+        margin-left: auto;
+        animation: soft-pulse 1.8s ease-in-out infinite;
+    }
+
+    .pa-ams-mat {
+        font-size: 0.68rem;
+        color: var(--ctp-text);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .pa-ams-bar {
+        display: block;
+        height: 4px;
+        background: var(--ctp-surface0);
+        border-radius: var(--radius-pill);
+        overflow: hidden;
+    }
+
+    .pa-ams-fill {
+        display: block;
+        height: 100%;
+        background: linear-gradient(90deg, var(--ctp-teal), var(--ctp-sky));
+        transition: width var(--slow) var(--ease);
+    }
+
+    .pa-ams-pct {
+        font-size: 0.62rem;
+        color: var(--ctp-subtext0);
+    }
+
+    .pa-ams-pct.unknown { color: var(--ctp-overlay0); }
+
+    .pa-ams-ext {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        margin-top: 8px;
+        padding-top: 8px;
+        border-top: 1px dashed var(--ctp-surface1);
+        font-size: 0.7rem;
+    }
+
+    .pa-ams-ext-label {
+        color: var(--ctp-overlay0);
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+        font-size: 0.62rem;
+    }
+
+    .pa-ams-ext-mat {
+        color: var(--ctp-text);
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .pa-stop {
+        margin-top: 12px;
+        width: 100%;
+        min-height: 44px;
+        background: var(--ctp-red);
+        color: var(--ctp-crust);
+        border: none;
+        border-radius: var(--radius-sm);
+        font-weight: 650;
+        font-size: 0.9rem;
+        cursor: pointer;
+        transition:
+            background-color var(--fast) var(--ease),
+            transform var(--fast) var(--ease);
+    }
+
+    .pa-stop:hover { background: var(--ctp-maroon); transform: translateY(-1px); }
+    .pa-stop:active { transform: none; }
+    .pa-stop:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    .pa-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: 12px;
+    }
+
+    .pa-light,
+    .pa-pause,
+    .pa-resume {
+        flex: 1;
+        min-width: 110px;
+        min-height: 44px;
+        border: 1px solid var(--ctp-surface1);
+        border-radius: var(--radius-sm);
+        background: var(--ctp-surface0);
+        color: var(--ctp-text);
+        font-weight: 600;
+        font-family: inherit;
+        font-size: 0.85rem;
+        cursor: pointer;
+        transition:
+            background-color var(--fast) var(--ease),
+            border-color var(--fast) var(--ease),
+            transform var(--fast) var(--ease);
+    }
+
+    .pa-light:hover,
+    .pa-pause:hover,
+    .pa-resume:hover { transform: translateY(-1px); background: var(--ctp-surface1); }
+
+    .pa-light.on {
+        background: color-mix(in srgb, var(--ctp-yellow) 22%, var(--ctp-surface0));
+        border-color: var(--ctp-yellow);
+        color: var(--ctp-yellow);
+    }
+
+    .pa-pause { border-color: var(--ctp-yellow); color: var(--ctp-yellow); }
+    .pa-resume { border-color: var(--ctp-green); color: var(--ctp-green); }
+
+    .pa-light:disabled,
+    .pa-pause:disabled,
+    .pa-resume:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    /* --- HMS faults --- */
+    .pa-faults {
+        background: rgba(243, 139, 168, 0.12);
+        border: 1px solid var(--ctp-red);
+        border-radius: var(--radius-sm);
+        padding: 10px 12px;
+        margin-bottom: 12px;
+        font-size: 0.82rem;
+        color: var(--ctp-red);
+    }
+
+    .pa-fault {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 6px;
+        padding: 6px 8px;
+        border-radius: 6px;
+        background: var(--ctp-crust);
+        text-decoration: none;
+        color: var(--ctp-subtext0);
+        font-size: 0.75rem;
+        transition: background-color var(--fast) var(--ease);
+    }
+
+    .pa-fault:hover { background: var(--ctp-surface0); }
+
+    .pa-fault-sev {
+        text-transform: uppercase;
+        font-weight: 700;
+        letter-spacing: 0.4px;
+        padding: 2px 6px;
+        border-radius: var(--radius-pill);
+        background: var(--ctp-surface1);
+        color: var(--ctp-text);
+        font-size: 0.65rem;
+    }
+
+    .pa-fault.fatal .pa-fault-sev { background: var(--ctp-red); color: var(--ctp-crust); }
+    .pa-fault.serious .pa-fault-sev { background: var(--ctp-peach); color: var(--ctp-crust); }
+    .pa-fault.common .pa-fault-sev { background: var(--ctp-yellow); color: var(--ctp-crust); }
+    .pa-fault.info .pa-fault-sev { background: var(--ctp-sapphire); color: var(--ctp-crust); }
+
+    .pa-fault-code {
+        flex: 1;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        color: var(--ctp-text);
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .pa-fault-link { color: var(--ctp-blue); white-space: nowrap; }
+
+    /* --- print log --- */
+    .joblog-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 10px;
+        margin-top: 26px;
+        flex-wrap: wrap;
+    }
+
+    .joblog-head h3 {
+        margin: 0;
+        font-size: 1.05rem;
+    }
+
+    .joblog {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-top: 10px;
+    }
+
+    .joblog-row {
+        display: grid;
+        grid-template-columns: 110px 90px 1fr 70px 130px;
+        gap: 10px;
+        align-items: center;
+        background: var(--ctp-mantle);
+        border: 1px solid var(--ctp-surface0);
+        border-left: 3px solid var(--ctp-overlay0);
+        border-radius: var(--radius-sm);
+        padding: 8px 12px;
+        font-size: 0.8rem;
+    }
+
+    .joblog-row.finished { border-left-color: var(--ctp-green); }
+    .joblog-row.failed { border-left-color: var(--ctp-red); }
+    .joblog-row.stopped { border-left-color: var(--ctp-peach); }
+    .joblog-row.running { border-left-color: var(--ctp-blue); }
+
+    .joblog-when { color: var(--ctp-subtext0); }
+    .joblog-printer { color: var(--ctp-mauve); font-weight: 600; }
+
+    .joblog-file {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .joblog-dur { color: var(--ctp-subtext0); }
+
+    .joblog-result {
+        text-transform: capitalize;
+        font-weight: 600;
+        text-align: right;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .joblog-result.finished { color: var(--ctp-green); }
+    .joblog-result.failed { color: var(--ctp-red); }
+    .joblog-result.stopped { color: var(--ctp-peach); }
+    .joblog-result.running { color: var(--ctp-blue); }
+
+    @media (max-width: 700px) {
+        .joblog-row {
+            grid-template-columns: 1fr 1fr;
+            row-gap: 4px;
+        }
+
+        .joblog-file { grid-column: 1 / -1; }
+        .joblog-result { text-align: left; }
+    }
+
+    .pa-send-toggle {
+        margin-top: 10px;
+        width: 100%;
+        min-height: 42px;
+        background: var(--ctp-surface0);
+        color: var(--ctp-text);
+        border: 1px solid var(--ctp-surface1);
+        border-radius: var(--radius-sm);
+        font-weight: 600;
+        font-family: inherit;
+        font-size: 0.85rem;
+        cursor: pointer;
+        transition: background-color var(--fast) var(--ease);
+    }
+
+    .pa-send-toggle:hover { background: var(--ctp-surface1); }
+
+    .pa-send {
+        margin-top: 10px;
+        padding: 12px;
+        border: 1px solid var(--ctp-surface0);
+        border-radius: var(--radius-sm);
+        background: var(--ctp-crust);
+        animation: rise var(--normal) var(--ease) both;
+    }
+
+    .pa-send-hint {
+        margin: 0 0 10px;
+        font-size: 0.75rem;
+        color: var(--ctp-subtext0);
+        line-height: 1.4;
+    }
+
+    .pa-file-pick {
+        display: block;
+        border: 1px dashed var(--ctp-surface2);
+        border-radius: var(--radius-sm);
+        padding: 12px;
+        text-align: center;
+        font-size: 0.82rem;
+        color: var(--ctp-subtext0);
+        cursor: pointer;
+        transition: border-color var(--fast) var(--ease), color var(--fast) var(--ease);
+    }
+
+    .pa-file-pick:hover {
+        border-color: var(--ctp-mauve);
+        color: var(--ctp-text);
+    }
+
+    .pa-file-pick input { display: none; }
+
+    .pa-upload-bar {
+        height: 6px;
+        background: var(--ctp-surface0);
+        border-radius: var(--radius-pill);
+        overflow: hidden;
+        margin-top: 8px;
+    }
+
+    .pa-upload-fill {
+        height: 100%;
+        background: linear-gradient(90deg, var(--ctp-mauve), var(--ctp-lavender));
+        transition: width var(--fast) linear;
+    }
+
+    .pa-send-empty {
+        margin: 10px 0 0;
+        font-size: 0.75rem;
+        color: var(--ctp-overlay0);
+    }
+
+    .pa-file-list {
+        list-style: none;
+        margin: 10px 0 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .pa-file-list li {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.75rem;
+        background: var(--ctp-mantle);
+        border-radius: 6px;
+        padding: 6px 8px;
+    }
+
+    .pa-file-name {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .pa-file-size { color: var(--ctp-overlay0); }
+
+    .pa-file-del {
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-size: 0.85rem;
+        padding: 2px 4px;
+        border-radius: 4px;
+    }
+
+    .pa-file-del:hover { background: var(--ctp-surface0); }
+
+    .pa-last,
+    .pa-offline {
+        margin: 8px 0 0;
+        font-size: 0.75rem;
+        color: var(--ctp-overlay0);
+    }
+
+    .pa-warning {
+        background: rgba(250, 179, 135, 0.12);
+        border: 1px solid var(--ctp-peach);
+        border-radius: var(--radius-sm);
+        padding: 10px 12px;
+        margin-bottom: 12px;
+        font-size: 0.82rem;
+        color: var(--ctp-yellow);
+    }
+
+    .pa-warning p {
+        margin: 6px 0 0;
+        color: var(--ctp-subtext0);
+    }
+
+    .pa-code-form {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 8px;
+    }
+
+    .pa-code-form input {
+        flex: 1;
+        min-width: 140px;
+        background: var(--ctp-base);
+        border: 1px solid var(--ctp-surface1);
+        border-radius: 6px;
+        padding: 8px;
+        color: var(--ctp-text);
+    }
+
+    .pa-fix,
+    .pa-save {
+        background: var(--ctp-peach);
+        color: var(--ctp-crust);
+        border: none;
+        border-radius: 6px;
+        padding: 8px 14px;
+        font-weight: 650;
+        cursor: pointer;
+        min-height: 40px;
+        margin-top: 8px;
+        transition: filter var(--fast) var(--ease), transform var(--fast) var(--ease);
+    }
+
+    .pa-save { margin-top: 0; }
+    .pa-fix:hover, .pa-save:hover { filter: brightness(1.08); transform: translateY(-1px); }
+    .pa-save:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    .pa-cancel {
+        background: var(--ctp-surface0);
+        color: var(--ctp-text);
+        border: none;
+        border-radius: 6px;
+        padding: 8px 12px;
+        cursor: pointer;
+        min-height: 40px;
+    }
+
+    .calendar-link {
+        color: var(--ctp-blue);
+        text-decoration: none;
+        margin-left: 6px;
+    }
+
+    /* --- booking calendar --- */
+    .cal-toolbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin: 14px 0;
+    }
+
+    .cal-nav {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .cal-nav button {
+        background: var(--ctp-surface0);
+        color: var(--ctp-text);
+        border: none;
+        border-radius: var(--radius-sm);
+        padding: 8px 12px;
+        min-height: 40px;
+        cursor: pointer;
+        font-family: inherit;
+        transition: background-color var(--fast) var(--ease);
+    }
+
+    .cal-nav button:hover { background: var(--ctp-surface1); }
+
+    .cal-label {
+        color: var(--ctp-subtext0);
+        font-size: 0.9rem;
+        margin-left: 6px;
+    }
+
+    .cal-add,
+    .cal-save {
+        background: linear-gradient(135deg, var(--ctp-mauve), var(--ctp-lavender));
+        color: var(--ctp-crust);
+        border: none;
+        border-radius: var(--radius-sm);
+        padding: 10px 18px;
+        min-height: 42px;
+        font-weight: 650;
+        font-family: inherit;
+        cursor: pointer;
+        box-shadow: var(--shadow-sm);
+        transition: transform var(--fast) var(--ease), filter var(--fast) var(--ease);
+    }
+
+    .cal-add:hover,
+    .cal-save:hover { transform: translateY(-1px); filter: brightness(1.06); }
+    .cal-save:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    .cal-form,
+    .cal-details {
+        background: var(--ctp-mantle);
+        border: 1px solid var(--ctp-surface0);
+        border-radius: var(--radius-lg);
+        padding: 16px;
+        margin-bottom: 14px;
+        box-shadow: var(--shadow-sm);
+        animation: rise var(--normal) var(--ease) both;
+    }
+
+    .cal-form-hint {
+        margin: 0 0 10px;
+        font-size: 0.82rem;
+        color: var(--ctp-subtext0);
+    }
+
+    .cal-form-row {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+
+    .cal-form label,
+    .cal-form-full {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        font-size: 0.82rem;
+        color: var(--ctp-subtext0);
+        flex: 1;
+        min-width: 140px;
+        margin-bottom: 10px;
+    }
+
+    .cal-form input {
+        background: var(--ctp-base);
+        border: 1px solid var(--ctp-surface1);
+        border-radius: 6px;
+        padding: 9px;
+        color: var(--ctp-text);
+        font-size: 0.95rem;
+        font-family: inherit;
+    }
+
+    .cal-details h3 {
+        margin: 0 0 8px;
+        color: var(--ctp-mauve);
+    }
+
+    .cal-details p {
+        margin: 4px 0;
+        font-size: 0.9rem;
+    }
+
+    .cal-details-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: 12px;
+    }
+
+    .cal-delete {
+        background: var(--ctp-red);
+        color: var(--ctp-crust);
+        border: none;
+        border-radius: 6px;
+        padding: 9px 14px;
+        min-height: 40px;
+        font-weight: 650;
+        cursor: pointer;
+        font-family: inherit;
+    }
+
+    .cal-delete:hover { background: var(--ctp-maroon); }
+
+    .cal-close {
+        background: var(--ctp-surface0);
+        color: var(--ctp-text);
+        border: none;
+        border-radius: 6px;
+        padding: 9px 14px;
+        min-height: 40px;
+        cursor: pointer;
+        font-family: inherit;
+    }
+
+    .cal {
+        border: 1px solid var(--ctp-surface0);
+        border-radius: var(--radius-lg);
+        overflow: hidden;
+        background: var(--ctp-mantle);
+        box-shadow: var(--shadow-sm);
+        margin-bottom: 18px;
+    }
+
+    .cal-head,
+    .cal-body {
+        display: grid;
+        grid-template-columns: 56px repeat(7, minmax(80px, 1fr));
+    }
+
+    .cal-head { border-bottom: 1px solid var(--ctp-surface0); }
+
+    .cal-day-head {
+        text-align: center;
+        padding: 8px 2px;
+        border-left: 1px solid var(--ctp-surface0);
+        display: flex;
+        flex-direction: column;
+    }
+
+    .cal-day-name {
+        font-size: 0.72rem;
+        color: var(--ctp-subtext0);
+        text-transform: uppercase;
+    }
+
+    .cal-day-num {
+        font-size: 1.05rem;
+        font-weight: 650;
+    }
+
+    .cal-day-head.today .cal-day-num {
+        color: var(--ctp-crust);
+        background: var(--ctp-mauve);
+        border-radius: 50%;
+        width: 28px;
+        height: 28px;
+        line-height: 28px;
+        margin: 2px auto 0;
+    }
+
+    .cal-body {
+        position: relative;
+        max-height: 58vh;
+        overflow-y: auto;
+    }
+
+    .cal-gutter { border-right: 1px solid var(--ctp-surface0); }
+
+    .cal-time {
+        height: 46px;
+        font-size: 0.68rem;
+        color: var(--ctp-overlay0);
+        text-align: right;
+        padding-right: 6px;
+        transform: translateY(-6px);
+    }
+
+    .cal-col {
+        position: relative;
+        border-left: 1px solid var(--ctp-surface0);
+    }
+
+    .cal-col.today { background: rgba(203, 166, 247, 0.06); }
+
+    .cal-cell {
+        display: block;
+        width: 100%;
+        height: 46px;
+        border: none;
+        border-bottom: 1px solid var(--ctp-surface0);
+        background: transparent;
+        cursor: pointer;
+        padding: 0;
+        transition: background-color var(--fast) var(--ease);
+    }
+
+    .cal-cell:hover {
+        background: rgba(203, 166, 247, 0.16);
+        box-shadow: inset 0 0 0 1px rgba(203, 166, 247, 0.35);
+    }
+
+    .cal-block {
+        position: absolute;
+        left: 3px;
+        right: 3px;
+        background: linear-gradient(135deg, var(--ctp-mauve), var(--ctp-lavender));
+        color: var(--ctp-crust);
+        border: none;
+        border-radius: 6px;
+        padding: 4px 6px;
+        text-align: left;
+        overflow: hidden;
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        font-size: 0.68rem;
+        line-height: 1.15;
+        font-family: inherit;
+        box-shadow: var(--shadow-sm);
+        transition: transform var(--fast) var(--ease), filter var(--fast) var(--ease);
+    }
+
+    .cal-block:hover {
+        filter: brightness(1.08);
+        transform: translateY(-1px);
+        z-index: 2;
+    }
+
+    .cal-block-time { font-weight: 700; }
+    .cal-block-name { font-weight: 650; }
+
+    .cal-block-purpose {
+        opacity: 0.85;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .cal-list-title {
+        font-size: 1rem;
+        color: var(--ctp-subtext0);
+        margin: 18px 0 10px;
+    }
+
+    @media (max-width: 700px) {
+        .cal { overflow-x: auto; }
+
+        .cal-head,
+        .cal-body {
+            grid-template-columns: 42px repeat(7, minmax(72px, 1fr));
+        }
+
+        .cal-block-purpose { display: none; }
+    }
+
+    .bookings-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .booking-row {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        background: var(--ctp-crust);
+        border: 1px solid var(--ctp-surface0);
+        border-left: 4px solid var(--ctp-mauve);
+        border-radius: 8px;
+        padding: 12px 14px;
+        flex-wrap: wrap;
+    }
+
+    .booking-row.past {
+        opacity: 0.55;
+        border-left-color: var(--ctp-overlay0);
+    }
+
+    .booking-when {
+        display: flex;
+        flex-direction: column;
+        min-width: 150px;
+    }
+
+    .booking-date {
+        font-weight: 600;
+        color: var(--ctp-mauve);
+    }
+
+    .booking-time {
+        font-size: 0.85rem;
+        color: var(--ctp-subtext0);
+    }
+
+    .booking-info {
+        flex: 1;
+        min-width: 180px;
+    }
+
+    .booking-purpose {
+        margin: 0;
+        font-weight: 500;
+    }
+
+    .booking-by {
+        margin: 2px 0 0;
+        font-size: 0.85rem;
+        color: var(--ctp-subtext0);
     }
 
     .loan-card.rejected {
@@ -2173,18 +3843,18 @@
     }
 
     .loan-card.archived {
-        border-left-color: #6c7086;
+        border-left-color: var(--ctp-overlay0);
         background: rgba(108, 112, 134, 0.05);
         opacity: 0.9;
     }
 
     /* History View Styles */
     .history-search-container {
-        background: #11111b;
+        background: var(--ctp-crust);
         padding: 20px;
         border-radius: 12px;
         margin-bottom: 20px;
-        border: 1px solid #313244;
+        border: 1px solid var(--ctp-surface0);
         box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
     }
 
@@ -2192,31 +3862,31 @@
         display: block;
         margin-bottom: 10px;
         font-weight: 600;
-        color: #cdd6f4;
+        color: var(--ctp-text);
         font-size: 1rem;
     }
 
     .history-search-input {
         width: 100%;
         padding: 12px 16px;
-        border: 2px solid #313244;
+        border: 2px solid var(--ctp-surface0);
         border-radius: 8px;
         font-size: 1rem;
         box-sizing: border-box;
-        background: #1e1e2e;
-        color: #cdd6f4;
+        background: var(--ctp-base);
+        color: var(--ctp-text);
         transition: all 0.3s ease;
     }
 
     .history-search-input:focus {
-        border-color: #f2cdcd;
+        border-color: var(--ctp-flamingo);
         outline: none;
         box-shadow: 0 0 0 3px rgba(242, 205, 205, 0.25);
     }
 
     .search-results-info {
         margin-top: 10px;
-        color: #a6adc8;
+        color: var(--ctp-subtext0);
         font-size: 0.9rem;
         font-style: italic;
     }
@@ -2224,21 +3894,21 @@
     .no-search-results {
         text-align: center;
         padding: 40px 20px;
-        background: #11111b;
+        background: var(--ctp-crust);
         border-radius: 12px;
-        border: 1px solid #313244;
+        border: 1px solid var(--ctp-surface0);
         margin-top: 20px;
     }
 
     .no-search-results p {
-        color: #cdd6f4;
+        color: var(--ctp-text);
         font-size: 1.1rem;
         margin-bottom: 15px;
     }
 
     .clear-search-btn-large {
-        background: linear-gradient(135deg, #74c7ec, #89b4fa);
-        color: #11111b;
+        background: linear-gradient(135deg, var(--ctp-sapphire), var(--ctp-blue));
+        color: var(--ctp-crust);
         border: none;
         padding: 10px 20px;
         border-radius: 8px;
@@ -2249,7 +3919,7 @@
     }
 
     .clear-search-btn-large:hover {
-        background: linear-gradient(135deg, #89b4fa, #b4befe);
+        background: linear-gradient(135deg, var(--ctp-blue), var(--ctp-lavender));
         transform: translateY(-1px);
         box-shadow: 0 4px 12px rgba(116, 199, 236, 0.3);
     }
@@ -2264,10 +3934,10 @@
 
     .history-item {
         display: flex;
-        background: #11111b;
+        background: var(--ctp-crust);
         border-radius: 12px;
         box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-        border: 1px solid #313244;
+        border: 1px solid var(--ctp-surface0);
         transition: all 0.3s ease;
         position: relative;
     }
@@ -2275,23 +3945,23 @@
     .history-item:hover {
         transform: translateY(-2px);
         box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
-        border-color: #f2cdcd;
+        border-color: var(--ctp-flamingo);
     }
 
     .history-item.approved {
-        border-left: 5px solid #a6e3a1;
+        border-left: 5px solid var(--ctp-green);
     }
 
     .history-item.returned {
-        border-left: 5px solid #94e2d5;
+        border-left: 5px solid var(--ctp-teal);
     }
 
     .history-item.not_found {
-        border-left: 5px solid #f38ba8;
+        border-left: 5px solid var(--ctp-red);
     }
 
     .history-item.denied {
-        border-left: 5px solid #6c7086;
+        border-left: 5px solid var(--ctp-overlay0);
     }
 
     .history-item.pending {
@@ -2312,29 +3982,29 @@
         width: 16px;
         height: 16px;
         border-radius: 50%;
-        border: 3px solid #313244;
+        border: 3px solid var(--ctp-surface0);
         z-index: 2;
         margin-top: 5px;
     }
 
     .timeline-dot.approved {
-        background: #a6e3a1;
-        border-color: #a6e3a1;
+        background: var(--ctp-green);
+        border-color: var(--ctp-green);
     }
 
     .timeline-dot.returned {
-        background: #94e2d5;
-        border-color: #94e2d5;
+        background: var(--ctp-teal);
+        border-color: var(--ctp-teal);
     }
 
     .timeline-dot.not_found {
-        background: #f38ba8;
-        border-color: #f38ba8;
+        background: var(--ctp-red);
+        border-color: var(--ctp-red);
     }
 
     .timeline-dot.denied {
-        background: #6c7086;
-        border-color: #6c7086;
+        background: var(--ctp-overlay0);
+        border-color: var(--ctp-overlay0);
     }
 
     .timeline-dot.pending {
@@ -2346,7 +4016,7 @@
     .timeline-line {
         width: 2px;
         flex: 1;
-        background: #313244;
+        background: var(--ctp-surface0);
         margin-top: 10px;
     }
 
@@ -2376,7 +4046,7 @@
     }
 
     .history-title-section h3 {
-        color: #cdd6f4;
+        color: var(--ctp-text);
         margin: 0;
         font-size: clamp(1.1rem, 2.5vw, 1.3rem);
         font-weight: 600;
@@ -2399,13 +4069,13 @@
 
     .date-label {
         font-size: 0.8rem;
-        color: #a6adc8;
+        color: var(--ctp-subtext0);
         font-weight: 500;
     }
 
     .date-value {
         font-size: 0.9rem;
-        color: #cdd6f4;
+        color: var(--ctp-text);
         font-weight: 600;
         margin-top: 2px;
     }
@@ -2428,12 +4098,12 @@
 
     .detail-group p {
         margin: 0;
-        color: #a6adc8;
+        color: var(--ctp-subtext0);
         font-size: clamp(0.85rem, 1.8vw, 0.95rem);
     }
 
     .detail-group strong {
-        color: #cdd6f4;
+        color: var(--ctp-text);
         font-weight: 600;
     }
 
@@ -2454,7 +4124,7 @@
 
     .loan-title-section h3 {
         margin: 0;
-        color: #cdd6f4;
+        color: var(--ctp-text);
         font-size: clamp(1.1rem, 2.5vw, 1.3rem);
         flex: 1;
         font-weight: 600;
@@ -2508,7 +4178,7 @@
 
     .status-badge.archived {
         background: rgba(108, 112, 134, 0.2);
-        color: #6c7086;
+        color: var(--ctp-overlay0);
         border: 1px solid rgba(108, 112, 134, 0.3);
     }
 
@@ -2530,17 +4200,17 @@
 
     .loan-details p {
         margin: clamp(6px, 1.5vw, 10px) 0;
-        color: #a6adc8;
+        color: var(--ctp-subtext0);
         font-size: clamp(0.85rem, 1.8vw, 0.95rem);
     }
 
     .loan-details strong {
-        color: #cdd6f4;
+        color: var(--ctp-text);
         font-weight: 600;
     }
 
     .clickable-phone {
-        color: #89b4fa;
+        color: var(--ctp-blue);
         cursor: pointer;
         text-decoration: underline;
         text-decoration-style: dotted;
@@ -2550,15 +4220,15 @@
     }
 
     .clickable-phone:hover {
-        color: #b4befe;
-        background-color: #313244;
+        color: var(--ctp-lavender);
+        background-color: var(--ctp-surface0);
         text-decoration-style: solid;
     }
 
     .clickable-phone:focus {
-        outline: 2px solid #f2cdcd;
+        outline: 2px solid var(--ctp-flamingo);
         outline-offset: 2px;
-        background-color: #313244;
+        background-color: var(--ctp-surface0);
     }
 
     .photo-section {
@@ -2566,7 +4236,7 @@
         padding: 12px;
         background: #161b22;
         border-radius: 8px;
-        border: 1px solid #313244;
+        border: 1px solid var(--ctp-surface0);
     }
 
     .item-image {
@@ -2574,7 +4244,7 @@
         height: clamp(70px, 15vw, 90px);
         border-radius: 8px;
         overflow: hidden;
-        border: 2px solid #313244;
+        border: 2px solid var(--ctp-surface0);
         flex-shrink: 0;
     }
 
@@ -2589,7 +4259,7 @@
         align-items: center;
         justify-content: center;
         background: #161b22;
-        color: #a6adc8;
+        color: var(--ctp-subtext0);
         font-size: clamp(1.2rem, 3vw, 1.8rem);
     }
 
@@ -2634,12 +4304,12 @@
     }
 
     .extend-btn {
-        background: linear-gradient(135deg, #f2cdcd, #eba0ac);
+        background: linear-gradient(135deg, var(--ctp-flamingo), var(--ctp-maroon));
         color: white;
     }
 
     .extend-btn:hover {
-        background: linear-gradient(135deg, #eba0ac, #f5c2e7);
+        background: linear-gradient(135deg, var(--ctp-maroon), var(--ctp-pink));
         transform: translateY(-1px);
         box-shadow: 0 4px 15px rgba(31, 111, 235, 0.3);
     }
@@ -2673,22 +4343,22 @@
     .extend-inputs input {
         width: clamp(50px, 12vw, 70px);
         padding: clamp(4px, 1vw, 8px);
-        border: 2px solid #313244;
+        border: 2px solid var(--ctp-surface0);
         border-radius: 6px;
         text-align: center;
-        background: #1e1e2e;
-        color: #cdd6f4;
+        background: var(--ctp-base);
+        color: var(--ctp-text);
         font-size: clamp(0.8rem, 1.8vw, 0.9rem);
     }
 
     .extend-inputs input:focus {
-        border-color: #f2cdcd;
+        border-color: var(--ctp-flamingo);
         outline: none;
     }
 
     .extend-inputs span {
         font-size: clamp(0.8rem, 1.8vw, 0.9rem);
-        color: #a6adc8;
+        color: var(--ctp-subtext0);
     }
 
     .return-section {
@@ -2721,7 +4391,7 @@
     }
 
     .found-notice {
-        color: #a6e3a1;
+        color: var(--ctp-green);
         font-weight: 600;
         margin-bottom: 10px;
         font-size: clamp(0.85rem, 1.8vw, 0.95rem);
@@ -2734,8 +4404,8 @@
     }
 
     .found-btn {
-        background: #a6e3a1;
-        color: #1e1e2e;
+        background: var(--ctp-green);
+        color: var(--ctp-base);
         border: none;
         padding: clamp(8px, 2vw, 12px) clamp(14px, 2.5vw, 20px);
         border-radius: 6px;
@@ -2764,7 +4434,7 @@
     }
 
     .return-date {
-        color: #94e2d5;
+        color: var(--ctp-teal);
         font-weight: 500;
         margin: 8px 0;
     }
@@ -2785,9 +4455,9 @@
     .admin-actions {
         margin-top: 30px;
         padding: clamp(18px, 4vw, 25px);
-        background: #11111b;
+        background: var(--ctp-crust);
         border-radius: 12px;
-        border: 1px solid #313244;
+        border: 1px solid var(--ctp-surface0);
     }
 
     .cleanup-btn, .export-btn {
@@ -2825,24 +4495,24 @@
     }
 
     .subtitle-text {
-        color: #a6adc8;
+        color: var(--ctp-subtext0);
         font-style: italic;
         margin-bottom: 20px;
         font-size: clamp(0.8rem, 1.8vw, 0.9rem);
     }
 
     .credits-footer {
-        background: #11111b;
+        background: var(--ctp-crust);
         padding: clamp(15px, 3vw, 20px);
         text-align: center;
-        border-top: 1px solid #313244;
+        border-top: 1px solid var(--ctp-surface0);
         margin-top: 40px;
-        color: #a6adc8;
+        color: var(--ctp-subtext0);
         font-size: clamp(12px, 2vw, 14px);
     }
 
     .credits-footer a {
-        color: #f2cdcd;
+        color: var(--ctp-flamingo);
         text-decoration: none;
     }
 
@@ -2853,22 +4523,22 @@
 
     .loan-actions input[type="date"] {
         padding: clamp(6px, 1.5vw, 10px);
-        border: 2px solid #313244;
+        border: 2px solid var(--ctp-surface0);
         border-radius: 6px;
         flex: 1;
-        background: #1e1e2e;
-        color: #cdd6f4;
+        background: var(--ctp-base);
+        color: var(--ctp-text);
         font-size: clamp(0.8rem, 1.8vw, 0.9rem);
     }
 
     .loan-actions input[type="date"]:focus {
-        border-color: #f2cdcd;
+        border-color: var(--ctp-flamingo);
         outline: none;
     }
 
     .no-items {
         text-align: center;
-        color: #a6adc8;
+        color: var(--ctp-subtext0);
         font-style: italic;
         padding: clamp(30px, 6vw, 50px);
         font-size: clamp(1rem, 2vw, 1.1rem);
@@ -3000,10 +4670,10 @@
     }
 
     .form-card {
-        background: #313244;
+        background: var(--ctp-surface0);
         border-radius: 12px;
         padding: 24px;
-        border: 1px solid #45475a;
+        border: 1px solid var(--ctp-surface1);
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     }
 
@@ -3015,17 +4685,17 @@
         display: block;
         margin-bottom: 8px;
         font-weight: 500;
-        color: #cdd6f4;
+        color: var(--ctp-text);
     }
 
     .form-group input[type="text"],
     .form-group input[type="password"] {
         width: 100%;
         padding: 12px 16px;
-        background: #1e1e2e;
-        border: 2px solid #45475a;
+        background: var(--ctp-base);
+        border: 2px solid var(--ctp-surface1);
         border-radius: 8px;
-        color: #cdd6f4;
+        color: var(--ctp-text);
         font-size: 1rem;
         transition: all 0.2s ease;
         box-sizing: border-box;
@@ -3034,7 +4704,7 @@
     .form-group input[type="text"]:focus,
     .form-group input[type="password"]:focus {
         outline: none;
-        border-color: #89b4fa;
+        border-color: var(--ctp-blue);
         box-shadow: 0 0 0 3px rgba(137, 180, 250, 0.1);
     }
 
@@ -3057,8 +4727,8 @@
     }
 
     .submit-btn {
-        background: linear-gradient(135deg, #89b4fa, #74c7ec);
-        color: #1e1e2e;
+        background: linear-gradient(135deg, var(--ctp-blue), var(--ctp-sapphire));
+        color: var(--ctp-base);
         border: none;
         padding: 12px 24px;
         border-radius: 8px;
@@ -3080,8 +4750,8 @@
     }
 
     .cancel-btn {
-        background: #6c7086;
-        color: #cdd6f4;
+        background: var(--ctp-overlay0);
+        color: var(--ctp-text);
         border: none;
         padding: 12px 24px;
         border-radius: 8px;
@@ -3102,11 +4772,11 @@
     }
 
     .management-section {
-        background: #313244;
+        background: var(--ctp-surface0);
         border-radius: 12px;
         padding: 24px;
         margin-bottom: 24px;
-        border: 1px solid #45475a;
+        border: 1px solid var(--ctp-surface1);
     }
 
     .section-header {
@@ -3118,13 +4788,13 @@
 
     .section-header h3 {
         margin: 0;
-        color: #cdd6f4;
+        color: var(--ctp-text);
         font-size: 1.2rem;
     }
 
     .toggle-btn {
-        background: #89b4fa;
-        color: #1e1e2e;
+        background: var(--ctp-blue);
+        color: var(--ctp-base);
         border: none;
         padding: 8px 16px;
         border-radius: 6px;
@@ -3134,13 +4804,13 @@
     }
 
     .toggle-btn:hover {
-        background: #74c7ec;
+        background: var(--ctp-sapphire);
         transform: translateY(-1px);
     }
 
     .refresh-btn {
-        background: #a6e3a1;
-        color: #1e1e2e;
+        background: var(--ctp-green);
+        color: var(--ctp-base);
         border: none;
         padding: 8px 16px;
         border-radius: 6px;
@@ -3150,7 +4820,7 @@
     }
 
     .refresh-btn:hover {
-        background: #94e2d5;
+        background: var(--ctp-teal);
         transform: translateY(-1px);
     }
 
@@ -3161,10 +4831,10 @@
     }
 
     .admin-card {
-        background: #1e1e2e;
+        background: var(--ctp-base);
         border-radius: 8px;
         padding: 20px;
-        border: 1px solid #45475a;
+        border: 1px solid var(--ctp-surface1);
         transition: all 0.2s ease;
         display: flex;
         flex-direction: column;
@@ -3172,19 +4842,19 @@
     }
 
     .admin-card:hover {
-        border-color: #89b4fa;
+        border-color: var(--ctp-blue);
         box-shadow: 0 4px 12px rgba(137, 180, 250, 0.1);
     }
 
     .admin-info h4 {
         margin: 0 0 8px 0;
-        color: #cdd6f4;
+        color: var(--ctp-text);
         font-size: 1.1rem;
     }
 
     .admin-username {
         margin: 4px 0;
-        color: #89b4fa;
+        color: var(--ctp-blue);
         font-weight: 500;
     }
 
@@ -3195,7 +4865,7 @@
 
     .admin-date {
         margin: 8px 0 0 0;
-        color: #6c7086;
+        color: var(--ctp-overlay0);
         font-size: 0.9rem;
     }
 
@@ -3205,12 +4875,12 @@
         align-items: center;
         margin-top: 16px;
         padding-top: 12px;
-        border-top: 1px solid #45475a;
+        border-top: 1px solid var(--ctp-surface1);
     }
 
     .delete-admin-btn {
-        background: #f38ba8;
-        color: #1e1e2e;
+        background: var(--ctp-red);
+        color: var(--ctp-base);
         border: none;
         padding: 6px 12px;
         border-radius: 6px;
@@ -3221,13 +4891,13 @@
     }
 
     .delete-admin-btn:hover {
-        background: #eba0ac;
+        background: var(--ctp-maroon);
         transform: translateY(-1px);
     }
 
     .current-user-badge {
-        background: #a6e3a1;
-        color: #1e1e2e;
+        background: var(--ctp-green);
+        color: var(--ctp-base);
         padding: 4px 8px;
         border-radius: 4px;
         font-size: 0.8rem;
@@ -3235,8 +4905,8 @@
     }
 
     .protected-user-badge {
-        background: #cba6f7;
-        color: #1e1e2e;
+        background: var(--ctp-mauve);
+        color: var(--ctp-base);
         padding: 4px 8px;
         border-radius: 4px;
         font-size: 0.8rem;
@@ -3244,12 +4914,12 @@
     }
 
     .danger-zone {
-        border-color: #f38ba8 !important;
+        border-color: var(--ctp-red) !important;
         background: rgba(243, 139, 168, 0.1);
     }
 
     .danger-zone .section-header h3 {
-        color: #f38ba8;
+        color: var(--ctp-red);
     }
 
     .danger-actions {
@@ -3263,25 +4933,25 @@
         justify-content: space-between;
         align-items: center;
         padding: 16px;
-        background: #1e1e2e;
+        background: var(--ctp-base);
         border-radius: 8px;
-        border: 1px solid #45475a;
+        border: 1px solid var(--ctp-surface1);
     }
 
     .danger-info h4 {
         margin: 0 0 4px 0;
-        color: #f38ba8;
+        color: var(--ctp-red);
     }
 
     .danger-info p {
         margin: 0;
-        color: #cdd6f4;
+        color: var(--ctp-text);
         font-size: 0.9rem;
     }
 
     .danger-btn {
-        background: #f38ba8;
-        color: #1e1e2e;
+        background: var(--ctp-red);
+        color: var(--ctp-base);
         border: none;
         padding: 10px 20px;
         border-radius: 6px;
@@ -3293,26 +4963,26 @@
     }
 
     .danger-btn:hover {
-        background: #eba0ac;
+        background: var(--ctp-maroon);
         transform: translateY(-1px);
     }
 
     .link-btn {
         background: none;
         border: none;
-        color: #89b4fa;
+        color: var(--ctp-blue);
         cursor: pointer;
         text-decoration: underline;
         font-size: inherit;
     }
 
     .link-btn:hover {
-        color: #74c7ec;
+        color: var(--ctp-sapphire);
     }
 
     .no-data {
         text-align: center;
-        color: #6c7086;
+        color: var(--ctp-overlay0);
         padding: 20px;
     }
 

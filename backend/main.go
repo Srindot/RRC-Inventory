@@ -1,7 +1,10 @@
 package main
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/base64"
 	"encoding/csv"
 	"encoding/hex"
 	"errors"
@@ -12,9 +15,11 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -52,6 +57,96 @@ func validateImageFile(file *multipart.FileHeader) error {
 	return nil
 }
 
+// --- PASSWORD HASHING ---
+
+// hashPassword returns a bcrypt hash of the given plaintext password.
+func hashPassword(plain string) (string, error) {
+	h, err := bcrypt.GenerateFromPassword([]byte(plain), bcrypt.DefaultCost)
+	return string(h), err
+}
+
+// legacySHA256 reproduces the old (insecure) password hashing so existing
+// accounts can still log in once and be transparently upgraded to bcrypt.
+func legacySHA256(plain string) string {
+	hasher := sha256.New()
+	hasher.Write([]byte(plain))
+	return hex.EncodeToString(hasher.Sum(nil))
+}
+
+// verifyPassword checks a plaintext password against a stored hash.
+// The second return value is true when the stored hash is a legacy SHA-256
+// hash and should be re-hashed with bcrypt.
+func verifyPassword(stored, plain string) (ok bool, needsUpgrade bool) {
+	if strings.HasPrefix(stored, "$2") {
+		return bcrypt.CompareHashAndPassword([]byte(stored), []byte(plain)) == nil, false
+	}
+	match := subtle.ConstantTimeCompare([]byte(stored), []byte(legacySHA256(plain))) == 1
+	return match, match
+}
+
+// --- ADMIN SESSIONS ---
+
+const sessionTTL = 12 * time.Hour
+
+type session struct {
+	Username  string
+	ExpiresAt time.Time
+}
+
+type sessionStore struct {
+	mu       sync.RWMutex
+	sessions map[string]session
+}
+
+func newSessionStore() *sessionStore {
+	return &sessionStore{sessions: make(map[string]session)}
+}
+
+func (s *sessionStore) create(username string) (string, error) {
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	token := base64.RawURLEncoding.EncodeToString(buf)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	// Opportunistically drop expired sessions.
+	now := time.Now()
+	for t, sess := range s.sessions {
+		if now.After(sess.ExpiresAt) {
+			delete(s.sessions, t)
+		}
+	}
+	s.sessions[token] = session{Username: username, ExpiresAt: now.Add(sessionTTL)}
+	return token, nil
+}
+
+func (s *sessionStore) lookup(token string) (string, bool) {
+	s.mu.RLock()
+	sess, ok := s.sessions[token]
+	s.mu.RUnlock()
+	if !ok || time.Now().After(sess.ExpiresAt) {
+		return "", false
+	}
+	return sess.Username, true
+}
+
+func (s *sessionStore) revoke(token string) {
+	s.mu.Lock()
+	delete(s.sessions, token)
+	s.mu.Unlock()
+}
+
+// bearerToken extracts the token from an "Authorization: Bearer <token>" header.
+func bearerToken(c *gin.Context) string {
+	header := c.GetHeader("Authorization")
+	if len(header) > 7 && strings.EqualFold(header[:7], "Bearer ") {
+		return strings.TrimSpace(header[7:])
+	}
+	return ""
+}
+
 // --- DATABASE MODELS ---
 
 type Item struct {
@@ -80,15 +175,66 @@ type Loan struct {
 	ExpectedReturnDate   string     `json:"expected_return_date"`
 	Purpose              string     `json:"purpose"`
 	PhotoFilename        string     `json:"photo_filename"`
-	Status               string     `json:"status" gorm:"default:'pending'"`          // pending, approved, active, returned, denied
-	ApprovalStatus       string     `json:"approval_status" gorm:"default:'pending'"` // pending, approved, denied
-	ApprovedBy           string     `json:"approved_by"`
+	Status               string     `json:"status" gorm:"default:'active'"`            // active, returned, not_found
+	ApprovalStatus       string     `json:"approval_status" gorm:"default:'approved'"` // kept for historical records; borrowing no longer needs approval
+	ApprovedBy           string     `json:"approved_by"`                               // admin who last acted on the loan (marked missing/found)
 	ApprovedAt           *time.Time `json:"approved_at"`
-	DeniedAt             *time.Time `json:"denied_at"`
+	DeniedAt             *time.Time `json:"denied_at"` // legacy, kept so old records stay readable
 	ReturnRequested      bool       `json:"return_requested" gorm:"default:false"`
-	ReturnApprovalStatus string     `json:"return_approval_status" gorm:"default:'not_requested'"` // not_requested, pending, approved, not_found
+	ReturnApprovalStatus string     `json:"return_approval_status" gorm:"default:'not_requested'"` // not_requested, approved, not_found
 	ReturnRequestedAt    *time.Time `json:"return_requested_at"`
 	ReturnedAt           *time.Time `json:"returned_at"`
+}
+
+// Booking is a reservation of the Motion Capture Lab. No approval needed -
+// a slot is either free or taken.
+type Booking struct {
+	gorm.Model
+	BookedBy  string    `json:"booked_by"`
+	Phone     string    `json:"phone"`
+	Purpose   string    `json:"purpose"`
+	StartTime time.Time `json:"start_time"`
+	EndTime   time.Time `json:"end_time"`
+}
+
+// parseReturnDate reads the expected return date. It is stored as a plain
+// date ("2026-08-20"), though older rows may carry a full timestamp.
+//
+// Plain dates are interpreted in the server's local timezone, so "due on the
+// 20th" means the end of the 20th here in the lab - not in UTC. Set TZ in the
+// environment (docker-compose defaults it to Asia/Kolkata); otherwise the
+// browser and the backend disagree about the date for a few hours each night.
+func parseReturnDate(value string) (time.Time, bool) {
+	for _, layout := range []string{"2006-01-02", time.RFC3339} {
+		if parsed, err := time.ParseInLocation(layout, value, time.Local); err == nil {
+			return parsed, true
+		}
+	}
+	return time.Time{}, false
+}
+
+// loanOverdue reports whether a loan is late, and by how many days. An item is
+// due at the END of its return date, so something due today is not yet late.
+// A returned item is judged on when it actually came back.
+func loanOverdue(loan Loan, now time.Time) (bool, int) {
+	due, ok := parseReturnDate(loan.ExpectedReturnDate)
+	if !ok {
+		return false, 0
+	}
+	deadline := due.AddDate(0, 0, 1)
+
+	compareAt := now
+	if loan.Status == "returned" {
+		if loan.ReturnedAt == nil {
+			return false, 0
+		}
+		compareAt = *loan.ReturnedAt
+	}
+
+	if !compareAt.After(deadline) {
+		return false, 0
+	}
+	return true, int(compareAt.Sub(deadline).Hours() / 24)
 }
 
 // Helper function to format time pointers for CSV
@@ -113,7 +259,25 @@ func main() {
 	}
 
 	log.Println("Running database migrations...")
-	db.AutoMigrate(&Item{}, &Loan{}, &Admin{})
+	db.AutoMigrate(&Item{}, &Loan{}, &Admin{}, &Booking{}, &PrinterCredential{}, &PrintJob{})
+
+	// Approvals were removed. Bring records created under the old flow into the
+	// new states so nothing is stranded in a status the app no longer uses.
+	if res := db.Model(&Loan{}).
+		Where("status IN ?", []string{"pending", "approved", "borrowed"}).
+		Updates(map[string]interface{}{"status": "active", "approval_status": "approved"}); res.RowsAffected > 0 {
+		log.Printf("Migrated %d loans from the old approval flow to 'active'", res.RowsAffected)
+	}
+	// Returns that were awaiting approval are treated as returned.
+	if res := db.Model(&Loan{}).
+		Where("return_requested = ? AND return_approval_status = ?", true, "pending").
+		Updates(map[string]interface{}{
+			"status":                 "returned",
+			"return_approval_status": "approved",
+			"returned_at":            time.Now(),
+		}); res.RowsAffected > 0 {
+		log.Printf("Migrated %d pending return requests to 'returned'", res.RowsAffected)
+	}
 	log.Println("Migrations complete.")
 
 	// Create uploads directory if it doesn't exist
@@ -121,30 +285,95 @@ func main() {
 		log.Printf("Warning: Could not create uploads directory: %v", err)
 	}
 
-	// Create default super admin if not exists
+	// Create the bootstrap super admin if no admin exists yet.
+	// Credentials come from the environment - never hardcode them, this repo is public.
 	var adminCount int64
 	db.Model(&Admin{}).Count(&adminCount)
 	if adminCount == 0 {
-		// Hash the password
-		hasher := sha256.New()
-		hasher.Write([]byte("rrc@srinath"))
-		hashedPassword := hex.EncodeToString(hasher.Sum(nil))
+		username := os.Getenv("ADMIN_USERNAME")
+		if username == "" {
+			username = "admin"
+		}
+		password := os.Getenv("ADMIN_PASSWORD")
+		generated := false
+		if password == "" {
+			buf := make([]byte, 12)
+			if _, err := rand.Read(buf); err != nil {
+				log.Fatalf("failed to generate bootstrap admin password: %v", err)
+			}
+			password = base64.RawURLEncoding.EncodeToString(buf)
+			generated = true
+		}
+
+		hashedPassword, err := hashPassword(password)
+		if err != nil {
+			log.Fatalf("failed to hash bootstrap admin password: %v", err)
+		}
 
 		defaultAdmin := Admin{
-			Username:     "Srinath",
+			Username:     username,
 			Password:     hashedPassword,
-			Name:         "Srinath (Super Admin)",
+			Name:         username + " (Super Admin)",
 			IsSuperAdmin: true,
 		}
-		db.Create(&defaultAdmin)
-		log.Println("Default super admin created: Srinath")
+		if err := db.Create(&defaultAdmin).Error; err != nil {
+			log.Fatalf("failed to create bootstrap admin: %v", err)
+		}
+		log.Printf("Bootstrap super admin created: %s", username)
+		if generated {
+			log.Printf("ADMIN_PASSWORD was not set. Generated one-time password: %s", password)
+			log.Println("Log in and change it immediately.")
+		}
+	}
+
+	// Connect to the lab's 3D printers, if any are configured
+	printers := loadPrinterManager(db)
+
+	sessions := newSessionStore()
+
+	// requireAdmin authenticates admin API calls with a bearer session token.
+	requireAdmin := func(c *gin.Context) {
+		username, ok := sessions.lookup(bearerToken(c))
+		if !ok {
+			c.AbortWithStatusJSON(401, gin.H{"error": "Authentication required"})
+			return
+		}
+
+		var admin Admin
+		if err := db.Where("username = ?", username).First(&admin).Error; err != nil {
+			c.AbortWithStatusJSON(401, gin.H{"error": "Authentication required"})
+			return
+		}
+
+		c.Set("admin", admin)
+		c.Next()
+	}
+
+	// currentAdmin returns the admin authenticated by requireAdmin.
+	currentAdmin := func(c *gin.Context) Admin {
+		return c.MustGet("admin").(Admin)
 	}
 
 	router := gin.Default()
 
-	// Add CORS middleware for development
+	// CORS. Set ALLOWED_ORIGINS (comma separated) to restrict which sites may
+	// call the API from a browser; defaults to allowing any origin so that the
+	// "login via IP" fallback keeps working on the lab network.
+	allowedOrigins := map[string]bool{}
+	for _, o := range strings.Split(os.Getenv("ALLOWED_ORIGINS"), ",") {
+		if o = strings.TrimSpace(o); o != "" {
+			allowedOrigins[o] = true
+		}
+	}
+
 	router.Use(func(c *gin.Context) {
-		c.Header("Access-Control-Allow-Origin", "*")
+		origin := c.GetHeader("Origin")
+		if len(allowedOrigins) == 0 {
+			c.Header("Access-Control-Allow-Origin", "*")
+		} else if allowedOrigins[origin] {
+			c.Header("Access-Control-Allow-Origin", origin)
+			c.Header("Vary", "Origin")
+		}
 		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Authorization")
 
@@ -173,7 +402,7 @@ func main() {
 		})
 
 		// --- NEW ENDPOINT TO CREATE ITEMS ---
-		api.POST("/items", func(c *gin.Context) {
+		api.POST("/items", requireAdmin, func(c *gin.Context) {
 			var newItem Item
 			if err := c.ShouldBindJSON(&newItem); err != nil {
 				c.JSON(400, gin.H{"error": "Invalid data"})
@@ -195,22 +424,19 @@ func main() {
 		api.GET("/loans/active", func(c *gin.Context) {
 			var loans []Loan
 			// Include:
-			// 1. Active loans (status = 'active' AND approval_status = 'approved')
-			// 2. Pending loans (status = 'pending' AND approval_status = 'pending') - so they show in return list
-			// 3. Items marked as not found (status = 'not_found')
-			// 4. Recently returned items (status = 'returned' AND returned_at within last 24 hours)
+			// 1. Items currently borrowed (status = 'active')
+			// 2. Items marked as missing by an admin (status = 'not_found')
+			// 3. Recently returned items (status = 'returned' AND returned_at within last 24 hours)
 			if err := db.Where(`
-				(status = ? AND approval_status = ?) OR 
-				(status = ? AND approval_status = ?) OR
-				status = ? OR 
+				status = ? OR
+				status = ? OR
 				(status = ? AND returned_at > ?)
-			`, "active", "approved", "pending", "pending", "not_found", "returned", time.Now().Add(-24*time.Hour)).
+			`, "active", "not_found", "returned", time.Now().Add(-24*time.Hour)).
 				Order(`
-					CASE 
-						WHEN status = 'not_found' THEN 0 
+					CASE
+						WHEN status = 'not_found' THEN 0
 						WHEN status = 'returned' THEN 1
-						WHEN status = 'pending' AND approval_status = 'pending' THEN 2
-						ELSE 3 
+						ELSE 2
 					END, created_at DESC
 				`).
 				Find(&loans).Error; err != nil {
@@ -262,10 +488,14 @@ func main() {
 				purpose = values[0]
 			}
 
-			// Validate required fields
-			if borrowerName == "" || borrowerPhone == "" || itemName == "" || labLocation == "" || expectedReturnDate == "" || purpose == "" {
-				c.JSON(400, gin.H{"error": "All fields are required"})
+			// Validate required fields. Purpose is optional - asking for it every
+			// time was friction people were routing around.
+			if borrowerName == "" || borrowerPhone == "" || itemName == "" || labLocation == "" || expectedReturnDate == "" {
+				c.JSON(400, gin.H{"error": "Name, phone, item, lab and return date are required"})
 				return
+			}
+			if purpose == "" {
+				purpose = "Not specified"
 			}
 
 			// Handle file upload
@@ -279,9 +509,16 @@ func main() {
 					return
 				}
 
-				// Generate unique filename with original extension
+				// Generate unique filename with original extension. The random
+				// suffix keeps two uploads in the same second from overwriting
+				// each other.
 				ext := strings.ToLower(filepath.Ext(file.Filename))
-				photoFilename = fmt.Sprintf("%d%s", time.Now().Unix(), ext)
+				suffix := make([]byte, 6)
+				if _, err := rand.Read(suffix); err != nil {
+					c.JSON(500, gin.H{"error": "Failed to store photo"})
+					return
+				}
+				photoFilename = fmt.Sprintf("%d-%s%s", time.Now().Unix(), hex.EncodeToString(suffix), ext)
 
 				// Save file to uploads directory
 				if err := c.SaveUploadedFile(file, "./uploads/"+photoFilename); err != nil {
@@ -290,7 +527,7 @@ func main() {
 				}
 			}
 
-			// Create a new loan record with pending status for admin approval
+			// Borrowing is self-service: the loan is active immediately, no approval needed.
 			newLoan := Loan{
 				BorrowerName:       borrowerName,
 				BorrowerPhone:      borrowerPhone,
@@ -300,8 +537,8 @@ func main() {
 				ExpectedReturnDate: expectedReturnDate,
 				Purpose:            purpose,
 				PhotoFilename:      photoFilename,
-				Status:             "pending",
-				ApprovalStatus:     "pending",
+				Status:             "active",
+				ApprovalStatus:     "approved",
 			}
 
 			if err := db.Create(&newLoan).Error; err != nil {
@@ -309,7 +546,7 @@ func main() {
 				return
 			}
 
-			c.JSON(200, gin.H{"message": "Borrow request submitted successfully! Please wait for admin approval.", "loan_id": newLoan.ID})
+			c.JSON(200, gin.H{"message": "Item borrowed successfully! Please return it by the expected date.", "loan_id": newLoan.ID})
 		})
 
 		// Endpoint for returning an item, identified by its loan ID
@@ -320,7 +557,7 @@ func main() {
 				return
 			}
 
-			// Mark the loan as return requested, requiring admin approval
+			// Returning is self-service: mark the loan returned right away.
 			err = db.Transaction(func(tx *gorm.DB) error {
 				var loan Loan
 				if err := tx.First(&loan, loanID).Error; err != nil {
@@ -334,23 +571,13 @@ func main() {
 					return fmt.Errorf("item has already been returned")
 				}
 
-				if loan.ReturnRequested {
-					return fmt.Errorf("return request already submitted for this item")
-				}
-
-				// Allow return for both pending and approved items
-				if loan.ApprovalStatus != "approved" && loan.ApprovalStatus != "pending" {
-					return fmt.Errorf("cannot return item with approval status: %s", loan.ApprovalStatus)
-				}
-
 				now := time.Now()
+				loan.Status = "returned"
 				loan.ReturnRequested = true
-				loan.ReturnApprovalStatus = "pending"
+				loan.ReturnApprovalStatus = "approved"
 				loan.ReturnRequestedAt = &now
-				if err := tx.Save(&loan).Error; err != nil {
-					return err
-				}
-				return nil
+				loan.ReturnedAt = &now
+				return tx.Save(&loan).Error
 			})
 
 			if err != nil {
@@ -358,7 +585,206 @@ func main() {
 				return
 			}
 
-			c.JSON(200, gin.H{"message": "Return request submitted! Please wait for admin approval."})
+			c.JSON(200, gin.H{"message": "Item marked as returned. Thank you!"})
+		})
+
+		// --- 3D PRINTERS (read-only status and camera) ---
+
+		// Live status of every configured printer
+		api.GET("/printers", func(c *gin.Context) {
+			c.JSON(200, printers.Statuses())
+		})
+
+		// Latest camera frame as a single JPEG
+		api.GET("/printers/:id/snapshot", func(c *gin.Context) {
+			frame, ok := printers.Frame(c.Param("id"))
+			if !ok {
+				c.JSON(404, gin.H{"error": "No camera image available"})
+				return
+			}
+			c.Header("Cache-Control", "no-store")
+			c.Data(200, "image/jpeg", frame)
+		})
+
+		// Send a sliced file to a printer. Anyone on the site can do this,
+		// because avoiding a wifi switch is the whole point - but it only
+		// *uploads*. Starting the print still needs somebody at the machine
+		// who can see the plate is clear.
+		api.POST("/printers/:id/files", func(c *gin.Context) {
+			file, err := c.FormFile("file")
+			if err != nil {
+				c.JSON(400, gin.H{"error": "Choose a sliced file to send"})
+				return
+			}
+
+			if file.Size > maxUploadBytes {
+				c.JSON(400, gin.H{"error": fmt.Sprintf(
+					"That file is %d MB. The limit is %d MB.",
+					file.Size/(1024*1024), maxUploadBytes/(1024*1024))})
+				return
+			}
+
+			opened, err := file.Open()
+			if err != nil {
+				c.JSON(400, gin.H{"error": "Could not read the uploaded file"})
+				return
+			}
+			defer opened.Close()
+
+			name, err := printers.UploadFile(c.Param("id"), file.Filename, opened)
+			if err != nil {
+				c.JSON(400, gin.H{"error": err.Error()})
+				return
+			}
+
+			log.Printf("printer %s: received upload %s", c.Param("id"), name)
+
+			c.JSON(200, gin.H{
+				"message": fmt.Sprintf(
+					"%s sent. Start it from the printer's screen.", name),
+				"file_name": name,
+			})
+		})
+
+		// What is already on the printer, so people can confirm their file
+		// arrived and find it on the screen
+		api.GET("/printers/:id/files", func(c *gin.Context) {
+			files, err := printers.ListFiles(c.Param("id"))
+			if err != nil {
+				c.JSON(400, gin.H{"error": err.Error()})
+				return
+			}
+			c.JSON(200, files)
+		})
+
+		// --- MOTION CAPTURE LAB BOOKINGS ---
+
+		// List bookings in a time range (defaults to the next 8 weeks)
+		api.GET("/bookings", func(c *gin.Context) {
+			from := time.Now().AddDate(0, 0, -14)
+			to := time.Now().AddDate(0, 0, 56)
+
+			if v := c.Query("from"); v != "" {
+				if t, err := time.Parse(time.RFC3339, v); err == nil {
+					from = t
+				}
+			}
+			if v := c.Query("to"); v != "" {
+				if t, err := time.Parse(time.RFC3339, v); err == nil {
+					to = t
+				}
+			}
+
+			var bookings []Booking
+			if err := db.Where("start_time < ? AND end_time > ?", to, from).
+				Order("start_time ASC").Find(&bookings).Error; err != nil {
+				c.JSON(500, gin.H{"error": "Failed to retrieve bookings"})
+				return
+			}
+			c.JSON(200, bookings)
+		})
+
+		// Book the lab. No approval - the slot just has to be free.
+		api.POST("/bookings", func(c *gin.Context) {
+			type BookingRequest struct {
+				BookedBy  string `json:"booked_by" binding:"required"`
+				Phone     string `json:"phone" binding:"required"`
+				Purpose   string `json:"purpose" binding:"required"`
+				StartTime string `json:"start_time" binding:"required"`
+				EndTime   string `json:"end_time" binding:"required"`
+			}
+
+			var req BookingRequest
+			if err := c.ShouldBindJSON(&req); err != nil {
+				c.JSON(400, gin.H{"error": "All fields are required"})
+				return
+			}
+
+			start, err := time.Parse(time.RFC3339, req.StartTime)
+			if err != nil {
+				c.JSON(400, gin.H{"error": "Invalid start time"})
+				return
+			}
+			end, err := time.Parse(time.RFC3339, req.EndTime)
+			if err != nil {
+				c.JSON(400, gin.H{"error": "Invalid end time"})
+				return
+			}
+
+			if !end.After(start) {
+				c.JSON(400, gin.H{"error": "End time must be after the start time"})
+				return
+			}
+			if end.Sub(start) > 12*time.Hour {
+				c.JSON(400, gin.H{"error": "A single booking cannot be longer than 12 hours"})
+				return
+			}
+			if start.Before(time.Now().Add(-1 * time.Hour)) {
+				c.JSON(400, gin.H{"error": "Cannot book a slot in the past"})
+				return
+			}
+
+			newBooking := Booking{
+				BookedBy:  strings.TrimSpace(req.BookedBy),
+				Phone:     strings.TrimSpace(req.Phone),
+				Purpose:   strings.TrimSpace(req.Purpose),
+				StartTime: start,
+				EndTime:   end,
+			}
+
+			// Reject overlaps, checked inside the transaction that inserts the row.
+			err = db.Transaction(func(tx *gorm.DB) error {
+				var clash Booking
+				err := tx.Where("start_time < ? AND end_time > ?", end, start).First(&clash).Error
+				if err == nil {
+					return fmt.Errorf("that slot overlaps an existing booking by %s (%s - %s)",
+						clash.BookedBy,
+						clash.StartTime.Local().Format("Mon 2 Jan 15:04"),
+						clash.EndTime.Local().Format("15:04"))
+				}
+				if !errors.Is(err, gorm.ErrRecordNotFound) {
+					return err
+				}
+				return tx.Create(&newBooking).Error
+			})
+
+			if err != nil {
+				c.JSON(409, gin.H{"error": err.Error()})
+				return
+			}
+
+			c.JSON(200, gin.H{"message": "Motion Capture Lab booked!", "booking": newBooking})
+		})
+
+		// Cancel your own booking by confirming the phone number it was made with
+		api.POST("/bookings/:id/cancel", func(c *gin.Context) {
+			type CancelRequest struct {
+				Phone string `json:"phone" binding:"required"`
+			}
+
+			var req CancelRequest
+			if err := c.ShouldBindJSON(&req); err != nil {
+				c.JSON(400, gin.H{"error": "Phone number is required"})
+				return
+			}
+
+			var booking Booking
+			if err := db.First(&booking, c.Param("id")).Error; err != nil {
+				c.JSON(404, gin.H{"error": "Booking not found"})
+				return
+			}
+
+			if strings.TrimSpace(req.Phone) != booking.Phone {
+				c.JSON(403, gin.H{"error": "That phone number does not match this booking"})
+				return
+			}
+
+			if err := db.Delete(&booking).Error; err != nil {
+				c.JSON(500, gin.H{"error": "Failed to cancel booking"})
+				return
+			}
+
+			c.JSON(200, gin.H{"message": "Booking cancelled"})
 		})
 
 		// --- ADMIN ROUTES ---
@@ -377,19 +803,34 @@ func main() {
 					return
 				}
 
-				// Hash the provided password
-				hasher := sha256.New()
-				hasher.Write([]byte(req.Password))
-				hashedPassword := hex.EncodeToString(hasher.Sum(nil))
-
 				var admin Admin
-				if err := db.Where("username = ? AND password = ?", req.Username, hashedPassword).First(&admin).Error; err != nil {
+				if err := db.Where("username = ?", req.Username).First(&admin).Error; err != nil {
 					c.JSON(401, gin.H{"error": "Invalid credentials"})
+					return
+				}
+
+				ok, needsUpgrade := verifyPassword(admin.Password, req.Password)
+				if !ok {
+					c.JSON(401, gin.H{"error": "Invalid credentials"})
+					return
+				}
+
+				// Transparently migrate legacy SHA-256 hashes to bcrypt on login.
+				if needsUpgrade {
+					if newHash, err := hashPassword(req.Password); err == nil {
+						db.Model(&admin).Update("password", newHash)
+					}
+				}
+
+				token, err := sessions.create(admin.Username)
+				if err != nil {
+					c.JSON(500, gin.H{"error": "Failed to create session"})
 					return
 				}
 
 				c.JSON(200, gin.H{
 					"message": "Login successful",
+					"token":   token,
 					"admin": gin.H{
 						"name":           admin.Name,
 						"username":       admin.Username,
@@ -398,14 +839,23 @@ func main() {
 				})
 			})
 
-			// Get pending loan requests for approval
-			admin.GET("/loans/pending", func(c *gin.Context) {
-				var loans []Loan
-				if err := db.Where("approval_status = ?", "pending").Find(&loans).Error; err != nil {
-					c.JSON(500, gin.H{"error": "Failed to retrieve pending loans"})
-					return
-				}
-				c.JSON(200, loans)
+			// Every route below requires a valid admin session.
+			admin.Use(requireAdmin)
+
+			// Log out - invalidate the current session token
+			admin.POST("/logout", func(c *gin.Context) {
+				sessions.revoke(bearerToken(c))
+				c.JSON(200, gin.H{"message": "Logged out"})
+			})
+
+			// Confirm the stored session is still valid
+			admin.GET("/me", func(c *gin.Context) {
+				admin := currentAdmin(c)
+				c.JSON(200, gin.H{
+					"name":           admin.Name,
+					"username":       admin.Username,
+					"is_super_admin": admin.IsSuperAdmin,
+				})
 			})
 
 			// Get loans by lab with status filtering and smart ordering
@@ -418,15 +868,11 @@ func main() {
 
 				// Apply status filter
 				if statusFilter == "borrowed" {
-					query = query.Where("approval_status = ? AND status = ?", "approved", "active")
-				} else if statusFilter == "rejected" {
-					query = query.Where("approval_status = ?", "denied")
+					query = query.Where("status = ?", "active")
 				} else if statusFilter == "returned" {
 					// Show returned items from the last 2 weeks only
 					twoWeeksAgo := time.Now().AddDate(0, 0, -14)
 					query = query.Where("status = ? AND updated_at > ?", "returned", twoWeeksAgo)
-				} else if statusFilter == "pending" {
-					query = query.Where("approval_status = ?", "pending")
 				} else if statusFilter == "not_found" {
 					query = query.Where("status = ?", "not_found")
 				} else {
@@ -443,10 +889,9 @@ func main() {
 				// 2. Active loans by return date
 				// 3. Rejected items at bottom
 				orderClause := `
-					CASE 
-						WHEN approval_status = 'denied' THEN 4
+					CASE
 						WHEN status = 'not_found' THEN 3
-						WHEN approval_status = 'approved' AND status = 'active' AND expected_return_date::date < CURRENT_DATE THEN 1
+						WHEN status = 'active' AND expected_return_date::date < CURRENT_DATE THEN 1
 						ELSE 2
 					END ASC,
 					expected_return_date ASC
@@ -457,52 +902,6 @@ func main() {
 					return
 				}
 				c.JSON(200, loans)
-			})
-
-			// Approve or deny a loan request
-			admin.POST("/loans/:id/approve", func(c *gin.Context) {
-				loanID := c.Param("id")
-
-				type ApprovalRequest struct {
-					Action    string `json:"action" binding:"required"` // "approve" or "deny"
-					AdminName string `json:"admin_name" binding:"required"`
-				}
-
-				var req ApprovalRequest
-				if err := c.ShouldBindJSON(&req); err != nil {
-					c.JSON(400, gin.H{"error": "Invalid approval data"})
-					return
-				}
-
-				var loan Loan
-				if err := db.First(&loan, loanID).Error; err != nil {
-					c.JSON(404, gin.H{"error": "Loan not found"})
-					return
-				}
-
-				now := time.Now()
-				if req.Action == "approve" {
-					loan.ApprovalStatus = "approved"
-					loan.Status = "active"
-					loan.ApprovedBy = req.AdminName
-					loan.ApprovedAt = &now
-				} else if req.Action == "deny" {
-					loan.ApprovalStatus = "denied"
-					loan.Status = "denied"
-					loan.ApprovedBy = req.AdminName
-					loan.ApprovedAt = &now
-					loan.DeniedAt = &now
-				} else {
-					c.JSON(400, gin.H{"error": "Invalid action"})
-					return
-				}
-
-				if err := db.Save(&loan).Error; err != nil {
-					c.JSON(500, gin.H{"error": "Failed to update loan"})
-					return
-				}
-
-				c.JSON(200, gin.H{"message": "Loan " + req.Action + "d successfully"})
 			})
 
 			// Extend loan return date
@@ -547,20 +946,9 @@ func main() {
 				c.JSON(200, gin.H{"message": "Loan extended successfully"})
 			})
 
-			// Approve return request
-			admin.POST("/loans/:id/approve-return", func(c *gin.Context) {
+			// Mark an item as missing - the admin cannot find it in the lab
+			admin.POST("/loans/:id/mark-missing", func(c *gin.Context) {
 				loanID := c.Param("id")
-
-				type ReturnApprovalRequest struct {
-					Action    string `json:"action" binding:"required"` // "approved" or "not_found"
-					AdminName string `json:"admin_name" binding:"required"`
-				}
-
-				var req ReturnApprovalRequest
-				if err := c.ShouldBindJSON(&req); err != nil {
-					c.JSON(400, gin.H{"error": "Invalid approval data: " + err.Error()})
-					return
-				}
 
 				var loan Loan
 				if err := db.First(&loan, loanID).Error; err != nil {
@@ -568,57 +956,28 @@ func main() {
 					return
 				}
 
-				// Debug logging
-				log.Printf("Return approval request for loan %s: ReturnRequested=%v, ReturnApprovalStatus=%s",
-					loanID, loan.ReturnRequested, loan.ReturnApprovalStatus)
-
-				if !loan.ReturnRequested {
-					c.JSON(400, gin.H{"error": "No return request has been made for this loan"})
-					return
-				}
-
-				if loan.ReturnApprovalStatus != "pending" {
-					c.JSON(400, gin.H{"error": fmt.Sprintf("Return request is not pending. Current status: %s", loan.ReturnApprovalStatus)})
+				if loan.Status == "not_found" {
+					c.JSON(400, gin.H{"error": "Item is already marked as missing"})
 					return
 				}
 
 				now := time.Now()
-				loan.ApprovedBy = req.AdminName
+				loan.Status = "not_found"
+				loan.ReturnApprovalStatus = "not_found"
+				loan.ApprovedBy = currentAdmin(c).Name
 				loan.ApprovedAt = &now
 
-				if req.Action == "approved" {
-					loan.ReturnApprovalStatus = "approved"
-					loan.Status = "returned"
-					loan.ReturnedAt = &now
-				} else if req.Action == "not_found" {
-					loan.ReturnApprovalStatus = "not_found"
-					loan.Status = "not_found"
-				} else {
-					c.JSON(400, gin.H{"error": "Invalid action. Use 'approved' or 'not_found'"})
-					return
-				}
-
 				if err := db.Save(&loan).Error; err != nil {
-					c.JSON(500, gin.H{"error": "Failed to process return"})
+					c.JSON(500, gin.H{"error": "Failed to mark item as missing"})
 					return
 				}
 
-				c.JSON(200, gin.H{"message": fmt.Sprintf("Return %s successfully", req.Action)})
+				c.JSON(200, gin.H{"message": "Item marked as missing"})
 			})
 
 			// Mark item as found (restore from not_found status)
 			admin.POST("/loans/:id/mark-found", func(c *gin.Context) {
 				loanID := c.Param("id")
-
-				type MarkFoundRequest struct {
-					AdminName string `json:"admin_name" binding:"required"`
-				}
-
-				var req MarkFoundRequest
-				if err := c.ShouldBindJSON(&req); err != nil {
-					c.JSON(400, gin.H{"error": "Invalid request data: " + err.Error()})
-					return
-				}
 
 				var loan Loan
 				if err := db.First(&loan, loanID).Error; err != nil {
@@ -628,15 +987,16 @@ func main() {
 
 				// Check if the item is currently marked as not found
 				if loan.Status != "not_found" {
-					c.JSON(400, gin.H{"error": fmt.Sprintf("Item is not marked as not found. Current status: %s", loan.Status)})
+					c.JSON(400, gin.H{"error": fmt.Sprintf("Item is not marked as missing. Current status: %s", loan.Status)})
 					return
 				}
 
 				// Restore the item to borrowed status
 				now := time.Now()
-				loan.Status = "borrowed"
-				loan.ReturnApprovalStatus = ""
-				loan.ApprovedBy = req.AdminName
+				loan.Status = "active"
+				loan.ReturnRequested = false
+				loan.ReturnApprovalStatus = "not_requested"
+				loan.ApprovedBy = currentAdmin(c).Name
 				loan.ApprovedAt = &now
 
 				if err := db.Save(&loan).Error; err != nil {
@@ -647,31 +1007,169 @@ func main() {
 				c.JSON(200, gin.H{"message": "Item successfully marked as found and restored to borrowed status"})
 			})
 
-			// Get pending return requests
-			admin.GET("/loans/pending-returns", func(c *gin.Context) {
+			// Get missing items
+			admin.GET("/loans/lost-missing", func(c *gin.Context) {
 				var loans []Loan
-				if err := db.Where("return_requested = ? AND return_approval_status = ?", true, "pending").Find(&loans).Error; err != nil {
-					c.JSON(500, gin.H{"error": "Failed to retrieve pending returns"})
+				if err := db.Where("status = ?", "not_found").Order("updated_at DESC").Find(&loans).Error; err != nil {
+					c.JSON(500, gin.H{"error": "Failed to retrieve missing items"})
 					return
 				}
 				c.JSON(200, loans)
 			})
 
-			// Get lost/missing items (not found + pending returns, but exclude overdue items)
-			admin.GET("/loans/lost-missing", func(c *gin.Context) {
-				var loans []Loan
-				// Include:
-				// 1. Items marked as not_found
-				// 2. Items with pending return requests that are NOT overdue
-				if err := db.Where(`
-					status = ? OR 
-					(return_requested = ? AND return_approval_status = ? AND 
-					 NOT (approval_status = ? AND status = ? AND expected_return_date::date < CURRENT_DATE))
-				`, "not_found", true, "pending", "approved", "active").Find(&loans).Error; err != nil {
-					c.JSON(500, gin.H{"error": "Failed to retrieve lost/missing items"})
+			// Stop the current print job. Admins only - a stray click here
+			// destroys someone's work, so it is deliberately not public.
+			admin.POST("/printers/:id/stop", func(c *gin.Context) {
+				adminName := currentAdmin(c).Name
+				if err := printers.Stop(c.Param("id"), adminName); err != nil {
+					c.JSON(400, gin.H{"error": err.Error()})
 					return
 				}
-				c.JSON(200, loans)
+				c.JSON(200, gin.H{"message": "Stop command sent to the printer"})
+			})
+
+			// Tidy up old plates - deleting other people's files is an
+			// admin job, uploading is not.
+			admin.DELETE("/printers/:id/files/:name", func(c *gin.Context) {
+				if err := printers.DeleteFile(c.Param("id"), c.Param("name")); err != nil {
+					c.JSON(400, gin.H{"error": err.Error()})
+					return
+				}
+				c.JSON(200, gin.H{"message": "File deleted from the printer"})
+			})
+
+			// Pause the current job - reversible, unlike stop
+			admin.POST("/printers/:id/pause", func(c *gin.Context) {
+				if err := printers.Pause(c.Param("id"), currentAdmin(c).Name); err != nil {
+					c.JSON(400, gin.H{"error": err.Error()})
+					return
+				}
+				c.JSON(200, gin.H{"message": "Pause command sent to the printer"})
+			})
+
+			// Resume a paused job
+			admin.POST("/printers/:id/resume", func(c *gin.Context) {
+				if err := printers.Resume(c.Param("id"), currentAdmin(c).Name); err != nil {
+					c.JSON(400, gin.H{"error": err.Error()})
+					return
+				}
+				c.JSON(200, gin.H{"message": "Resume command sent to the printer"})
+			})
+
+			// Chamber light. Harmless in itself, but it commands hardware, so
+			// it sits behind the same admin gate as the rest.
+			admin.POST("/printers/:id/light", func(c *gin.Context) {
+				type LightRequest struct {
+					On *bool `json:"on" binding:"required"`
+				}
+
+				var req LightRequest
+				if err := c.ShouldBindJSON(&req); err != nil {
+					c.JSON(400, gin.H{"error": "Specify whether the light should be on"})
+					return
+				}
+
+				if err := printers.SetLight(c.Param("id"), *req.On); err != nil {
+					c.JSON(400, gin.H{"error": err.Error()})
+					return
+				}
+
+				state := "off"
+				if *req.On {
+					state = "on"
+				}
+				c.JSON(200, gin.H{"message": "Chamber light turned " + state})
+			})
+
+			// The automatic print log
+			admin.GET("/print-jobs", func(c *gin.Context) {
+				var jobs []PrintJob
+				query := db.Order("started_at DESC").Limit(200)
+				if id := c.Query("printer_id"); id != "" {
+					query = query.Where("printer_id = ?", id)
+				}
+				if err := query.Find(&jobs).Error; err != nil {
+					c.JSON(500, gin.H{"error": "Failed to retrieve print jobs"})
+					return
+				}
+				c.JSON(200, jobs)
+			})
+
+			// Print log as CSV
+			admin.GET("/export-print-jobs-csv", func(c *gin.Context) {
+				var jobs []PrintJob
+				if err := db.Order("started_at DESC").Find(&jobs).Error; err != nil {
+					c.JSON(500, gin.H{"error": "Failed to retrieve print jobs"})
+					return
+				}
+
+				c.Header("Content-Type", "text/csv")
+				c.Header("Content-Disposition", "attachment; filename=print_jobs.csv")
+
+				writer := csv.NewWriter(c.Writer)
+				defer writer.Flush()
+				writer.Write([]string{"ID", "Printer", "File", "Started", "Ended",
+					"Minutes", "Result", "Stopped By", "Last Percent"})
+
+				for _, job := range jobs {
+					minutes := ""
+					ended := ""
+					if job.EndedAt != nil {
+						ended = job.EndedAt.Local().Format("2006-01-02 15:04:05")
+						minutes = strconv.Itoa(int(job.EndedAt.Sub(job.StartedAt).Minutes()))
+					}
+					writer.Write([]string{
+						strconv.Itoa(int(job.ID)),
+						job.PrinterName,
+						job.FileName,
+						job.StartedAt.Local().Format("2006-01-02 15:04:05"),
+						ended,
+						minutes,
+						job.Result,
+						job.StoppedBy,
+						strconv.Itoa(job.LastPercent),
+					})
+				}
+			})
+
+			// Update a printer's access code. Printers regenerate their code
+			// when LAN mode is toggled, and this avoids editing .env and
+			// restarting the site to recover.
+			admin.PUT("/printers/:id/access-code", func(c *gin.Context) {
+				type AccessCodeRequest struct {
+					AccessCode string `json:"access_code" binding:"required"`
+				}
+
+				var req AccessCodeRequest
+				if err := c.ShouldBindJSON(&req); err != nil {
+					c.JSON(400, gin.H{"error": "An access code is required"})
+					return
+				}
+
+				if err := printers.UpdateAccessCode(c.Param("id"), req.AccessCode); err != nil {
+					c.JSON(400, gin.H{"error": err.Error()})
+					return
+				}
+
+				c.JSON(200, gin.H{
+					"message": "Access code updated. Reconnecting to the printer...",
+				})
+			})
+
+			// Delete any Motion Capture Lab booking
+			admin.DELETE("/bookings/:id", func(c *gin.Context) {
+				var booking Booking
+				if err := db.First(&booking, c.Param("id")).Error; err != nil {
+					c.JSON(404, gin.H{"error": "Booking not found"})
+					return
+				}
+
+				if err := db.Delete(&booking).Error; err != nil {
+					c.JSON(500, gin.H{"error": "Failed to delete booking"})
+					return
+				}
+
+				c.JSON(200, gin.H{"message": "Booking deleted"})
 			})
 
 			// Get archived (old returned) items - older than 2 weeks
@@ -727,12 +1225,7 @@ func main() {
 					// Calculate additional fields
 					daysSinceBorrowed := int(time.Since(loan.CreatedAt).Hours() / 24)
 
-					expectedReturnTime, _ := time.Parse("2006-01-02T15:04:05Z07:00", loan.ExpectedReturnDate)
-					isOverdue := time.Now().After(expectedReturnTime)
-					daysOverdue := 0
-					if isOverdue {
-						daysOverdue = int(time.Since(expectedReturnTime).Hours() / 24)
-					}
+					isOverdue, daysOverdue := loanOverdue(loan, time.Now())
 
 					record := []string{
 						strconv.Itoa(int(loan.ID)),
@@ -762,18 +1255,34 @@ func main() {
 				}
 			})
 
-			// Cleanup denied loans (called periodically)
-			admin.POST("/cleanup-denied", func(c *gin.Context) {
-				// Delete loans that were denied more than 24 hours ago
-				oneDayAgo := time.Now().Add(-24 * time.Hour)
-
-				result := db.Where("approval_status = ? AND denied_at < ?", "denied", oneDayAgo).Delete(&Loan{})
-				if result.Error != nil {
-					c.JSON(500, gin.H{"error": "Failed to cleanup denied loans"})
+			// Export Motion Capture Lab bookings as CSV
+			admin.GET("/export-bookings-csv", func(c *gin.Context) {
+				var bookings []Booking
+				if err := db.Order("start_time ASC").Find(&bookings).Error; err != nil {
+					c.JSON(500, gin.H{"error": "Failed to retrieve bookings for export"})
 					return
 				}
 
-				c.JSON(200, gin.H{"message": "Cleanup completed", "deleted_count": result.RowsAffected})
+				c.Header("Content-Type", "text/csv")
+				c.Header("Content-Disposition", "attachment; filename=motion_capture_lab_bookings.csv")
+
+				writer := csv.NewWriter(c.Writer)
+				defer writer.Flush()
+
+				writer.Write([]string{"ID", "Booked By", "Phone", "Purpose", "Start Time", "End Time", "Hours", "Created At"})
+
+				for _, b := range bookings {
+					writer.Write([]string{
+						strconv.Itoa(int(b.ID)),
+						b.BookedBy,
+						b.Phone,
+						b.Purpose,
+						b.StartTime.Local().Format("2006-01-02 15:04:05"),
+						b.EndTime.Local().Format("2006-01-02 15:04:05"),
+						fmt.Sprintf("%.1f", b.EndTime.Sub(b.StartTime).Hours()),
+						b.CreatedAt.Format("2006-01-02 15:04:05"),
+					})
+				}
 			})
 
 			// === NEW ADMIN MANAGEMENT ROUTES ===
@@ -781,7 +1290,6 @@ func main() {
 			// Change password for any admin
 			admin.POST("/change-password", func(c *gin.Context) {
 				type ChangePasswordRequest struct {
-					Username    string `json:"username" binding:"required"`
 					OldPassword string `json:"old_password" binding:"required"`
 					NewPassword string `json:"new_password" binding:"required"`
 				}
@@ -793,29 +1301,24 @@ func main() {
 				}
 
 				// Validate new password length
-				if len(req.NewPassword) < 6 {
-					c.JSON(400, gin.H{"error": "New password must be at least 6 characters long"})
+				if len(req.NewPassword) < 8 {
+					c.JSON(400, gin.H{"error": "New password must be at least 8 characters long"})
 					return
 				}
 
-				// Hash the old password to verify
-				hasher := sha256.New()
-				hasher.Write([]byte(req.OldPassword))
-				hashedOldPassword := hex.EncodeToString(hasher.Sum(nil))
-
-				// Find admin with username and old password
-				var admin Admin
-				if err := db.Where("username = ? AND password = ?", req.Username, hashedOldPassword).First(&admin).Error; err != nil {
-					c.JSON(401, gin.H{"error": "Invalid username or current password"})
+				// Only the logged-in admin's own password can be changed here
+				admin := currentAdmin(c)
+				if ok, _ := verifyPassword(admin.Password, req.OldPassword); !ok {
+					c.JSON(401, gin.H{"error": "Current password is incorrect"})
 					return
 				}
 
-				// Hash the new password
-				hasher.Reset()
-				hasher.Write([]byte(req.NewPassword))
-				hashedNewPassword := hex.EncodeToString(hasher.Sum(nil))
+				hashedNewPassword, err := hashPassword(req.NewPassword)
+				if err != nil {
+					c.JSON(500, gin.H{"error": "Failed to update password"})
+					return
+				}
 
-				// Update password
 				if err := db.Model(&admin).Update("password", hashedNewPassword).Error; err != nil {
 					c.JSON(500, gin.H{"error": "Failed to update password"})
 					return
@@ -826,21 +1329,7 @@ func main() {
 
 			// Get all admins (only super admin can access)
 			admin.GET("/list", func(c *gin.Context) {
-				// Get requesting admin's username from query parameter
-				requestingUsername := c.Query("requesting_username")
-				if requestingUsername == "" {
-					c.JSON(400, gin.H{"error": "Requesting username is required"})
-					return
-				}
-
-				// Check if requesting admin is super admin
-				var requestingAdmin Admin
-				if err := db.Where("username = ?", requestingUsername).First(&requestingAdmin).Error; err != nil {
-					c.JSON(401, gin.H{"error": "Invalid requesting admin"})
-					return
-				}
-
-				if !requestingAdmin.IsSuperAdmin {
+				if !currentAdmin(c).IsSuperAdmin {
 					c.JSON(403, gin.H{"error": "Only super admin can view admin list"})
 					return
 				}
@@ -870,11 +1359,10 @@ func main() {
 			// Create new admin (only super admin can create)
 			admin.POST("/create", func(c *gin.Context) {
 				type CreateAdminRequest struct {
-					RequestingUsername string `json:"requesting_username" binding:"required"`
-					Username           string `json:"username" binding:"required"`
-					Password           string `json:"password" binding:"required"`
-					Name               string `json:"name" binding:"required"`
-					IsSuperAdmin       bool   `json:"is_super_admin"`
+					Username     string `json:"username" binding:"required"`
+					Password     string `json:"password" binding:"required"`
+					Name         string `json:"name" binding:"required"`
+					IsSuperAdmin bool   `json:"is_super_admin"`
 				}
 
 				var req CreateAdminRequest
@@ -883,21 +1371,14 @@ func main() {
 					return
 				}
 
-				// Check if requesting admin is super admin
-				var requestingAdmin Admin
-				if err := db.Where("username = ?", req.RequestingUsername).First(&requestingAdmin).Error; err != nil {
-					c.JSON(401, gin.H{"error": "Invalid requesting admin"})
-					return
-				}
-
-				if !requestingAdmin.IsSuperAdmin {
+				if !currentAdmin(c).IsSuperAdmin {
 					c.JSON(403, gin.H{"error": "Only super admin can create new admins"})
 					return
 				}
 
 				// Validate password length
-				if len(req.Password) < 6 {
-					c.JSON(400, gin.H{"error": "Password must be at least 6 characters long"})
+				if len(req.Password) < 8 {
+					c.JSON(400, gin.H{"error": "Password must be at least 8 characters long"})
 					return
 				}
 
@@ -908,10 +1389,11 @@ func main() {
 					return
 				}
 
-				// Hash the password
-				hasher := sha256.New()
-				hasher.Write([]byte(req.Password))
-				hashedPassword := hex.EncodeToString(hasher.Sum(nil))
+				hashedPassword, err := hashPassword(req.Password)
+				if err != nil {
+					c.JSON(500, gin.H{"error": "Failed to create admin"})
+					return
+				}
 
 				// Create new admin
 				newAdmin := Admin{
@@ -939,16 +1421,6 @@ func main() {
 
 			// Delete admin (only super admin can delete other admins, except themselves)
 			admin.DELETE("/delete/:id", func(c *gin.Context) {
-				type DeleteAdminRequest struct {
-					RequestingUsername string `json:"requesting_username" binding:"required"`
-				}
-
-				var req DeleteAdminRequest
-				if err := c.ShouldBindJSON(&req); err != nil {
-					c.JSON(400, gin.H{"error": "Invalid delete request data"})
-					return
-				}
-
 				// Get admin ID from URL parameter
 				adminId := c.Param("id")
 				if adminId == "" {
@@ -956,13 +1428,7 @@ func main() {
 					return
 				}
 
-				// Check if requesting admin is super admin
-				var requestingAdmin Admin
-				if err := db.Where("username = ?", req.RequestingUsername).First(&requestingAdmin).Error; err != nil {
-					c.JSON(401, gin.H{"error": "Invalid requesting admin"})
-					return
-				}
-
+				requestingAdmin := currentAdmin(c)
 				if !requestingAdmin.IsSuperAdmin {
 					c.JSON(403, gin.H{"error": "Only super admin can delete admins"})
 					return
@@ -981,9 +1447,11 @@ func main() {
 					return
 				}
 
-				// Check if trying to delete the main super admin (Srinath)
-				if adminToDelete.Username == "Srinath" {
-					c.JSON(400, gin.H{"error": "Cannot delete the main super admin account"})
+				// Never leave the system without a super admin
+				var superAdminCount int64
+				db.Model(&Admin{}).Where("is_super_admin = ?", true).Count(&superAdminCount)
+				if adminToDelete.IsSuperAdmin && superAdminCount <= 1 {
+					c.JSON(400, gin.H{"error": "Cannot delete the last super admin account"})
 					return
 				}
 
@@ -1006,8 +1474,7 @@ func main() {
 			// Delete all items data (only super admin can delete all data)
 			admin.DELETE("/delete-all-items", func(c *gin.Context) {
 				type DeleteAllRequest struct {
-					RequestingUsername string `json:"requesting_username" binding:"required"`
-					ConfirmDelete      bool   `json:"confirm_delete" binding:"required"`
+					ConfirmDelete bool `json:"confirm_delete" binding:"required"`
 				}
 
 				var req DeleteAllRequest
@@ -1016,14 +1483,7 @@ func main() {
 					return
 				}
 
-				// Check if requesting admin is super admin
-				var requestingAdmin Admin
-				if err := db.Where("username = ?", req.RequestingUsername).First(&requestingAdmin).Error; err != nil {
-					c.JSON(401, gin.H{"error": "Invalid requesting admin"})
-					return
-				}
-
-				if !requestingAdmin.IsSuperAdmin {
+				if !currentAdmin(c).IsSuperAdmin {
 					c.JSON(403, gin.H{"error": "Only super admin can delete all items data"})
 					return
 				}
@@ -1060,23 +1520,6 @@ func main() {
 			})
 		}
 	}
-
-	// --- BACKGROUND CLEANUP TASK ---
-	// Start background task to automatically cleanup denied loans after 24 hours
-	go func() {
-		ticker := time.NewTicker(1 * time.Hour) // Check every hour
-		defer ticker.Stop()
-
-		for range ticker.C {
-			oneDayAgo := time.Now().Add(-24 * time.Hour)
-			result := db.Where("approval_status = ? AND denied_at < ?", "denied", oneDayAgo).Delete(&Loan{})
-			if result.Error != nil {
-				log.Printf("Auto-cleanup error: %v", result.Error)
-			} else if result.RowsAffected > 0 {
-				log.Printf("Auto-cleanup: removed %d denied loans older than 24 hours", result.RowsAffected)
-			}
-		}
-	}()
 
 	// --- START SERVER ---
 	log.Println("Starting server on port 8080...")

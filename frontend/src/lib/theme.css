@@ -1,0 +1,156 @@
+/* Catppuccin Mocha - the single source of truth for colour across the site.
+   Imported once in +layout.svelte, so every page can use var(--ctp-*) instead
+   of repeating hex codes. */
+
+:root {
+    /* Accents */
+    --ctp-rosewater: #f5e0dc;
+    --ctp-flamingo: #f2cdcd;
+    --ctp-pink: #f5c2e7;
+    --ctp-mauve: #cba6f7;
+    --ctp-red: #f38ba8;
+    --ctp-maroon: #eba0ac;
+    --ctp-peach: #fab387;
+    --ctp-yellow: #f9e2af;
+    --ctp-green: #a6e3a1;
+    --ctp-teal: #94e2d5;
+    --ctp-sky: #89dceb;
+    --ctp-sapphire: #74c7ec;
+    --ctp-blue: #89b4fa;
+    --ctp-lavender: #b4befe;
+
+    /* Text */
+    --ctp-text: #cdd6f4;
+    --ctp-subtext1: #bac2de;
+    --ctp-subtext0: #a6adc8;
+
+    /* Overlays */
+    --ctp-overlay2: #9399b2;
+    --ctp-overlay1: #7f849c;
+    --ctp-overlay0: #6c7086;
+
+    /* Surfaces */
+    --ctp-surface2: #585b70;
+    --ctp-surface1: #45475a;
+    --ctp-surface0: #313244;
+    --ctp-base: #1e1e2e;
+    --ctp-mantle: #181825;
+    --ctp-crust: #11111b;
+
+    /* Spacing and shape, so everything lines up on the same rhythm */
+    --radius-sm: 8px;
+    --radius: 12px;
+    --radius-lg: 18px;
+    --radius-pill: 999px;
+
+    --shadow-sm: 0 2px 8px rgba(17, 17, 27, 0.35);
+    --shadow: 0 8px 24px rgba(17, 17, 27, 0.45);
+    --shadow-lg: 0 18px 48px rgba(17, 17, 27, 0.55);
+
+    /* One easing curve everywhere - motion feels like one system */
+    --ease: cubic-bezier(0.22, 1, 0.36, 1);
+    --fast: 140ms;
+    --normal: 260ms;
+    --slow: 420ms;
+
+    --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+        'Helvetica Neue', sans-serif;
+}
+
+html {
+    -webkit-text-size-adjust: 100%;
+}
+
+body {
+    background:
+        radial-gradient(1100px 600px at 12% -8%, rgba(203, 166, 247, 0.10), transparent 60%),
+        radial-gradient(900px 520px at 92% 4%, rgba(137, 180, 250, 0.09), transparent 60%),
+        var(--ctp-base);
+    background-attachment: fixed;
+    color: var(--ctp-text);
+    font-family: var(--font);
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* Visible keyboard focus everywhere, without a ring on mouse clicks */
+:focus-visible {
+    outline: 2px solid var(--ctp-lavender);
+    outline-offset: 2px;
+    border-radius: 4px;
+}
+
+::selection {
+    background: rgba(203, 166, 247, 0.35);
+}
+
+/* Slim scrollbars that match the palette */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--ctp-surface1) transparent;
+}
+
+*::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+*::-webkit-scrollbar-thumb {
+    background: var(--ctp-surface1);
+    border-radius: var(--radius-pill);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+    background: var(--ctp-surface2);
+}
+
+*::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+/* --- shared motion ---------------------------------------------------- */
+
+@keyframes rise {
+    from {
+        opacity: 0;
+        transform: translateY(14px);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+@keyframes fade {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes soft-pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.45;
+    }
+}
+
+.rise {
+    animation: rise var(--slow) var(--ease) both;
+}
+
+/* Respect people who have asked for less motion */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}
