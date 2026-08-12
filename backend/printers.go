@@ -50,17 +50,19 @@ type PrinterConfig struct {
 
 // PrinterStatus is what the frontend sees. Access codes never appear here.
 type PrinterStatus struct {
-	ID               string  `json:"id"`
-	Name             string  `json:"name"`
-	Online           bool    `json:"online"`
-	State            string  `json:"state"`    // IDLE, RUNNING, FINISH, FAILED, PAUSE
-	Progress         int     `json:"progress"` // percent
-	RemainingMinutes int     `json:"remaining_minutes"`
-	FileName         string  `json:"file_name"`
-	NozzleTemp       float64 `json:"nozzle_temp"`
-	BedTemp          float64 `json:"bed_temp"`
-	ChamberTemp      float64 `json:"chamber_temp"`
-	CameraOnline     bool    `json:"camera_online"`
+	ID               string     `json:"id"`
+	Name             string     `json:"name"`
+	Online           bool       `json:"online"`
+	State            string     `json:"state"`    // IDLE, RUNNING, FINISH, FAILED, PAUSE
+	Progress         int        `json:"progress"` // percent
+	RemainingMinutes int        `json:"remaining_minutes"`
+	FileName         string     `json:"file_name"`
+	NozzleTemp       float64    `json:"nozzle_temp"`
+	BedTemp          float64    `json:"bed_temp"`
+	ChamberTemp      float64    `json:"chamber_temp"`
+	LightOn          bool       `json:"light_on"`
+	Faults           []HMSFault `json:"faults"`
+	CameraOnline     bool       `json:"camera_online"`
 	// Reachable but rejecting our credentials - almost always a changed
 	// access code, which the printer does when LAN mode is toggled.
 	AccessCodeProblem bool    `json:"access_code_problem"`
@@ -83,7 +85,51 @@ type printerReport struct {
 		NozzleTemper  *float64 `json:"nozzle_temper"`
 		BedTemper     *float64 `json:"bed_temper"`
 		ChamberTemper *float64 `json:"chamber_temper"`
+
+		// Chamber light state, reported as a list of nodes
+		LightsReport *[]struct {
+			Node string `json:"node"`
+			Mode string `json:"mode"`
+		} `json:"lights_report"`
+
+		// Health Management System - the printer's own fault list. An empty
+		// array means "no faults", which is different from the field being
+		// absent, so this stays a pointer.
+		HMS *[]struct {
+			Attr uint32 `json:"attr"`
+			Code uint32 `json:"code"`
+		} `json:"hms"`
 	} `json:"print"`
+}
+
+// HMSFault is one fault, formatted the way Bambu's own documentation writes it.
+type HMSFault struct {
+	Code     string `json:"code"`
+	Severity string `json:"severity"`
+	URL      string `json:"url"`
+}
+
+// hmsSeverity reads the severity out of the top half of the code word.
+func hmsSeverity(code uint32) string {
+	switch (code >> 16) & 0xFFFF {
+	case 1:
+		return "fatal"
+	case 2:
+		return "serious"
+	case 3:
+		return "common"
+	case 4:
+		return "info"
+	default:
+		return "unknown"
+	}
+}
+
+// formatHMS builds the canonical HMS_XXXX_XXXX_XXXX_XXXX string from the two
+// words the printer reports.
+func formatHMS(attr, code uint32) string {
+	return fmt.Sprintf("HMS_%04X_%04X_%04X_%04X",
+		attr>>16, attr&0xFFFF, code>>16, code&0xFFFF)
 }
 
 // printer holds the live state of one machine.
@@ -105,6 +151,13 @@ type printer struct {
 
 	lastActionBy string
 	lastActionAt time.Time
+
+	lightOn bool
+	faults  []HMSFault
+
+	// The job currently being tracked for the print log
+	currentJob *PrintJob
+	jobs       *gorm.DB
 
 	// Credential health, derived from the camera handshake: the printer
 	// accepts the TCP connection and then hangs up when the code is wrong.
@@ -129,6 +182,22 @@ type PrinterManager struct {
 	printers []*printer
 	byID     map[string]*printer
 	db       *gorm.DB
+}
+
+// PrintJob is one print, recorded automatically from the printer's own state
+// changes. Nobody fills in a form - the file name carries who it belongs to,
+// by the naming convention in the printer guidelines.
+type PrintJob struct {
+	gorm.Model
+	PrinterID   string     `json:"printer_id" gorm:"index"`
+	PrinterName string     `json:"printer_name"`
+	FileName    string     `json:"file_name"`
+	StartedAt   time.Time  `json:"started_at"`
+	EndedAt     *time.Time `json:"ended_at"`
+	// finished, failed, stopped, or running while still in progress
+	Result      string `json:"result"`
+	StoppedBy   string `json:"stopped_by"`
+	LastPercent int    `json:"last_percent"`
 }
 
 // PrinterCredential stores an access code changed from the admin page, so the
@@ -227,6 +296,7 @@ func NewPrinterManager(configs []PrinterConfig, db *gorm.DB) *PrinterManager {
 			cfg:        cfg,
 			cameraPort: printerCameraPort,
 			restart:    make(chan struct{}, 1),
+			jobs:       db,
 		}
 		m.printers = append(m.printers, p)
 		m.byID[cfg.ID] = p
@@ -364,6 +434,7 @@ func (p *printer) applyReport(payload []byte) {
 	// Any well-formed report means the printer is alive and talking
 	p.lastReport = time.Now()
 
+	previousState := p.state
 	if info.GcodeState != nil {
 		p.state = *info.GcodeState
 	}
@@ -385,6 +456,95 @@ func (p *printer) applyReport(payload []byte) {
 	if info.ChamberTemper != nil {
 		p.chamberTemp = *info.ChamberTemper
 	}
+
+	if info.LightsReport != nil {
+		for _, light := range *info.LightsReport {
+			if light.Node == "chamber_light" {
+				p.lightOn = strings.EqualFold(light.Mode, "on")
+			}
+		}
+	}
+
+	if info.HMS != nil {
+		faults := make([]HMSFault, 0, len(*info.HMS))
+		for _, fault := range *info.HMS {
+			if fault.Attr == 0 && fault.Code == 0 {
+				continue
+			}
+			code := formatHMS(fault.Attr, fault.Code)
+			faults = append(faults, HMSFault{
+				Code:     code,
+				Severity: hmsSeverity(fault.Code),
+				// Bambu documents each code on its wiki under this path
+				URL: "https://wiki.bambulab.com/en/hms/" + code,
+			})
+		}
+		p.faults = faults
+	}
+
+	p.trackJobLocked(previousState)
+}
+
+// trackJobLocked opens a print job when a machine starts running and closes it
+// when it stops. Called with the lock held.
+func (p *printer) trackJobLocked(previousState string) {
+	if p.jobs == nil {
+		return
+	}
+
+	now := time.Now()
+	running := p.state == "RUNNING" || p.state == "PAUSE"
+
+	// A new job, or the same printer moving on to a different file
+	if running && (p.currentJob == nil || p.currentJob.FileName != p.fileName) {
+		if p.currentJob != nil {
+			p.closeJobLocked("interrupted", now)
+		}
+		job := &PrintJob{
+			PrinterID:   p.cfg.ID,
+			PrinterName: p.cfg.Name,
+			FileName:    p.fileName,
+			StartedAt:   now,
+			Result:      "running",
+			LastPercent: p.progress,
+		}
+		if err := p.jobs.Create(job).Error; err == nil {
+			p.currentJob = job
+		}
+		return
+	}
+
+	if p.currentJob == nil {
+		return
+	}
+
+	p.currentJob.LastPercent = p.progress
+
+	if !running && previousState != p.state {
+		switch p.state {
+		case "FINISH":
+			p.closeJobLocked("finished", now)
+		case "FAILED":
+			p.closeJobLocked("failed", now)
+		case "IDLE", "PREPARE":
+			// A job that leaves RUNNING for idle was cancelled somehow
+			p.closeJobLocked("stopped", now)
+		}
+	}
+}
+
+func (p *printer) closeJobLocked(result string, at time.Time) {
+	if p.currentJob == nil {
+		return
+	}
+	p.currentJob.Result = result
+	p.currentJob.EndedAt = &at
+	if result == "stopped" && p.lastActionBy != "" &&
+		time.Since(p.lastActionAt) < 2*time.Minute {
+		p.currentJob.StoppedBy = p.lastActionBy
+	}
+	p.jobs.Save(p.currentJob)
+	p.currentJob = nil
 }
 
 // --- camera over TLS ----------------------------------------------------
@@ -533,6 +693,12 @@ func (p *printer) status() PrinterStatus {
 		status.LastActionAt = &at
 	}
 
+	status.LightOn = p.lightOn
+	status.Faults = p.faults
+	if status.Faults == nil {
+		status.Faults = []HMSFault{}
+	}
+
 	if online {
 		status.State = p.state
 		status.Progress = p.progress
@@ -574,6 +740,110 @@ var stoppableStates = map[string]bool{
 	"PAUSE":   true,
 	"PREPARE": true,
 	"SLICING": true,
+}
+
+// publishCommand sends one command on the printer's request topic. Every
+// write the system can make goes through here.
+func (p *printer) publishCommand(payload string) error {
+	p.mu.Lock()
+	client := p.client
+	online := !p.lastReport.IsZero() && time.Since(p.lastReport) < statusStaleAfter
+	p.mu.Unlock()
+
+	if client == nil || !client.IsConnected() || !online {
+		return fmt.Errorf("printer is not reachable")
+	}
+
+	topic := fmt.Sprintf("device/%s/request", p.cfg.Serial)
+	token := client.Publish(topic, 0, false, payload)
+	if !token.WaitTimeout(10*time.Second) || token.Error() != nil {
+		if token.Error() != nil {
+			return fmt.Errorf("could not send the command: %w", token.Error())
+		}
+		return fmt.Errorf("timed out sending the command")
+	}
+	return nil
+}
+
+func (p *printer) nextSequence() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.sequence++
+	return p.sequence
+}
+
+// pauseStates are the states where pausing makes sense.
+var pauseStates = map[string]bool{"RUNNING": true, "PREPARE": true}
+
+// pause halts the current job. Unlike stop this is reversible, though a long
+// pause can still spoil a print.
+func (p *printer) pause(adminName string) error {
+	p.mu.RLock()
+	state := strings.ToUpper(p.state)
+	p.mu.RUnlock()
+
+	if !pauseStates[state] {
+		return fmt.Errorf("nothing is printing right now (state: %s)", state)
+	}
+
+	payload := fmt.Sprintf(`{"print":{"sequence_id":"%d","command":"pause"}}`, p.nextSequence())
+	if err := p.publishCommand(payload); err != nil {
+		return err
+	}
+
+	p.recordAction(adminName)
+	log.Printf("printer %s: pause requested by %s", p.cfg.Name, adminName)
+	return nil
+}
+
+// resume continues a paused job.
+func (p *printer) resume(adminName string) error {
+	p.mu.RLock()
+	state := strings.ToUpper(p.state)
+	p.mu.RUnlock()
+
+	if state != "PAUSE" {
+		return fmt.Errorf("the printer is not paused (state: %s)", state)
+	}
+
+	payload := fmt.Sprintf(`{"print":{"sequence_id":"%d","command":"resume"}}`, p.nextSequence())
+	if err := p.publishCommand(payload); err != nil {
+		return err
+	}
+
+	p.recordAction(adminName)
+	log.Printf("printer %s: resume requested by %s", p.cfg.Name, adminName)
+	return nil
+}
+
+// setLight switches the chamber light. Harmless, and it makes the camera
+// usable when someone has left the light off.
+func (p *printer) setLight(on bool) error {
+	mode := "off"
+	if on {
+		mode = "on"
+	}
+
+	payload := fmt.Sprintf(
+		`{"system":{"sequence_id":"%d","command":"ledctrl","led_node":"chamber_light","led_mode":"%s","led_on_time":500,"led_off_time":500,"loop_times":0,"interval_time":0}}`,
+		p.nextSequence(), mode)
+
+	if err := p.publishCommand(payload); err != nil {
+		return err
+	}
+
+	// Reflect it immediately; the printer confirms in its next report
+	p.mu.Lock()
+	p.lightOn = on
+	p.mu.Unlock()
+	return nil
+}
+
+func (p *printer) recordAction(adminName string) {
+	p.mu.Lock()
+	p.lastActionBy = adminName
+	p.lastActionAt = time.Now()
+	p.mu.Unlock()
 }
 
 // stop asks the printer to abort the current job. Read-only everywhere else,
@@ -623,6 +893,33 @@ func (m *PrinterManager) Stop(id, adminName string) error {
 		return fmt.Errorf("unknown printer")
 	}
 	return p.stop(adminName)
+}
+
+// Pause halts the current job.
+func (m *PrinterManager) Pause(id, adminName string) error {
+	p, ok := m.byID[id]
+	if !ok {
+		return fmt.Errorf("unknown printer")
+	}
+	return p.pause(adminName)
+}
+
+// Resume continues a paused job.
+func (m *PrinterManager) Resume(id, adminName string) error {
+	p, ok := m.byID[id]
+	if !ok {
+		return fmt.Errorf("unknown printer")
+	}
+	return p.resume(adminName)
+}
+
+// SetLight switches a printer's chamber light.
+func (m *PrinterManager) SetLight(id string, on bool) error {
+	p, ok := m.byID[id]
+	if !ok {
+		return fmt.Errorf("unknown printer")
+	}
+	return p.setLight(on)
 }
 
 // UpdateAccessCode changes a printer's access code, saves it so it survives a

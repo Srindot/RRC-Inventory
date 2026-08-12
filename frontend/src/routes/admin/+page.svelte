@@ -571,10 +571,63 @@
     function showPrinters() {
         currentView = 'printers';
         loadPrinters();
+        loadPrintJobs();
         clearInterval(printerTimer);
         clearInterval(cameraTimer);
-        printerTimer = setInterval(loadPrinters, 5000);
+        printerTimer = setInterval(() => { loadPrinters(); loadPrintJobs(); }, 5000);
         cameraTimer = setInterval(() => (cameraTick = Date.now()), 2000);
+    }
+
+    let printJobs = [];
+    let busyPrinter = '';
+
+    // Every printer command goes through here so the UI stays consistent
+    async function printerCommand(printer, path, options, successMessage) {
+        busyPrinter = printer.id + path;
+        try {
+            const response = await apiFetch(`/api/admin/printers/${printer.id}/${path}`, options);
+            if (!response) return;
+
+            const result = await response.json();
+            if (response.ok) {
+                showMessage(successMessage || result.message, 'success');
+                loadPrinters();
+            } else {
+                showMessage(result.error || 'The printer refused that command', 'error');
+            }
+        } finally {
+            busyPrinter = '';
+        }
+    }
+
+    function pausePrint(printer) {
+        printerCommand(printer, 'pause', { method: 'POST' }, `Paused ${printer.name}`);
+    }
+
+    function resumePrint(printer) {
+        printerCommand(printer, 'resume', { method: 'POST' }, `Resumed ${printer.name}`);
+    }
+
+    function toggleLight(printer) {
+        printerCommand(printer, 'light', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ on: !printer.light_on })
+        });
+    }
+
+    async function loadPrintJobs() {
+        const response = await apiFetch('/api/admin/print-jobs');
+        if (response && response.ok) {
+            printJobs = await response.json();
+        }
+    }
+
+    function jobDuration(job) {
+        if (!job.ended_at) return 'running';
+        const mins = Math.round((new Date(job.ended_at) - new Date(job.started_at)) / 60000);
+        if (mins < 60) return `${mins} min`;
+        return `${Math.floor(mins / 60)}h ${mins % 60}m`;
     }
 
     async function stopPrint(printer) {
@@ -1207,6 +1260,19 @@
                                         {/if}
                                     </div>
 
+                                    {#if printer.faults && printer.faults.length > 0}
+                                        <div class="pa-faults">
+                                            <strong>⚠️ Printer reported {printer.faults.length} fault{printer.faults.length > 1 ? 's' : ''}</strong>
+                                            {#each printer.faults as fault}
+                                                <a class="pa-fault {fault.severity}" href={fault.url} target="_blank" rel="noopener">
+                                                    <span class="pa-fault-sev">{fault.severity}</span>
+                                                    <span class="pa-fault-code">{fault.code}</span>
+                                                    <span class="pa-fault-link">look up →</span>
+                                                </a>
+                                            {/each}
+                                        </div>
+                                    {/if}
+
                                     {#if printer.access_code_problem}
                                         <div class="pa-warning">
                                             <strong>⚠️ Access code changed</strong>
@@ -1257,7 +1323,37 @@
                                             {/if}
                                         </div>
 
-                                        {#if printerIsPrinting(printer)}
+                                        <div class="pa-actions">
+                                            <button
+                                                class="pa-light"
+                                                class:on={printer.light_on}
+                                                on:click={() => toggleLight(printer)}
+                                                disabled={busyPrinter === printer.id + 'light'}
+                                                title="Chamber light - the camera is useless in the dark"
+                                            >
+                                                {printer.light_on ? '💡 Light on' : '🌑 Light off'}
+                                            </button>
+
+                                            {#if printerIsPrinting(printer)}
+                                                <button
+                                                    class="pa-pause"
+                                                    on:click={() => pausePrint(printer)}
+                                                    disabled={busyPrinter === printer.id + 'pause'}
+                                                >
+                                                    ⏸ Pause
+                                                </button>
+                                            {:else if printer.state === 'PAUSE'}
+                                                <button
+                                                    class="pa-resume"
+                                                    on:click={() => resumePrint(printer)}
+                                                    disabled={busyPrinter === printer.id + 'resume'}
+                                                >
+                                                    ▶ Resume
+                                                </button>
+                                            {/if}
+                                        </div>
+
+                                        {#if printerIsPrinting(printer) || printer.state === 'PAUSE'}
                                             <button
                                                 class="pa-stop"
                                                 on:click={() => stopPrint(printer)}
@@ -1273,6 +1369,36 @@
                                     {:else}
                                         <p class="pa-offline">Not responding - switched off or off the network.</p>
                                     {/if}
+                                </div>
+                            {/each}
+                        </div>
+                    {/if}
+
+                    <div class="joblog-head">
+                        <h3>📝 Print log</h3>
+                        <a class="calendar-link" href="/api/admin/export-print-jobs-csv">Export CSV</a>
+                    </div>
+                    <p class="subtitle-text">
+                        Recorded automatically from the printers - nobody fills in a form.
+                        Whose print it is comes from the file name.
+                    </p>
+
+                    {#if printJobs.length === 0}
+                        <p class="no-items">No prints recorded yet.</p>
+                    {:else}
+                        <div class="joblog">
+                            {#each printJobs.slice(0, 40) as job}
+                                <div class="joblog-row {job.result}">
+                                    <span class="joblog-when">
+                                        {new Date(job.started_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
+                                        {new Date(job.started_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    </span>
+                                    <span class="joblog-printer">{job.printer_name}</span>
+                                    <span class="joblog-file" title={job.file_name}>{job.file_name || '(unnamed)'}</span>
+                                    <span class="joblog-dur">{jobDuration(job)}</span>
+                                    <span class="joblog-result {job.result}">
+                                        {job.result}{#if job.stopped_by} by {job.stopped_by}{/if}
+                                    </span>
                                 </div>
                             {/each}
                         </div>
@@ -2643,6 +2769,178 @@
     .pa-stop:hover { background: var(--ctp-maroon); transform: translateY(-1px); }
     .pa-stop:active { transform: none; }
     .pa-stop:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    .pa-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: 12px;
+    }
+
+    .pa-light,
+    .pa-pause,
+    .pa-resume {
+        flex: 1;
+        min-width: 110px;
+        min-height: 44px;
+        border: 1px solid var(--ctp-surface1);
+        border-radius: var(--radius-sm);
+        background: var(--ctp-surface0);
+        color: var(--ctp-text);
+        font-weight: 600;
+        font-family: inherit;
+        font-size: 0.85rem;
+        cursor: pointer;
+        transition:
+            background-color var(--fast) var(--ease),
+            border-color var(--fast) var(--ease),
+            transform var(--fast) var(--ease);
+    }
+
+    .pa-light:hover,
+    .pa-pause:hover,
+    .pa-resume:hover { transform: translateY(-1px); background: var(--ctp-surface1); }
+
+    .pa-light.on {
+        background: color-mix(in srgb, var(--ctp-yellow) 22%, var(--ctp-surface0));
+        border-color: var(--ctp-yellow);
+        color: var(--ctp-yellow);
+    }
+
+    .pa-pause { border-color: var(--ctp-yellow); color: var(--ctp-yellow); }
+    .pa-resume { border-color: var(--ctp-green); color: var(--ctp-green); }
+
+    .pa-light:disabled,
+    .pa-pause:disabled,
+    .pa-resume:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    /* --- HMS faults --- */
+    .pa-faults {
+        background: rgba(243, 139, 168, 0.12);
+        border: 1px solid var(--ctp-red);
+        border-radius: var(--radius-sm);
+        padding: 10px 12px;
+        margin-bottom: 12px;
+        font-size: 0.82rem;
+        color: var(--ctp-red);
+    }
+
+    .pa-fault {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 6px;
+        padding: 6px 8px;
+        border-radius: 6px;
+        background: var(--ctp-crust);
+        text-decoration: none;
+        color: var(--ctp-subtext0);
+        font-size: 0.75rem;
+        transition: background-color var(--fast) var(--ease);
+    }
+
+    .pa-fault:hover { background: var(--ctp-surface0); }
+
+    .pa-fault-sev {
+        text-transform: uppercase;
+        font-weight: 700;
+        letter-spacing: 0.4px;
+        padding: 2px 6px;
+        border-radius: var(--radius-pill);
+        background: var(--ctp-surface1);
+        color: var(--ctp-text);
+        font-size: 0.65rem;
+    }
+
+    .pa-fault.fatal .pa-fault-sev { background: var(--ctp-red); color: var(--ctp-crust); }
+    .pa-fault.serious .pa-fault-sev { background: var(--ctp-peach); color: var(--ctp-crust); }
+    .pa-fault.common .pa-fault-sev { background: var(--ctp-yellow); color: var(--ctp-crust); }
+    .pa-fault.info .pa-fault-sev { background: var(--ctp-sapphire); color: var(--ctp-crust); }
+
+    .pa-fault-code {
+        flex: 1;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        color: var(--ctp-text);
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .pa-fault-link { color: var(--ctp-blue); white-space: nowrap; }
+
+    /* --- print log --- */
+    .joblog-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 10px;
+        margin-top: 26px;
+        flex-wrap: wrap;
+    }
+
+    .joblog-head h3 {
+        margin: 0;
+        font-size: 1.05rem;
+    }
+
+    .joblog {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-top: 10px;
+    }
+
+    .joblog-row {
+        display: grid;
+        grid-template-columns: 110px 90px 1fr 70px 130px;
+        gap: 10px;
+        align-items: center;
+        background: var(--ctp-mantle);
+        border: 1px solid var(--ctp-surface0);
+        border-left: 3px solid var(--ctp-overlay0);
+        border-radius: var(--radius-sm);
+        padding: 8px 12px;
+        font-size: 0.8rem;
+    }
+
+    .joblog-row.finished { border-left-color: var(--ctp-green); }
+    .joblog-row.failed { border-left-color: var(--ctp-red); }
+    .joblog-row.stopped { border-left-color: var(--ctp-peach); }
+    .joblog-row.running { border-left-color: var(--ctp-blue); }
+
+    .joblog-when { color: var(--ctp-subtext0); }
+    .joblog-printer { color: var(--ctp-mauve); font-weight: 600; }
+
+    .joblog-file {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .joblog-dur { color: var(--ctp-subtext0); }
+
+    .joblog-result {
+        text-transform: capitalize;
+        font-weight: 600;
+        text-align: right;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .joblog-result.finished { color: var(--ctp-green); }
+    .joblog-result.failed { color: var(--ctp-red); }
+    .joblog-result.stopped { color: var(--ctp-peach); }
+    .joblog-result.running { color: var(--ctp-blue); }
+
+    @media (max-width: 700px) {
+        .joblog-row {
+            grid-template-columns: 1fr 1fr;
+            row-gap: 4px;
+        }
+
+        .joblog-file { grid-column: 1 / -1; }
+        .joblog-result { text-align: left; }
+    }
 
     .pa-last,
     .pa-offline {

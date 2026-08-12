@@ -259,7 +259,7 @@ func main() {
 	}
 
 	log.Println("Running database migrations...")
-	db.AutoMigrate(&Item{}, &Loan{}, &Admin{}, &Booking{}, &PrinterCredential{})
+	db.AutoMigrate(&Item{}, &Loan{}, &Admin{}, &Booking{}, &PrinterCredential{}, &PrintJob{})
 
 	// Approvals were removed. Bring records created under the old flow into the
 	// new states so nothing is stranded in a status the app no longer uses.
@@ -975,6 +975,100 @@ func main() {
 					return
 				}
 				c.JSON(200, gin.H{"message": "Stop command sent to the printer"})
+			})
+
+			// Pause the current job - reversible, unlike stop
+			admin.POST("/printers/:id/pause", func(c *gin.Context) {
+				if err := printers.Pause(c.Param("id"), currentAdmin(c).Name); err != nil {
+					c.JSON(400, gin.H{"error": err.Error()})
+					return
+				}
+				c.JSON(200, gin.H{"message": "Pause command sent to the printer"})
+			})
+
+			// Resume a paused job
+			admin.POST("/printers/:id/resume", func(c *gin.Context) {
+				if err := printers.Resume(c.Param("id"), currentAdmin(c).Name); err != nil {
+					c.JSON(400, gin.H{"error": err.Error()})
+					return
+				}
+				c.JSON(200, gin.H{"message": "Resume command sent to the printer"})
+			})
+
+			// Chamber light. Harmless in itself, but it commands hardware, so
+			// it sits behind the same admin gate as the rest.
+			admin.POST("/printers/:id/light", func(c *gin.Context) {
+				type LightRequest struct {
+					On *bool `json:"on" binding:"required"`
+				}
+
+				var req LightRequest
+				if err := c.ShouldBindJSON(&req); err != nil {
+					c.JSON(400, gin.H{"error": "Specify whether the light should be on"})
+					return
+				}
+
+				if err := printers.SetLight(c.Param("id"), *req.On); err != nil {
+					c.JSON(400, gin.H{"error": err.Error()})
+					return
+				}
+
+				state := "off"
+				if *req.On {
+					state = "on"
+				}
+				c.JSON(200, gin.H{"message": "Chamber light turned " + state})
+			})
+
+			// The automatic print log
+			admin.GET("/print-jobs", func(c *gin.Context) {
+				var jobs []PrintJob
+				query := db.Order("started_at DESC").Limit(200)
+				if id := c.Query("printer_id"); id != "" {
+					query = query.Where("printer_id = ?", id)
+				}
+				if err := query.Find(&jobs).Error; err != nil {
+					c.JSON(500, gin.H{"error": "Failed to retrieve print jobs"})
+					return
+				}
+				c.JSON(200, jobs)
+			})
+
+			// Print log as CSV
+			admin.GET("/export-print-jobs-csv", func(c *gin.Context) {
+				var jobs []PrintJob
+				if err := db.Order("started_at DESC").Find(&jobs).Error; err != nil {
+					c.JSON(500, gin.H{"error": "Failed to retrieve print jobs"})
+					return
+				}
+
+				c.Header("Content-Type", "text/csv")
+				c.Header("Content-Disposition", "attachment; filename=print_jobs.csv")
+
+				writer := csv.NewWriter(c.Writer)
+				defer writer.Flush()
+				writer.Write([]string{"ID", "Printer", "File", "Started", "Ended",
+					"Minutes", "Result", "Stopped By", "Last Percent"})
+
+				for _, job := range jobs {
+					minutes := ""
+					ended := ""
+					if job.EndedAt != nil {
+						ended = job.EndedAt.Local().Format("2006-01-02 15:04:05")
+						minutes = strconv.Itoa(int(job.EndedAt.Sub(job.StartedAt).Minutes()))
+					}
+					writer.Write([]string{
+						strconv.Itoa(int(job.ID)),
+						job.PrinterName,
+						job.FileName,
+						job.StartedAt.Local().Format("2006-01-02 15:04:05"),
+						ended,
+						minutes,
+						job.Result,
+						job.StoppedBy,
+						strconv.Itoa(job.LastPercent),
+					})
+				}
 			})
 
 			// Update a printer's access code. Printers regenerate their code
