@@ -977,6 +977,64 @@ func main() {
 				c.JSON(200, gin.H{"message": "Stop command sent to the printer"})
 			})
 
+			// Send a sliced file to a printer. Upload only - this never starts
+			// a print, so somebody still checks the plate before it runs.
+			admin.POST("/printers/:id/files", func(c *gin.Context) {
+				file, err := c.FormFile("file")
+				if err != nil {
+					c.JSON(400, gin.H{"error": "Choose a sliced file to send"})
+					return
+				}
+
+				if file.Size > maxUploadBytes {
+					c.JSON(400, gin.H{"error": fmt.Sprintf(
+						"That file is %d MB. The limit is %d MB.",
+						file.Size/(1024*1024), maxUploadBytes/(1024*1024))})
+					return
+				}
+
+				opened, err := file.Open()
+				if err != nil {
+					c.JSON(400, gin.H{"error": "Could not read the uploaded file"})
+					return
+				}
+				defer opened.Close()
+
+				name, err := printers.UploadFile(c.Param("id"), file.Filename, opened)
+				if err != nil {
+					c.JSON(400, gin.H{"error": err.Error()})
+					return
+				}
+
+				log.Printf("printer %s: %s uploaded %s",
+					c.Param("id"), currentAdmin(c).Name, name)
+
+				c.JSON(200, gin.H{
+					"message": fmt.Sprintf(
+						"%s sent to the printer. Start it from the printer's screen.", name),
+					"file_name": name,
+				})
+			})
+
+			// What is already on the printer
+			admin.GET("/printers/:id/files", func(c *gin.Context) {
+				files, err := printers.ListFiles(c.Param("id"))
+				if err != nil {
+					c.JSON(400, gin.H{"error": err.Error()})
+					return
+				}
+				c.JSON(200, files)
+			})
+
+			// Tidy up old plates
+			admin.DELETE("/printers/:id/files/:name", func(c *gin.Context) {
+				if err := printers.DeleteFile(c.Param("id"), c.Param("name")); err != nil {
+					c.JSON(400, gin.H{"error": err.Error()})
+					return
+				}
+				c.JSON(200, gin.H{"message": "File deleted from the printer"})
+			})
+
 			// Pause the current job - reversible, unlike stop
 			admin.POST("/printers/:id/pause", func(c *gin.Context) {
 				if err := printers.Pause(c.Param("id"), currentAdmin(c).Name); err != nil {

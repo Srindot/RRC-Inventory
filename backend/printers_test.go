@@ -482,3 +482,92 @@ func TestStatusExposesNoAccessCode(t *testing.T) {
 		t.Error("serial leaked into the status JSON")
 	}
 }
+
+// --- AMS ----------------------------------------------------------------
+
+func TestApplyReportParsesAMS(t *testing.T) {
+	p := &printer{}
+	// Shaped like a real report: strings for numbers, RRGGBBAA colours, and
+	// an empty slot with no material.
+	p.applyReport([]byte(`{"print":{
+		"gcode_state":"RUNNING",
+		"ams":{
+			"tray_now":"1",
+			"ams":[{
+				"id":"0","humidity":"4","temp":"30.0",
+				"tray":[
+					{"id":"0","tray_type":"PLA","tray_sub_brands":"PLA Basic","tray_color":"000000FF","remain":95},
+					{"id":"1","tray_type":"PETG","tray_sub_brands":"PETG HF","tray_color":"FFFFFFFF","remain":40},
+					{"id":"2","tray_type":"","tray_color":"","remain":-1},
+					{"id":"3","tray_type":"ABS","tray_color":"FF6A13FF","remain":70}
+				]
+			}]
+		},
+		"vt_tray":{"id":"254","tray_type":"PLA","tray_sub_brands":"PLA Matte","tray_color":"0078BFFF","remain":20}
+	}}`))
+
+	status := p.status()
+	if len(status.AMS) != 1 {
+		t.Fatalf("expected one AMS unit, got %d", len(status.AMS))
+	}
+
+	unit := status.AMS[0]
+	if unit.Humidity != "4" || unit.Temp != "30.0" {
+		t.Errorf("unit readings not parsed: %+v", unit)
+	}
+	if len(unit.Slots) != 4 {
+		t.Fatalf("expected 4 slots, got %d", len(unit.Slots))
+	}
+
+	if unit.Slots[0].Material != "PLA Basic" || unit.Slots[0].Color != "#000000" ||
+		unit.Slots[0].Remain != 95 {
+		t.Errorf("slot 1 wrong: %+v", unit.Slots[0])
+	}
+	// tray_now = "1" so the second slot is the one in use
+	if unit.Slots[0].Active || !unit.Slots[1].Active {
+		t.Error("the active slot should be the one matching tray_now")
+	}
+	if !unit.Slots[2].Empty || unit.Slots[2].Material != "" {
+		t.Errorf("slot 3 should read as empty: %+v", unit.Slots[2])
+	}
+	if unit.Slots[3].Color != "#FF6A13" {
+		t.Errorf("colour should drop the alpha byte: %q", unit.Slots[3].Color)
+	}
+
+	if status.ExternalSpool == nil {
+		t.Fatal("the external spool should be reported")
+	}
+	if status.ExternalSpool.Material != "PLA Matte" || status.ExternalSpool.Remain != 20 {
+		t.Errorf("external spool wrong: %+v", status.ExternalSpool)
+	}
+}
+
+// Printers without an AMS must not grow a phantom one.
+func TestApplyReportWithoutAMS(t *testing.T) {
+	p := &printer{}
+	p.applyReport([]byte(`{"print":{"gcode_state":"RUNNING","mc_percent":10}}`))
+
+	status := p.status()
+	if len(status.AMS) != 0 {
+		t.Errorf("expected no AMS units, got %d", len(status.AMS))
+	}
+	if status.ExternalSpool != nil {
+		t.Error("expected no external spool")
+	}
+}
+
+func TestHMSFormatting(t *testing.T) {
+	if got := formatHMS(0x03000100, 0x00020001); got != "HMS_0300_0100_0002_0001" {
+		t.Errorf("formatHMS = %q", got)
+	}
+	for code, want := range map[uint32]string{
+		0x00010001: "fatal",
+		0x00020001: "serious",
+		0x00030001: "common",
+		0x00040001: "info",
+	} {
+		if got := hmsSeverity(code); got != want {
+			t.Errorf("hmsSeverity(%#x) = %q, want %q", code, got, want)
+		}
+	}
+}

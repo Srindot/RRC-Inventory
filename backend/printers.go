@@ -20,6 +20,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -62,6 +63,8 @@ type PrinterStatus struct {
 	ChamberTemp      float64    `json:"chamber_temp"`
 	LightOn          bool       `json:"light_on"`
 	Faults           []HMSFault `json:"faults"`
+	AMS              []AMSUnit  `json:"ams"`
+	ExternalSpool    *AMSSlot   `json:"external_spool"`
 	CameraOnline     bool       `json:"camera_online"`
 	// Reachable but rejecting our credentials - almost always a changed
 	// access code, which the printer does when LAN mode is toggled.
@@ -92,6 +95,33 @@ type printerReport struct {
 			Mode string `json:"mode"`
 		} `json:"lights_report"`
 
+		// The AMS spool changer, when one is fitted. Bambu reports most of
+		// these as strings, including the numbers.
+		AMS *struct {
+			AMS []struct {
+				ID       string `json:"id"`
+				Humidity string `json:"humidity"`
+				Temp     string `json:"temp"`
+				Tray     []struct {
+					ID        string `json:"id"`
+					Type      string `json:"tray_type"`
+					Color     string `json:"tray_color"`
+					SubBrands string `json:"tray_sub_brands"`
+					Remain    int    `json:"remain"`
+				} `json:"tray"`
+			} `json:"ams"`
+			TrayNow string `json:"tray_now"`
+		} `json:"ams"`
+
+		// The spool feeding directly into the printer, bypassing the AMS
+		VTTray *struct {
+			ID        string `json:"id"`
+			Type      string `json:"tray_type"`
+			Color     string `json:"tray_color"`
+			SubBrands string `json:"tray_sub_brands"`
+			Remain    int    `json:"remain"`
+		} `json:"vt_tray"`
+
 		// Health Management System - the printer's own fault list. An empty
 		// array means "no faults", which is different from the field being
 		// absent, so this stays a pointer.
@@ -100,6 +130,41 @@ type printerReport struct {
 			Code uint32 `json:"code"`
 		} `json:"hms"`
 	} `json:"print"`
+}
+
+// AMSSlot is one filament position, either in an AMS unit or the external
+// spool holder.
+type AMSSlot struct {
+	Slot     int    `json:"slot"`
+	Material string `json:"material"`
+	Color    string `json:"color"`  // #RRGGBB, empty when unknown
+	Remain   int    `json:"remain"` // percent, -1 when the printer does not know
+	Active   bool   `json:"active"`
+	Empty    bool   `json:"empty"`
+}
+
+// AMSUnit is one spool changer.
+type AMSUnit struct {
+	ID       int       `json:"id"`
+	Humidity string    `json:"humidity"`
+	Temp     string    `json:"temp"`
+	Slots    []AMSSlot `json:"slots"`
+}
+
+// trayColor turns Bambu's RRGGBBAA into a CSS colour, dropping the alpha.
+func trayColor(raw string) string {
+	if len(raw) < 6 {
+		return ""
+	}
+	return "#" + strings.ToUpper(raw[:6])
+}
+
+// trayMaterial prefers the detailed name ("PLA Basic") over the bare type.
+func trayMaterial(subBrands, trayType string) string {
+	if strings.TrimSpace(subBrands) != "" {
+		return strings.TrimSpace(subBrands)
+	}
+	return strings.TrimSpace(trayType)
 }
 
 // HMSFault is one fault, formatted the way Bambu's own documentation writes it.
@@ -152,8 +217,10 @@ type printer struct {
 	lastActionBy string
 	lastActionAt time.Time
 
-	lightOn bool
-	faults  []HMSFault
+	lightOn  bool
+	faults   []HMSFault
+	amsUnits []AMSUnit
+	external *AMSSlot
 
 	// The job currently being tracked for the print log
 	currentJob *PrintJob
@@ -172,6 +239,9 @@ type printer struct {
 
 	// Overridable so tests can point at a mock printer
 	cameraPort int
+	// FTP settings, also overridable for tests
+	ftpPort      int
+	ftpPlaintext bool
 
 	// Commands carry an incrementing sequence id
 	sequence int
@@ -465,6 +535,46 @@ func (p *printer) applyReport(payload []byte) {
 		}
 	}
 
+	if info.AMS != nil {
+		units := make([]AMSUnit, 0, len(info.AMS.AMS))
+		for _, raw := range info.AMS.AMS {
+			unit := AMSUnit{Humidity: raw.Humidity, Temp: raw.Temp}
+			if id, err := strconv.Atoi(raw.ID); err == nil {
+				unit.ID = id
+			}
+			for i, tray := range raw.Tray {
+				material := trayMaterial(tray.SubBrands, tray.Type)
+				slot := AMSSlot{
+					Slot:     i + 1,
+					Material: material,
+					Color:    trayColor(tray.Color),
+					Remain:   tray.Remain,
+					Active:   tray.ID != "" && tray.ID == info.AMS.TrayNow,
+					Empty:    material == "",
+				}
+				if slot.Empty {
+					slot.Remain = -1
+				}
+				unit.Slots = append(unit.Slots, slot)
+			}
+			units = append(units, unit)
+		}
+		p.amsUnits = units
+	}
+
+	if info.VTTray != nil {
+		material := trayMaterial(info.VTTray.SubBrands, info.VTTray.Type)
+		p.external = &AMSSlot{
+			Material: material,
+			Color:    trayColor(info.VTTray.Color),
+			Remain:   info.VTTray.Remain,
+			Empty:    material == "",
+		}
+		if p.external.Empty {
+			p.external.Remain = -1
+		}
+	}
+
 	if info.HMS != nil {
 		faults := make([]HMSFault, 0, len(*info.HMS))
 		for _, fault := range *info.HMS {
@@ -694,6 +804,11 @@ func (p *printer) status() PrinterStatus {
 	}
 
 	status.LightOn = p.lightOn
+	status.AMS = p.amsUnits
+	if status.AMS == nil {
+		status.AMS = []AMSUnit{}
+	}
+	status.ExternalSpool = p.external
 	status.Faults = p.faults
 	if status.Faults == nil {
 		status.Faults = []HMSFault{}

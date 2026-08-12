@@ -581,6 +581,12 @@
     let printJobs = [];
     let busyPrinter = '';
 
+    // Sending sliced files to a printer, so nobody has to switch wifi
+    let uploadFor = '';
+    let uploadFiles = {};      // printer id -> files already on the printer
+    let uploading = '';
+    let uploadProgress = 0;
+
     // Every printer command goes through here so the UI stays consistent
     async function printerCommand(printer, path, options, successMessage) {
         busyPrinter = printer.id + path;
@@ -614,6 +620,105 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ on: !printer.light_on })
         });
+    }
+
+    async function toggleUpload(printer) {
+        if (uploadFor === printer.id) {
+            uploadFor = '';
+            return;
+        }
+        uploadFor = printer.id;
+        loadPrinterFiles(printer);
+    }
+
+    async function loadPrinterFiles(printer) {
+        const response = await apiFetch(`/api/admin/printers/${printer.id}/files`);
+        if (!response) return;
+        if (response.ok) {
+            uploadFiles = { ...uploadFiles, [printer.id]: await response.json() };
+        } else {
+            const error = await response.json();
+            showMessage(error.error || 'Could not list the printer files', 'error');
+        }
+    }
+
+    async function sendFile(printer, event) {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        if (!/\.(3mf|gcode)$/i.test(file.name)) {
+            showMessage('Only .3mf and .gcode files can be sent to a printer', 'error');
+            event.target.value = '';
+            return;
+        }
+
+        uploading = printer.id;
+        uploadProgress = 0;
+
+        const form = new FormData();
+        form.append('file', file);
+
+        try {
+            // XHR rather than fetch, because these files are big enough that a
+            // progress bar matters
+            const result = await new Promise((resolve) => {
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', `/api/admin/printers/${printer.id}/files`);
+                xhr.setRequestHeader('Authorization', `Bearer ${authToken}`);
+                xhr.upload.onprogress = (e) => {
+                    if (e.lengthComputable) {
+                        uploadProgress = Math.round((e.loaded / e.total) * 100);
+                    }
+                };
+                xhr.onload = () => {
+                    let body = {};
+                    try {
+                        body = JSON.parse(xhr.responseText);
+                    } catch (e) {
+                        body = {};
+                    }
+                    resolve({ status: xhr.status, body });
+                };
+                xhr.onerror = () => resolve({ status: 0, body: {} });
+                xhr.send(form);
+            });
+
+            if (result.status === 401) {
+                clearSession();
+                showMessage('Your session expired. Log in again.', 'error');
+            } else if (result.status === 200) {
+                showMessage(result.body.message || 'File sent to the printer', 'success');
+                loadPrinterFiles(printer);
+            } else {
+                showMessage(result.body.error || 'The printer would not accept that file', 'error');
+            }
+        } finally {
+            uploading = '';
+            uploadProgress = 0;
+            event.target.value = '';
+        }
+    }
+
+    async function deletePrinterFile(printer, name) {
+        if (!confirm(`Delete ${name} from ${printer.name}?`)) return;
+
+        const response = await apiFetch(
+            `/api/admin/printers/${printer.id}/files/${encodeURIComponent(name)}`,
+            { method: 'DELETE' });
+        if (!response) return;
+
+        if (response.ok) {
+            showMessage('File deleted from the printer', 'success');
+            loadPrinterFiles(printer);
+        } else {
+            const error = await response.json();
+            showMessage(error.error || 'Could not delete the file', 'error');
+        }
+    }
+
+    function fileSize(bytes) {
+        if (bytes > 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+        return `${Math.max(Math.round(bytes / 1024), 1)} KB`;
     }
 
     async function loadPrintJobs() {
@@ -1315,6 +1420,42 @@
                                             <p class="pa-file" title={printer.file_name}>📄 {printer.file_name}</p>
                                         {/if}
 
+
+                                    {#if (printer.ams && printer.ams.length > 0) || printer.external_spool}
+                                        <div class="pa-ams">
+                                            {#each printer.ams as unit}
+                                                <div class="pa-ams-unit">
+                                                    <span class="pa-ams-label">AMS</span>
+                                                    {#each unit.slots as slot}
+                                                        <span
+                                                            class="pa-slot"
+                                                            class:empty={slot.empty}
+                                                            class:active={slot.active}
+                                                            title="{slot.empty ? 'Empty' : slot.material}{slot.remain >= 0 ? ' - ' + slot.remain + '% left' : ''}"
+                                                        >
+                                                            <span class="pa-swatch" style="background: {slot.color || 'transparent'}"></span>
+                                                            <span class="pa-slot-text">
+                                                                {slot.empty ? '—' : slot.material}{#if slot.remain >= 0} <b>{slot.remain}%</b>{/if}
+                                                            </span>
+                                                        </span>
+                                                    {/each}
+                                                </div>
+                                            {/each}
+
+                                            {#if printer.external_spool && !printer.external_spool.empty}
+                                                <div class="pa-ams-unit">
+                                                    <span class="pa-ams-label">Spool</span>
+                                                    <span class="pa-slot">
+                                                        <span class="pa-swatch" style="background: {printer.external_spool.color || 'transparent'}"></span>
+                                                        <span class="pa-slot-text">
+                                                            {printer.external_spool.material}{#if printer.external_spool.remain >= 0} <b>{printer.external_spool.remain}%</b>{/if}
+                                                        </span>
+                                                    </span>
+                                                </div>
+                                            {/if}
+                                        </div>
+                                    {/if}
+
                                         <div class="pa-temps">
                                             <span>🔥 {printer.nozzle_temp.toFixed(0)}°C</span>
                                             <span>🛏️ {printer.bed_temp.toFixed(0)}°C</span>
@@ -1361,6 +1502,60 @@
                                             >
                                                 {stoppingPrinter === printer.id ? 'Stopping...' : '⏹ Stop Print'}
                                             </button>
+                                        {/if}
+
+                                        <button class="pa-send-toggle" on:click={() => toggleUpload(printer)}>
+                                            {uploadFor === printer.id ? '✕ Close files' : '📤 Send a file'}
+                                        </button>
+
+                                        {#if uploadFor === printer.id}
+                                            <div class="pa-send">
+                                                <p class="pa-send-hint">
+                                                    Slice in Bambu Studio, export the file, send it here.
+                                                    It lands on the printer - start it from the printer's
+                                                    screen once you have checked the plate is clear.
+                                                </p>
+
+                                                <label class="pa-file-pick">
+                                                    <input
+                                                        type="file"
+                                                        accept=".3mf,.gcode"
+                                                        on:change={(e) => sendFile(printer, e)}
+                                                        disabled={uploading === printer.id}
+                                                    />
+                                                    <span>
+                                                        {uploading === printer.id
+                                                            ? `Sending... ${uploadProgress}%`
+                                                            : 'Choose a .3mf or .gcode file'}
+                                                    </span>
+                                                </label>
+
+                                                {#if uploading === printer.id}
+                                                    <div class="pa-upload-bar">
+                                                        <div class="pa-upload-fill" style="width: {uploadProgress}%"></div>
+                                                    </div>
+                                                {/if}
+
+                                                {#if uploadFiles[printer.id]}
+                                                    {#if uploadFiles[printer.id].length === 0}
+                                                        <p class="pa-send-empty">No printable files on this printer.</p>
+                                                    {:else}
+                                                        <ul class="pa-file-list">
+                                                            {#each uploadFiles[printer.id] as file}
+                                                                <li>
+                                                                    <span class="pa-file-name" title={file.name}>{file.name}</span>
+                                                                    <span class="pa-file-size">{fileSize(file.size)}</span>
+                                                                    <button
+                                                                        class="pa-file-del"
+                                                                        on:click={() => deletePrinterFile(printer, file.name)}
+                                                                        title="Delete from the printer"
+                                                                    >🗑️</button>
+                                                                </li>
+                                                            {/each}
+                                                        </ul>
+                                                    {/if}
+                                                {/if}
+                                            </div>
                                         {/if}
 
                                         {#if printer.last_action_by}
@@ -2750,6 +2945,61 @@
         color: var(--ctp-subtext0);
     }
 
+
+    .pa-ams {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-top: 10px;
+    }
+
+    .pa-ams-unit {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+    }
+
+    .pa-ams-label {
+        font-size: 0.66rem;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+        color: var(--ctp-overlay0);
+        min-width: 34px;
+    }
+
+    .pa-slot {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 3px 8px 3px 4px;
+        border: 1px solid var(--ctp-surface1);
+        border-radius: var(--radius-pill);
+        background: var(--ctp-crust);
+        font-size: 0.7rem;
+        color: var(--ctp-subtext0);
+    }
+
+    .pa-slot.active {
+        border-color: var(--ctp-green);
+        color: var(--ctp-text);
+    }
+
+    .pa-slot.empty { opacity: 0.5; }
+
+    .pa-swatch {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        border: 1px solid var(--ctp-surface2);
+        flex-shrink: 0;
+    }
+
+    .pa-slot-text b {
+        color: var(--ctp-text);
+        font-weight: 650;
+    }
+
     .pa-stop {
         margin-top: 12px;
         width: 100%;
@@ -2941,6 +3191,117 @@
         .joblog-file { grid-column: 1 / -1; }
         .joblog-result { text-align: left; }
     }
+
+    .pa-send-toggle {
+        margin-top: 10px;
+        width: 100%;
+        min-height: 42px;
+        background: var(--ctp-surface0);
+        color: var(--ctp-text);
+        border: 1px solid var(--ctp-surface1);
+        border-radius: var(--radius-sm);
+        font-weight: 600;
+        font-family: inherit;
+        font-size: 0.85rem;
+        cursor: pointer;
+        transition: background-color var(--fast) var(--ease);
+    }
+
+    .pa-send-toggle:hover { background: var(--ctp-surface1); }
+
+    .pa-send {
+        margin-top: 10px;
+        padding: 12px;
+        border: 1px solid var(--ctp-surface0);
+        border-radius: var(--radius-sm);
+        background: var(--ctp-crust);
+        animation: rise var(--normal) var(--ease) both;
+    }
+
+    .pa-send-hint {
+        margin: 0 0 10px;
+        font-size: 0.75rem;
+        color: var(--ctp-subtext0);
+        line-height: 1.4;
+    }
+
+    .pa-file-pick {
+        display: block;
+        border: 1px dashed var(--ctp-surface2);
+        border-radius: var(--radius-sm);
+        padding: 12px;
+        text-align: center;
+        font-size: 0.82rem;
+        color: var(--ctp-subtext0);
+        cursor: pointer;
+        transition: border-color var(--fast) var(--ease), color var(--fast) var(--ease);
+    }
+
+    .pa-file-pick:hover {
+        border-color: var(--ctp-mauve);
+        color: var(--ctp-text);
+    }
+
+    .pa-file-pick input { display: none; }
+
+    .pa-upload-bar {
+        height: 6px;
+        background: var(--ctp-surface0);
+        border-radius: var(--radius-pill);
+        overflow: hidden;
+        margin-top: 8px;
+    }
+
+    .pa-upload-fill {
+        height: 100%;
+        background: linear-gradient(90deg, var(--ctp-mauve), var(--ctp-lavender));
+        transition: width var(--fast) linear;
+    }
+
+    .pa-send-empty {
+        margin: 10px 0 0;
+        font-size: 0.75rem;
+        color: var(--ctp-overlay0);
+    }
+
+    .pa-file-list {
+        list-style: none;
+        margin: 10px 0 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .pa-file-list li {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.75rem;
+        background: var(--ctp-mantle);
+        border-radius: 6px;
+        padding: 6px 8px;
+    }
+
+    .pa-file-name {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .pa-file-size { color: var(--ctp-overlay0); }
+
+    .pa-file-del {
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-size: 0.85rem;
+        padding: 2px 4px;
+        border-radius: 4px;
+    }
+
+    .pa-file-del:hover { background: var(--ctp-surface0); }
 
     .pa-last,
     .pa-offline {

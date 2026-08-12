@@ -295,6 +295,42 @@
                             </p>
                         {/if}
 
+
+                                    {#if (printer.ams && printer.ams.length > 0) || printer.external_spool}
+                                        <div class="ams-ams">
+                                            {#each printer.ams as unit}
+                                                <div class="ams-ams-unit">
+                                                    <span class="ams-ams-label">AMS</span>
+                                                    {#each unit.slots as slot}
+                                                        <span
+                                                            class="ams-slot"
+                                                            class:empty={slot.empty}
+                                                            class:active={slot.active}
+                                                            title="{slot.empty ? 'Empty' : slot.material}{slot.remain >= 0 ? ' - ' + slot.remain + '% left' : ''}"
+                                                        >
+                                                            <span class="ams-swatch" style="background: {slot.color || 'transparent'}"></span>
+                                                            <span class="ams-slot-text">
+                                                                {slot.empty ? '—' : slot.material}{#if slot.remain >= 0} <b>{slot.remain}%</b>{/if}
+                                                            </span>
+                                                        </span>
+                                                    {/each}
+                                                </div>
+                                            {/each}
+
+                                            {#if printer.external_spool && !printer.external_spool.empty}
+                                                <div class="ams-ams-unit">
+                                                    <span class="ams-ams-label">Spool</span>
+                                                    <span class="ams-slot">
+                                                        <span class="ams-swatch" style="background: {printer.external_spool.color || 'transparent'}"></span>
+                                                        <span class="ams-slot-text">
+                                                            {printer.external_spool.material}{#if printer.external_spool.remain >= 0} <b>{printer.external_spool.remain}%</b>{/if}
+                                                        </span>
+                                                    </span>
+                                                </div>
+                                            {/if}
+                                        </div>
+                                    {/if}
+
                         <div class="temps">
                             <span>🔥 Nozzle {printer.nozzle_temp.toFixed(0)}°C</span>
                             <span>🛏️ Bed {printer.bed_temp.toFixed(0)}°C</span>
@@ -747,6 +783,61 @@
         border-radius: 8px;
         margin-bottom: 14px;
         font-size: 0.9rem;
+    }
+
+
+    .ams-ams {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-top: 10px;
+    }
+
+    .ams-ams-unit {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+    }
+
+    .ams-ams-label {
+        font-size: 0.66rem;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+        color: var(--ctp-overlay0);
+        min-width: 34px;
+    }
+
+    .ams-slot {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 3px 8px 3px 4px;
+        border: 1px solid var(--ctp-surface1);
+        border-radius: var(--radius-pill);
+        background: var(--ctp-crust);
+        font-size: 0.7rem;
+        color: var(--ctp-subtext0);
+    }
+
+    .ams-slot.active {
+        border-color: var(--ctp-green);
+        color: var(--ctp-text);
+    }
+
+    .ams-slot.empty { opacity: 0.5; }
+
+    .ams-swatch {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        border: 1px solid var(--ctp-surface2);
+        flex-shrink: 0;
+    }
+
+    .ams-slot-text b {
+        color: var(--ctp-text);
+        font-weight: 650;
     }
 
     .offline-note {
