@@ -30,6 +30,9 @@
     // leave the dashboard to stop a job or fix an access code.
     let printers = [];
     let printerTimer;
+    let cameraTimer;
+    // Bumped on a timer so the <img> refetches; the P1S manages ~0.5 fps
+    let cameraTick = Date.now();
     let stoppingPrinter = '';
     let editingCode = '';
     let newCode = '';
@@ -168,6 +171,7 @@
 
     function clearSession() {
         clearInterval(printerTimer);
+        clearInterval(cameraTimer);
         localStorage.removeItem('adminInfo');
         localStorage.removeItem('adminToken');
         localStorage.removeItem('adminApiBase');
@@ -419,7 +423,9 @@
         currentView = 'printers';
         loadPrinters();
         clearInterval(printerTimer);
+        clearInterval(cameraTimer);
         printerTimer = setInterval(loadPrinters, 5000);
+        cameraTimer = setInterval(() => (cameraTick = Date.now()), 2000);
     }
 
     async function stopPrint(printer) {
@@ -629,6 +635,7 @@
     function goToDashboard() {
         currentView = 'dashboard';
         clearInterval(printerTimer);
+        clearInterval(cameraTimer);
     }
 
     // Admin Management Functions
@@ -1035,6 +1042,20 @@
                                         <span class="pa-state {printerStateClass(printer)}">
                                             {printerStateLabel(printer)}
                                         </span>
+                                    </div>
+
+                                    <div class="pa-camera">
+                                        {#if printer.camera_online}
+                                            <img
+                                                src="/api/printers/{printer.id}/snapshot?t={cameraTick}"
+                                                alt="Camera view of {printer.name}"
+                                            />
+                                        {:else}
+                                            <div class="pa-camera-empty">
+                                                <img src="/P1S.png" alt="" />
+                                                <p>No camera image</p>
+                                            </div>
+                                        {/if}
                                     </div>
 
                                     {#if printer.access_code_problem}
@@ -2241,6 +2262,51 @@
     .pa-state.failed { background: var(--ctp-red); color: var(--ctp-crust); }
     .pa-state.paused { background: var(--ctp-yellow); color: var(--ctp-crust); }
     .pa-state.finished { background: var(--ctp-blue); color: var(--ctp-crust); }
+
+    .pa-camera {
+        aspect-ratio: 16 / 9;
+        background: var(--ctp-crust);
+        border: 1px solid var(--ctp-surface0);
+        border-radius: var(--radius);
+        overflow: hidden;
+        margin-bottom: 12px;
+    }
+
+    .pa-camera img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+        animation: fade var(--normal) var(--ease);
+        transition: transform var(--slow) var(--ease);
+    }
+
+    .printer-admin-card:hover .pa-camera img {
+        transform: scale(1.03);
+    }
+
+    .pa-camera-empty {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: var(--ctp-overlay0);
+    }
+
+    /* Beat the ".pa-camera img" rule above, which would stretch the icon */
+    .pa-camera-empty img {
+        width: 60px;
+        height: 60px;
+        object-fit: contain;
+        opacity: 0.35;
+    }
+
+    .pa-camera-empty p {
+        margin: 4px 0 0;
+        font-size: 0.78rem;
+    }
 
     .pa-progress-row {
         display: flex;
