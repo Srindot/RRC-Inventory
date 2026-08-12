@@ -26,6 +26,7 @@ import os
 import socket
 import ssl
 import sys
+import time
 
 FTPS_PORT = 990
 TEST_NAME = "rrc-upload-test.txt"
@@ -74,6 +75,32 @@ class ImplicitFTPS(ftplib.FTP_TLS):
         conn = self.context.wrap_socket(conn, server_hostname=self.host)
         return conn, size
 
+    def storbinary(self, cmd, fp, blocksize=8192, callback=None, rest=None):
+        """Upload without the TLS shutdown handshake.
+
+        ftplib's own version calls conn.unwrap() after sending, which blocks
+        waiting for the server's close_notify. Bambu's FTPS server does not
+        send one, so the client hangs until it times out - even though the
+        file transferred fine. Closing the socket is enough for the server to
+        see the end of the data.
+        """
+        self.voidcmd("TYPE I")
+        conn = self.transfercmd(cmd, rest)
+        try:
+            while True:
+                buf = fp.read(blocksize)
+                if not buf:
+                    break
+                conn.sendall(buf)
+                if callback:
+                    callback(buf)
+        finally:
+            try:
+                conn.close()
+            except Exception:  # noqa: BLE001
+                pass
+        return self.voidresp()
+
 
 def main():
     parser = argparse.ArgumentParser(description="Test FTPS upload to a Bambu printer")
@@ -120,6 +147,9 @@ def main():
         print("\n  Wrong access code, or this firmware does not allow FTPS.")
         return 1
 
+    landed = False
+    upload_error = None
+
     try:
         # --- 3. what is already there --------------------------------
         heading("3. Existing files")
@@ -140,18 +170,39 @@ def main():
                    b"If you are reading this on the printer, the website can "
                    b"send files.\n")
 
+        import io
         try:
-            import io
             ftp.storbinary(f"STOR {TEST_NAME}", io.BytesIO(payload))
             ok(f"uploaded {TEST_NAME} ({len(payload)} bytes)")
         except Exception as e:  # noqa: BLE001
-            fail(f"upload failed: {type(e).__name__}: {e}")
-            print("\n  Reading works but writing does not - the feature would "
-                  "not be possible as designed.")
-            return 1
+            upload_error = e
+            warn(f"the upload call raised: {type(e).__name__}: {e}")
+            print("      Checking whether the file arrived anyway - the data can")
+            print("      transfer fine while the client waits for a handshake")
+            print("      the printer never completes.")
+
+            # The control connection may be unusable after a timeout
+            try:
+                ftp.voidcmd("NOOP")
+            except Exception:  # noqa: BLE001
+                warn("reconnecting to check")
+                try:
+                    ftp.close()
+                except Exception:  # noqa: BLE001
+                    pass
+                try:
+                    ftp = ImplicitFTPS(context=context)
+                    ftp.encoding = "utf-8"
+                    ftp.connect(host=args.ip, port=FTPS_PORT, timeout=20)
+                    ftp.login(user=args.user, passwd=args.code)
+                    ftp.prot_p()
+                except Exception as reconnect_error:  # noqa: BLE001
+                    fail(f"could not reconnect to check: {reconnect_error}")
+                    return 1
 
         # --- 5. did it actually land? ---------------------------------
         heading("5. Confirm it arrived")
+        time.sleep(2)
         try:
             after = ftp.nlst()
             landed = any(TEST_NAME in name for name in after)
@@ -184,13 +235,22 @@ def main():
             pass
 
     heading("Result")
+    if landed and upload_error:
+        print("  Upload WORKS - the file arrived. The client only hung waiting")
+        print("  for a TLS shutdown the printer never sends, which the Go")
+        print("  backend does not wait for.")
+        return 0
+
     if landed:
         print("  Upload WORKS. Sending sliced files from the website is buildable.")
         print("  Re-run with --keep, then check the printer's screen to see if")
         print("  the file appears in its print menu.")
         return 0
 
-    print("  Upload did not clearly work - see the messages above.")
+    if upload_error:
+        fail("The file did not arrive - writing really does not work.")
+    else:
+        print("  Upload did not clearly work - see the messages above.")
     return 1
 
 
