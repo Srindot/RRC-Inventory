@@ -18,13 +18,22 @@
     let ipLoading = false;
     
     // Current view
-    let currentView = 'login'; // login, dashboard, lost-missing, history, lab-view, admin-management, change-password
+    let currentView = 'login'; // login, dashboard, printers, lost-missing, history, lab-view, admin-management, change-password
     let selectedLab = '';
     let selectedFilter = 'all'; // all, borrowed, returned, not_found
 
     // Data
     let lostMissingItems = [];
     let bookings = [];
+
+    // Printer control, mirrored from the public page so admins never have to
+    // leave the dashboard to stop a job or fix an access code.
+    let printers = [];
+    let printerTimer;
+    let stoppingPrinter = '';
+    let editingCode = '';
+    let newCode = '';
+    let savingCode = false;
     let historyItems = [];
     let labLoans = [];
     let loading = false;
@@ -158,6 +167,7 @@
     }
 
     function clearSession() {
+        clearInterval(printerTimer);
         localStorage.removeItem('adminInfo');
         localStorage.removeItem('adminToken');
         localStorage.removeItem('adminApiBase');
@@ -396,6 +406,113 @@
         }
     }
 
+    // --- 3D printers ------------------------------------------------------
+
+    async function loadPrinters() {
+        const response = await apiFetch('/api/printers');
+        if (response && response.ok) {
+            printers = await response.json();
+        }
+    }
+
+    function showPrinters() {
+        currentView = 'printers';
+        loadPrinters();
+        clearInterval(printerTimer);
+        printerTimer = setInterval(loadPrinters, 5000);
+    }
+
+    async function stopPrint(printer) {
+        const job = printer.file_name || 'the current job';
+        if (!confirm(`Stop ${job} on ${printer.name}?\n\nThis cannot be undone - the print will be cancelled.`)) {
+            return;
+        }
+
+        stoppingPrinter = printer.id;
+        try {
+            const response = await apiFetch(`/api/admin/printers/${printer.id}/stop`, {
+                method: 'POST'
+            });
+            if (!response) return;
+
+            const result = await response.json();
+            if (response.ok) {
+                showMessage(`Stop command sent to ${printer.name}`, 'success');
+                loadPrinters();
+            } else {
+                showMessage(result.error || 'Could not stop the print', 'error');
+            }
+        } finally {
+            stoppingPrinter = '';
+        }
+    }
+
+    async function savePrinterCode(printer) {
+        if (!newCode.trim()) {
+            showMessage('Enter the new access code from the printer screen', 'error');
+            return;
+        }
+
+        savingCode = true;
+        try {
+            const response = await apiFetch(`/api/admin/printers/${printer.id}/access-code`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ access_code: newCode.trim() })
+            });
+            if (!response) return;
+
+            const result = await response.json();
+            if (response.ok) {
+                showMessage(`${printer.name}: access code updated, reconnecting...`, 'success');
+                editingCode = '';
+                newCode = '';
+                setTimeout(loadPrinters, 4000);
+                setTimeout(loadPrinters, 12000);
+            } else {
+                showMessage(result.error || 'Could not update the access code', 'error');
+            }
+        } finally {
+            savingCode = false;
+        }
+    }
+
+    function printerIsPrinting(printer) {
+        return printer.online && printer.state === 'RUNNING';
+    }
+
+    function printerStateLabel(printer) {
+        if (!printer.online) return 'Offline';
+        switch (printer.state) {
+            case 'RUNNING': return 'Printing';
+            case 'FINISH': return 'Finished';
+            case 'FAILED': return 'Failed';
+            case 'PAUSE': return 'Paused';
+            case 'PREPARE': return 'Preparing';
+            case 'SLICING': return 'Slicing';
+            default: return printer.state || 'Idle';
+        }
+    }
+
+    function printerStateClass(printer) {
+        if (!printer.online) return 'offline';
+        switch (printer.state) {
+            case 'RUNNING': return 'running';
+            case 'FAILED': return 'failed';
+            case 'PAUSE': return 'paused';
+            case 'FINISH': return 'finished';
+            default: return 'idle';
+        }
+    }
+
+    function formatRemaining(minutes) {
+        if (!minutes || minutes <= 0) return '';
+        if (minutes < 60) return `${minutes} min left`;
+        const hours = Math.floor(minutes / 60);
+        const rest = minutes % 60;
+        return rest ? `${hours}h ${rest}m left` : `${hours}h left`;
+    }
+
     // Export data as CSV
     async function exportCSV(path = '/api/admin/export-csv', filename = 'robotics_research_centre_loans.csv') {
         try {
@@ -511,6 +628,7 @@
 
     function goToDashboard() {
         currentView = 'dashboard';
+        clearInterval(printerTimer);
     }
 
     // Admin Management Functions
@@ -740,6 +858,13 @@
                 {/each}
                 <button 
                     class="tab-btn" 
+                    class:active={currentView === 'printers'}
+                    on:click={showPrinters}
+                >
+                    🖨️ Printers
+                </button>
+                <button 
+                    class="tab-btn" 
                     class:active={currentView === 'bookings'}
                     on:click={showBookings}
                 >
@@ -779,6 +904,11 @@
                             <h3>🔍 Missing Items</h3>
                             <p class="stat-number">{lostMissingItems.length}</p>
                             <button class="card-btn" on:click={showLostMissingItems}>Review</button>
+                        </div>
+                        <div class="card">
+                            <h3>🖨️ 3D Printers</h3>
+                            <p>Live status, stop a print</p>
+                            <button class="card-btn" on:click={showPrinters}>Manage</button>
                         </div>
                         <div class="card">
                             <h3>🎥 Mocap Lab</h3>
@@ -871,6 +1001,107 @@
                                                 </button>
                                             </div>
                                         </div>
+                                    {/if}
+                                </div>
+                            {/each}
+                        </div>
+                    {/if}
+                </div>
+            {/if}
+
+            <!-- 3D Printers View -->
+            {#if currentView === 'printers'}
+                <div class="loans-content">
+                    <h2>🖨️ 3D Printers</h2>
+                    <p class="subtitle-text">
+                        Live status, refreshing every few seconds.
+                        <a class="calendar-link" href="/printers" target="_blank" rel="noopener">Open the full page →</a>
+                    </p>
+
+                    {#if printers.length === 0}
+                        <p class="no-items">No printers are configured.</p>
+                    {:else}
+                        <div class="printer-admin-grid">
+                            {#each printers as printer, i (printer.id)}
+                                <div class="printer-admin-card {printerStateClass(printer)}" style="--i: {i}">
+                                    <div class="pa-head">
+                                        <img src="/P1S.png" alt="" class="pa-image" />
+                                        <div class="pa-title">
+                                            <h3>{printer.name}</h3>
+                                            <span class="pa-avail {printerIsPrinting(printer) ? 'busy' : 'free'}">
+                                                {printer.online ? (printerIsPrinting(printer) ? 'In use' : 'Free') : 'Unknown'}
+                                            </span>
+                                        </div>
+                                        <span class="pa-state {printerStateClass(printer)}">
+                                            {printerStateLabel(printer)}
+                                        </span>
+                                    </div>
+
+                                    {#if printer.access_code_problem}
+                                        <div class="pa-warning">
+                                            <strong>⚠️ Access code changed</strong>
+                                            <p>{printer.name} is refusing our access code - LAN mode was probably toggled.</p>
+                                            {#if editingCode === printer.id}
+                                                <div class="pa-code-form">
+                                                    <input
+                                                        type="text"
+                                                        bind:value={newCode}
+                                                        placeholder="New access code"
+                                                        autocomplete="off"
+                                                    />
+                                                    <button class="pa-save" on:click={() => savePrinterCode(printer)} disabled={savingCode}>
+                                                        {savingCode ? 'Saving...' : 'Save'}
+                                                    </button>
+                                                    <button class="pa-cancel" on:click={() => (editingCode = '')}>Cancel</button>
+                                                </div>
+                                            {:else}
+                                                <button class="pa-fix" on:click={() => { editingCode = printer.id; newCode = ''; }}>
+                                                    Update access code
+                                                </button>
+                                            {/if}
+                                        </div>
+                                    {/if}
+
+                                    {#if printer.online}
+                                        {#if printerIsPrinting(printer)}
+                                            <div class="pa-progress-row">
+                                                <div class="pa-progress-bar">
+                                                    <div class="pa-progress-fill" style="width: {printer.progress}%"></div>
+                                                </div>
+                                                <span class="pa-progress-text">{printer.progress}%</span>
+                                            </div>
+                                            {#if printer.remaining_minutes > 0}
+                                                <p class="pa-remaining">{formatRemaining(printer.remaining_minutes)}</p>
+                                            {/if}
+                                        {/if}
+
+                                        {#if printer.file_name}
+                                            <p class="pa-file" title={printer.file_name}>📄 {printer.file_name}</p>
+                                        {/if}
+
+                                        <div class="pa-temps">
+                                            <span>🔥 {printer.nozzle_temp.toFixed(0)}°C</span>
+                                            <span>🛏️ {printer.bed_temp.toFixed(0)}°C</span>
+                                            {#if printer.chamber_temp > 0}
+                                                <span>📦 {printer.chamber_temp.toFixed(0)}°C</span>
+                                            {/if}
+                                        </div>
+
+                                        {#if printerIsPrinting(printer)}
+                                            <button
+                                                class="pa-stop"
+                                                on:click={() => stopPrint(printer)}
+                                                disabled={stoppingPrinter === printer.id}
+                                            >
+                                                {stoppingPrinter === printer.id ? 'Stopping...' : '⏹ Stop Print'}
+                                            </button>
+                                        {/if}
+
+                                        {#if printer.last_action_by}
+                                            <p class="pa-last">Last stopped by {printer.last_action_by}</p>
+                                        {/if}
+                                    {:else}
+                                        <p class="pa-offline">Not responding - switched off or off the network.</p>
                                     {/if}
                                 </div>
                             {/each}
@@ -1463,8 +1694,8 @@
 
 <style>
     :global(body) {
-        background: #1e1e2e;
-        color: #cdd6f4;
+        background: var(--ctp-base);
+        color: var(--ctp-text);
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         margin: 0;
         padding: 0;
@@ -1476,7 +1707,7 @@
         margin: 0 auto;
         padding: clamp(15px, 3vw, 30px);
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-        background: #181825;
+        background: var(--ctp-mantle);
         height: 100vh;
         overflow-y: auto;
     }
@@ -1494,13 +1725,13 @@
     .message.success {
         background-color: rgba(166, 227, 161, 0.15);
         border: 1px solid rgba(166, 227, 161, 0.4);
-        color: #a6e3a1;
+        color: var(--ctp-green);
     }
 
     .message.error {
         background-color: rgba(243, 139, 168, 0.15);
         border: 1px solid rgba(243, 139, 168, 0.4);
-        color: #f38ba8;
+        color: var(--ctp-red);
     }
 
     @keyframes slideDown {
@@ -1528,8 +1759,8 @@
         position: absolute;
         top: -10px;
         right: -10px;
-        background: #f38ba8;
-        color: #1e1e2e;
+        background: var(--ctp-red);
+        color: var(--ctp-base);
         border: none;
         border-radius: 50%;
         width: 32px;
@@ -1545,7 +1776,7 @@
     }
 
     .close-btn:hover {
-        background: #eba0ac;
+        background: var(--ctp-maroon);
         transform: scale(1.1);
     }
 
@@ -1558,17 +1789,17 @@
 
     .login-header h1 {
         margin: 0;
-        color: #cdd6f4;
+        color: var(--ctp-text);
         font-size: clamp(1.6rem, 4vw, 2.2rem);
         font-weight: 600;
     }
 
     .login-form {
-        background: #11111b;
+        background: var(--ctp-crust);
         padding: clamp(30px, 6vw, 50px);
         border-radius: 12px;
         box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
-        border: 1px solid #313244;
+        border: 1px solid var(--ctp-surface0);
     }
 
     .form-group {
@@ -1580,32 +1811,32 @@
         display: block;
         margin-bottom: 8px;
         font-weight: 600;
-        color: #cdd6f4;
+        color: var(--ctp-text);
         font-size: clamp(0.9rem, 2vw, 1rem);
     }
 
     .form-group input {
         width: 100%;
         padding: clamp(10px, 2.5vw, 14px);
-        border: 2px solid #313244;
+        border: 2px solid var(--ctp-surface0);
         border-radius: 8px;
         font-size: clamp(0.9rem, 2vw, 1rem);
         box-sizing: border-box;
-        background: #1e1e2e;
-        color: #cdd6f4;
+        background: var(--ctp-base);
+        color: var(--ctp-text);
         transition: all 0.3s ease;
     }
 
     .form-group input:focus {
-        border-color: #f2cdcd;
+        border-color: var(--ctp-flamingo);
         outline: none;
         box-shadow: 0 0 0 3px rgba(242, 205, 205, 0.25);
     }
 
     .login-btn {
         width: 100%;
-        background: linear-gradient(135deg, #f2cdcd, #eba0ac);
-        color: #11111b;
+        background: linear-gradient(135deg, var(--ctp-flamingo), var(--ctp-maroon));
+        color: var(--ctp-crust);
         border: none;
         padding: clamp(12px, 3vw, 18px);
         border-radius: 8px;
@@ -1616,17 +1847,17 @@
     }
 
     .login-btn:hover {
-        background: linear-gradient(135deg, #eba0ac, #f5c2e7);
+        background: linear-gradient(135deg, var(--ctp-maroon), var(--ctp-pink));
         transform: translateY(-1px);
         box-shadow: 0 8px 25px rgba(242, 205, 205, 0.3);
     }
 
     .login-btn:disabled {
-        background: #313244;
+        background: var(--ctp-surface0);
         cursor: not-allowed;
         transform: none;
         box-shadow: none;
-        color: #a6adc8;
+        color: var(--ctp-subtext0);
     }
 
     /* Dashboard styles */
@@ -1636,7 +1867,7 @@
         align-items: center;
         margin-bottom: clamp(20px, 4vw, 40px);
         padding-bottom: 20px;
-        border-bottom: 2px solid #313244;
+        border-bottom: 2px solid var(--ctp-surface0);
         flex-wrap: wrap;
         gap: 15px;
     }
@@ -1657,7 +1888,7 @@
 
     .dashboard-header h1 {
         margin: 0;
-        color: #cdd6f4;
+        color: var(--ctp-text);
         font-size: clamp(1.4rem, 3.5vw, 2rem);
         font-weight: 600;
         line-height: 1.2;
@@ -1671,15 +1902,15 @@
     }
 
     .admin-info h1 {
-        color: #cdd6f4;
+        color: var(--ctp-text);
         margin: 0;
         font-size: clamp(1.8rem, 4vw, 2.5rem);
         font-weight: 600;
     }
 
     .logout-btn {
-        background: linear-gradient(135deg, #f38ba8, #eba0ac);
-        color: #11111b;
+        background: linear-gradient(135deg, var(--ctp-red), var(--ctp-maroon));
+        color: var(--ctp-crust);
         border: none;
         padding: clamp(8px, 2vw, 12px) clamp(12px, 3vw, 20px);
         border-radius: 8px;
@@ -1690,7 +1921,7 @@
     }
 
     .logout-btn:hover {
-        background: linear-gradient(135deg, #eba0ac, #f5c2e7);
+        background: linear-gradient(135deg, var(--ctp-maroon), var(--ctp-pink));
         transform: translateY(-1px);
         box-shadow: 0 4px 15px rgba(243, 139, 168, 0.3);
     }
@@ -1698,40 +1929,81 @@
     /* Navigation tabs */
     .nav-tabs {
         display: flex;
-        gap: clamp(5px, 1vw, 15px);
-        margin-bottom: clamp(20px, 4vw, 40px);
-        border-bottom: 2px solid #313244;
+        gap: clamp(4px, 0.8vw, 10px);
+        margin-bottom: clamp(18px, 3vw, 32px);
+        border-bottom: 2px solid var(--ctp-surface0);
         overflow-x: auto;
+        scroll-snap-type: x proximity;
+        -webkit-overflow-scrolling: touch;
+        /* The tab strip is the primary navigation - keep it in reach */
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        background: linear-gradient(var(--ctp-base) 70%, transparent);
+        padding-bottom: 2px;
+    }
+
+    .nav-tabs::-webkit-scrollbar {
+        height: 4px;
     }
 
     .tab-btn {
         background: none;
         border: none;
-        padding: clamp(12px, 3vw, 18px) clamp(15px, 3vw, 25px);
+        padding: clamp(10px, 2vw, 15px) clamp(12px, 2vw, 20px);
         cursor: pointer;
         border-bottom: 3px solid transparent;
-        font-size: clamp(0.9rem, 2vw, 1.1rem);
+        font-size: clamp(0.85rem, 1.7vw, 1rem);
         position: relative;
-        color: #a6adc8;
-        transition: all 0.3s ease;
+        color: var(--ctp-subtext0);
         white-space: nowrap;
-        font-weight: 500;
-    }
-
-    .tab-btn.active {
-        border-bottom-color: #f2cdcd;
-        color: #f2cdcd;
-        font-weight: 600;
+        font-weight: 550;
+        font-family: inherit;
+        border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+        scroll-snap-align: start;
+        transition:
+            color var(--fast) var(--ease),
+            background-color var(--fast) var(--ease),
+            transform var(--fast) var(--ease);
     }
 
     .tab-btn:hover {
-        background: rgba(242, 205, 205, 0.1);
-        color: #cdd6f4;
+        color: var(--ctp-text);
+        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
+        transform: translateY(-2px);
+    }
+
+    /* The underline grows out from the middle rather than snapping in */
+    .tab-btn::after {
+        content: '';
+        position: absolute;
+        left: 12%;
+        right: 12%;
+        bottom: -2px;
+        height: 3px;
+        border-radius: var(--radius-pill);
+        background: var(--ctp-mauve);
+        transform: scaleX(0);
+        transition: transform var(--normal) var(--ease);
+    }
+
+    .tab-btn:hover::after {
+        transform: scaleX(0.5);
+    }
+
+    .tab-btn.active::after {
+        transform: scaleX(1);
+    }
+
+    .tab-btn.active {
+        border-bottom-color: var(--ctp-flamingo);
+        color: var(--ctp-flamingo);
+        font-weight: 600;
     }
 
     .badge {
-        background: #f38ba8;
-        color: #11111b;
+        background: var(--ctp-red);
+        color: var(--ctp-crust);
         border-radius: 12px;
         padding: 3px 8px;
         font-size: clamp(10px, 1.5vw, 12px);
@@ -1742,42 +2014,48 @@
     /* Dashboard overview */
     .overview-cards {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-        gap: clamp(15px, 3vw, 25px);
+        /* min() keeps a single column from overflowing a narrow phone */
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+        gap: clamp(12px, 2vw, 20px);
         margin-top: 20px;
     }
 
     .card {
-        background: #11111b;
-        padding: clamp(25px, 5vw, 40px);
-        border-radius: 12px;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        background:
+            linear-gradient(180deg, rgba(205, 214, 244, 0.04), transparent 60%),
+            var(--ctp-mantle);
+        padding: clamp(18px, 3.5vw, 30px);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-sm);
         text-align: center;
-        border: 1px solid #313244;
-        transition: all 0.3s ease;
+        border: 1px solid var(--ctp-surface0);
+        transition:
+            transform var(--normal) var(--ease),
+            box-shadow var(--normal) var(--ease),
+            border-color var(--normal) var(--ease);
     }
 
     .card:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
-        border-color: #f2cdcd;
+        transform: translateY(-4px) scale(1.015);
+        border-color: color-mix(in srgb, var(--ctp-mauve) 45%, var(--ctp-surface1));
+        box-shadow: var(--shadow);
     }
 
     .stat-number {
         font-size: clamp(2.5rem, 8vw, 4rem);
         font-weight: 700;
-        color: #f2cdcd;
+        color: var(--ctp-flamingo);
         margin: 15px 0;
     }
 
     .card h3 {
-        color: #cdd6f4;
+        color: var(--ctp-text);
         margin-bottom: 15px;
         font-size: clamp(1.1rem, 2.5vw, 1.3rem);
     }
 
     .card-btn {
-        background: linear-gradient(135deg, #f2cdcd, #eba0ac);
+        background: linear-gradient(135deg, var(--ctp-flamingo), var(--ctp-maroon));
         color: white;
         border: none;
         padding: clamp(8px, 2vw, 12px) clamp(16px, 3vw, 24px);
@@ -1789,7 +2067,7 @@
     }
 
     .card-btn:hover {
-        background: linear-gradient(135deg, #eba0ac, #f5c2e7);
+        background: linear-gradient(135deg, var(--ctp-maroon), var(--ctp-pink));
         transform: translateY(-1px);
         box-shadow: 0 4px 15px rgba(31, 111, 235, 0.3);
     }
@@ -1803,9 +2081,9 @@
     }
 
     .filter-btn {
-        background: #11111b;
-        border: 2px solid #313244;
-        color: #a6adc8;
+        background: var(--ctp-crust);
+        border: 2px solid var(--ctp-surface0);
+        color: var(--ctp-subtext0);
         padding: clamp(6px, 1.5vw, 10px) clamp(12px, 3vw, 18px);
         border-radius: 20px;
         cursor: pointer;
@@ -1815,14 +2093,14 @@
     }
 
     .filter-btn:hover {
-        background: #313244;
-        border-color: #f2cdcd;
-        color: #cdd6f4;
+        background: var(--ctp-surface0);
+        border-color: var(--ctp-flamingo);
+        color: var(--ctp-text);
     }
 
     .filter-btn.active {
-        background: #f2cdcd;
-        border-color: #f2cdcd;
+        background: var(--ctp-flamingo);
+        border-color: var(--ctp-flamingo);
         color: white;
         font-weight: 600;
     }
@@ -1836,19 +2114,19 @@
     }
 
     .loan-card {
-        background: #11111b;
+        background: var(--ctp-crust);
         border-radius: 12px;
         padding: clamp(18px, 4vw, 25px);
         box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-        border-left: 5px solid #f2cdcd;
-        border: 1px solid #313244;
+        border-left: 5px solid var(--ctp-flamingo);
+        border: 1px solid var(--ctp-surface0);
         transition: all 0.3s ease;
     }
 
     .loan-card:hover {
         transform: translateY(-2px);
         box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
-        border-color: #f2cdcd;
+        border-color: var(--ctp-flamingo);
     }
 
     .loan-card.pending {
@@ -1862,8 +2140,249 @@
         background: rgba(248, 81, 73, 0.05);
     }
 
+    /* --- printer cards in the admin dashboard --- */
+    .printer-admin-grid {
+        display: grid;
+        /* min() stops a single column overflowing a narrow phone; the 460px
+           cap stops three cards stretching absurdly wide on a large monitor */
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 460px));
+        justify-content: center;
+        gap: 14px;
+    }
+
+    .printer-admin-card {
+        --accent: var(--ctp-overlay0);
+        background:
+            linear-gradient(180deg, rgba(205, 214, 244, 0.035), transparent 55%),
+            var(--ctp-mantle);
+        border: 1px solid var(--ctp-surface0);
+        border-left: 4px solid var(--accent);
+        border-radius: var(--radius-lg);
+        padding: 16px;
+        box-shadow: var(--shadow-sm);
+        transition:
+            transform var(--normal) var(--ease),
+            box-shadow var(--normal) var(--ease);
+        animation: rise var(--slow) var(--ease) both;
+        animation-delay: calc(var(--i, 0) * 70ms);
+    }
+
+    .printer-admin-card:hover {
+        transform: translateY(-3px);
+        box-shadow: var(--shadow);
+    }
+
+    .printer-admin-card.running { --accent: var(--ctp-green); }
+    .printer-admin-card.failed { --accent: var(--ctp-red); }
+    .printer-admin-card.paused { --accent: var(--ctp-yellow); }
+    .printer-admin-card.finished { --accent: var(--ctp-blue); }
+    .printer-admin-card.idle { --accent: var(--ctp-sapphire); }
+    .printer-admin-card.offline { opacity: 0.62; }
+
+    .pa-head {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 12px;
+    }
+
+    .pa-image {
+        width: 40px;
+        height: 40px;
+        object-fit: contain;
+        flex-shrink: 0;
+        transition: transform var(--normal) var(--ease);
+    }
+
+    .printer-admin-card:hover .pa-image {
+        transform: scale(1.1) rotate(-3deg);
+    }
+
+    .pa-title {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .pa-title h3 {
+        margin: 0;
+        font-size: 1rem;
+        color: var(--ctp-text);
+    }
+
+    .pa-avail {
+        font-size: 0.8rem;
+        font-weight: 650;
+    }
+
+    .pa-avail.free { color: var(--ctp-green); }
+    .pa-avail.busy { color: var(--ctp-peach); }
+
+    .printer-admin-card.running .pa-avail.busy::before {
+        content: '';
+        display: inline-block;
+        width: 7px;
+        height: 7px;
+        margin-right: 6px;
+        border-radius: 50%;
+        background: var(--ctp-peach);
+        animation: soft-pulse 1.8s ease-in-out infinite;
+    }
+
+    .pa-state {
+        font-size: 0.72rem;
+        padding: 4px 10px;
+        border-radius: var(--radius-pill);
+        background: var(--ctp-surface0);
+        color: var(--ctp-text);
+        white-space: nowrap;
+    }
+
+    .pa-state.running { background: var(--ctp-green); color: var(--ctp-crust); }
+    .pa-state.failed { background: var(--ctp-red); color: var(--ctp-crust); }
+    .pa-state.paused { background: var(--ctp-yellow); color: var(--ctp-crust); }
+    .pa-state.finished { background: var(--ctp-blue); color: var(--ctp-crust); }
+
+    .pa-progress-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .pa-progress-bar {
+        flex: 1;
+        height: 8px;
+        background: var(--ctp-surface0);
+        border-radius: var(--radius-pill);
+        overflow: hidden;
+    }
+
+    .pa-progress-fill {
+        height: 100%;
+        border-radius: var(--radius-pill);
+        background: linear-gradient(90deg, var(--ctp-green), var(--ctp-teal));
+        transition: width var(--slow) var(--ease);
+    }
+
+    .pa-progress-text {
+        font-size: 0.8rem;
+        color: var(--ctp-subtext0);
+        min-width: 36px;
+        text-align: right;
+    }
+
+    .pa-remaining {
+        margin: 6px 0 0;
+        font-size: 0.85rem;
+        color: var(--ctp-green);
+    }
+
+    .pa-file {
+        margin: 8px 0 0;
+        font-size: 0.8rem;
+        color: var(--ctp-subtext0);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .pa-temps {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 10px;
+        font-size: 0.78rem;
+        color: var(--ctp-subtext0);
+    }
+
+    .pa-stop {
+        margin-top: 12px;
+        width: 100%;
+        min-height: 44px;
+        background: var(--ctp-red);
+        color: var(--ctp-crust);
+        border: none;
+        border-radius: var(--radius-sm);
+        font-weight: 650;
+        font-size: 0.9rem;
+        cursor: pointer;
+        transition:
+            background-color var(--fast) var(--ease),
+            transform var(--fast) var(--ease);
+    }
+
+    .pa-stop:hover { background: var(--ctp-maroon); transform: translateY(-1px); }
+    .pa-stop:active { transform: none; }
+    .pa-stop:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    .pa-last,
+    .pa-offline {
+        margin: 8px 0 0;
+        font-size: 0.75rem;
+        color: var(--ctp-overlay0);
+    }
+
+    .pa-warning {
+        background: rgba(250, 179, 135, 0.12);
+        border: 1px solid var(--ctp-peach);
+        border-radius: var(--radius-sm);
+        padding: 10px 12px;
+        margin-bottom: 12px;
+        font-size: 0.82rem;
+        color: var(--ctp-yellow);
+    }
+
+    .pa-warning p {
+        margin: 6px 0 0;
+        color: var(--ctp-subtext0);
+    }
+
+    .pa-code-form {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 8px;
+    }
+
+    .pa-code-form input {
+        flex: 1;
+        min-width: 140px;
+        background: var(--ctp-base);
+        border: 1px solid var(--ctp-surface1);
+        border-radius: 6px;
+        padding: 8px;
+        color: var(--ctp-text);
+    }
+
+    .pa-fix,
+    .pa-save {
+        background: var(--ctp-peach);
+        color: var(--ctp-crust);
+        border: none;
+        border-radius: 6px;
+        padding: 8px 14px;
+        font-weight: 650;
+        cursor: pointer;
+        min-height: 40px;
+        margin-top: 8px;
+        transition: filter var(--fast) var(--ease), transform var(--fast) var(--ease);
+    }
+
+    .pa-save { margin-top: 0; }
+    .pa-fix:hover, .pa-save:hover { filter: brightness(1.08); transform: translateY(-1px); }
+    .pa-save:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    .pa-cancel {
+        background: var(--ctp-surface0);
+        color: var(--ctp-text);
+        border: none;
+        border-radius: 6px;
+        padding: 8px 12px;
+        cursor: pointer;
+        min-height: 40px;
+    }
+
     .calendar-link {
-        color: #89b4fa;
+        color: var(--ctp-blue);
         text-decoration: none;
         margin-left: 6px;
     }
@@ -1878,9 +2397,9 @@
         display: flex;
         align-items: center;
         gap: 14px;
-        background: #11111b;
-        border: 1px solid #313244;
-        border-left: 4px solid #cba6f7;
+        background: var(--ctp-crust);
+        border: 1px solid var(--ctp-surface0);
+        border-left: 4px solid var(--ctp-mauve);
         border-radius: 8px;
         padding: 12px 14px;
         flex-wrap: wrap;
@@ -1888,7 +2407,7 @@
 
     .booking-row.past {
         opacity: 0.55;
-        border-left-color: #6c7086;
+        border-left-color: var(--ctp-overlay0);
     }
 
     .booking-when {
@@ -1899,12 +2418,12 @@
 
     .booking-date {
         font-weight: 600;
-        color: #cba6f7;
+        color: var(--ctp-mauve);
     }
 
     .booking-time {
         font-size: 0.85rem;
-        color: #a6adc8;
+        color: var(--ctp-subtext0);
     }
 
     .booking-info {
@@ -1920,7 +2439,7 @@
     .booking-by {
         margin: 2px 0 0;
         font-size: 0.85rem;
-        color: #a6adc8;
+        color: var(--ctp-subtext0);
     }
 
     .loan-card.rejected {
@@ -1940,18 +2459,18 @@
     }
 
     .loan-card.archived {
-        border-left-color: #6c7086;
+        border-left-color: var(--ctp-overlay0);
         background: rgba(108, 112, 134, 0.05);
         opacity: 0.9;
     }
 
     /* History View Styles */
     .history-search-container {
-        background: #11111b;
+        background: var(--ctp-crust);
         padding: 20px;
         border-radius: 12px;
         margin-bottom: 20px;
-        border: 1px solid #313244;
+        border: 1px solid var(--ctp-surface0);
         box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
     }
 
@@ -1959,31 +2478,31 @@
         display: block;
         margin-bottom: 10px;
         font-weight: 600;
-        color: #cdd6f4;
+        color: var(--ctp-text);
         font-size: 1rem;
     }
 
     .history-search-input {
         width: 100%;
         padding: 12px 16px;
-        border: 2px solid #313244;
+        border: 2px solid var(--ctp-surface0);
         border-radius: 8px;
         font-size: 1rem;
         box-sizing: border-box;
-        background: #1e1e2e;
-        color: #cdd6f4;
+        background: var(--ctp-base);
+        color: var(--ctp-text);
         transition: all 0.3s ease;
     }
 
     .history-search-input:focus {
-        border-color: #f2cdcd;
+        border-color: var(--ctp-flamingo);
         outline: none;
         box-shadow: 0 0 0 3px rgba(242, 205, 205, 0.25);
     }
 
     .search-results-info {
         margin-top: 10px;
-        color: #a6adc8;
+        color: var(--ctp-subtext0);
         font-size: 0.9rem;
         font-style: italic;
     }
@@ -1991,21 +2510,21 @@
     .no-search-results {
         text-align: center;
         padding: 40px 20px;
-        background: #11111b;
+        background: var(--ctp-crust);
         border-radius: 12px;
-        border: 1px solid #313244;
+        border: 1px solid var(--ctp-surface0);
         margin-top: 20px;
     }
 
     .no-search-results p {
-        color: #cdd6f4;
+        color: var(--ctp-text);
         font-size: 1.1rem;
         margin-bottom: 15px;
     }
 
     .clear-search-btn-large {
-        background: linear-gradient(135deg, #74c7ec, #89b4fa);
-        color: #11111b;
+        background: linear-gradient(135deg, var(--ctp-sapphire), var(--ctp-blue));
+        color: var(--ctp-crust);
         border: none;
         padding: 10px 20px;
         border-radius: 8px;
@@ -2016,7 +2535,7 @@
     }
 
     .clear-search-btn-large:hover {
-        background: linear-gradient(135deg, #89b4fa, #b4befe);
+        background: linear-gradient(135deg, var(--ctp-blue), var(--ctp-lavender));
         transform: translateY(-1px);
         box-shadow: 0 4px 12px rgba(116, 199, 236, 0.3);
     }
@@ -2031,10 +2550,10 @@
 
     .history-item {
         display: flex;
-        background: #11111b;
+        background: var(--ctp-crust);
         border-radius: 12px;
         box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-        border: 1px solid #313244;
+        border: 1px solid var(--ctp-surface0);
         transition: all 0.3s ease;
         position: relative;
     }
@@ -2042,23 +2561,23 @@
     .history-item:hover {
         transform: translateY(-2px);
         box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
-        border-color: #f2cdcd;
+        border-color: var(--ctp-flamingo);
     }
 
     .history-item.approved {
-        border-left: 5px solid #a6e3a1;
+        border-left: 5px solid var(--ctp-green);
     }
 
     .history-item.returned {
-        border-left: 5px solid #94e2d5;
+        border-left: 5px solid var(--ctp-teal);
     }
 
     .history-item.not_found {
-        border-left: 5px solid #f38ba8;
+        border-left: 5px solid var(--ctp-red);
     }
 
     .history-item.denied {
-        border-left: 5px solid #6c7086;
+        border-left: 5px solid var(--ctp-overlay0);
     }
 
     .history-item.pending {
@@ -2079,29 +2598,29 @@
         width: 16px;
         height: 16px;
         border-radius: 50%;
-        border: 3px solid #313244;
+        border: 3px solid var(--ctp-surface0);
         z-index: 2;
         margin-top: 5px;
     }
 
     .timeline-dot.approved {
-        background: #a6e3a1;
-        border-color: #a6e3a1;
+        background: var(--ctp-green);
+        border-color: var(--ctp-green);
     }
 
     .timeline-dot.returned {
-        background: #94e2d5;
-        border-color: #94e2d5;
+        background: var(--ctp-teal);
+        border-color: var(--ctp-teal);
     }
 
     .timeline-dot.not_found {
-        background: #f38ba8;
-        border-color: #f38ba8;
+        background: var(--ctp-red);
+        border-color: var(--ctp-red);
     }
 
     .timeline-dot.denied {
-        background: #6c7086;
-        border-color: #6c7086;
+        background: var(--ctp-overlay0);
+        border-color: var(--ctp-overlay0);
     }
 
     .timeline-dot.pending {
@@ -2113,7 +2632,7 @@
     .timeline-line {
         width: 2px;
         flex: 1;
-        background: #313244;
+        background: var(--ctp-surface0);
         margin-top: 10px;
     }
 
@@ -2143,7 +2662,7 @@
     }
 
     .history-title-section h3 {
-        color: #cdd6f4;
+        color: var(--ctp-text);
         margin: 0;
         font-size: clamp(1.1rem, 2.5vw, 1.3rem);
         font-weight: 600;
@@ -2166,13 +2685,13 @@
 
     .date-label {
         font-size: 0.8rem;
-        color: #a6adc8;
+        color: var(--ctp-subtext0);
         font-weight: 500;
     }
 
     .date-value {
         font-size: 0.9rem;
-        color: #cdd6f4;
+        color: var(--ctp-text);
         font-weight: 600;
         margin-top: 2px;
     }
@@ -2195,12 +2714,12 @@
 
     .detail-group p {
         margin: 0;
-        color: #a6adc8;
+        color: var(--ctp-subtext0);
         font-size: clamp(0.85rem, 1.8vw, 0.95rem);
     }
 
     .detail-group strong {
-        color: #cdd6f4;
+        color: var(--ctp-text);
         font-weight: 600;
     }
 
@@ -2221,7 +2740,7 @@
 
     .loan-title-section h3 {
         margin: 0;
-        color: #cdd6f4;
+        color: var(--ctp-text);
         font-size: clamp(1.1rem, 2.5vw, 1.3rem);
         flex: 1;
         font-weight: 600;
@@ -2275,7 +2794,7 @@
 
     .status-badge.archived {
         background: rgba(108, 112, 134, 0.2);
-        color: #6c7086;
+        color: var(--ctp-overlay0);
         border: 1px solid rgba(108, 112, 134, 0.3);
     }
 
@@ -2297,17 +2816,17 @@
 
     .loan-details p {
         margin: clamp(6px, 1.5vw, 10px) 0;
-        color: #a6adc8;
+        color: var(--ctp-subtext0);
         font-size: clamp(0.85rem, 1.8vw, 0.95rem);
     }
 
     .loan-details strong {
-        color: #cdd6f4;
+        color: var(--ctp-text);
         font-weight: 600;
     }
 
     .clickable-phone {
-        color: #89b4fa;
+        color: var(--ctp-blue);
         cursor: pointer;
         text-decoration: underline;
         text-decoration-style: dotted;
@@ -2317,15 +2836,15 @@
     }
 
     .clickable-phone:hover {
-        color: #b4befe;
-        background-color: #313244;
+        color: var(--ctp-lavender);
+        background-color: var(--ctp-surface0);
         text-decoration-style: solid;
     }
 
     .clickable-phone:focus {
-        outline: 2px solid #f2cdcd;
+        outline: 2px solid var(--ctp-flamingo);
         outline-offset: 2px;
-        background-color: #313244;
+        background-color: var(--ctp-surface0);
     }
 
     .photo-section {
@@ -2333,7 +2852,7 @@
         padding: 12px;
         background: #161b22;
         border-radius: 8px;
-        border: 1px solid #313244;
+        border: 1px solid var(--ctp-surface0);
     }
 
     .item-image {
@@ -2341,7 +2860,7 @@
         height: clamp(70px, 15vw, 90px);
         border-radius: 8px;
         overflow: hidden;
-        border: 2px solid #313244;
+        border: 2px solid var(--ctp-surface0);
         flex-shrink: 0;
     }
 
@@ -2356,7 +2875,7 @@
         align-items: center;
         justify-content: center;
         background: #161b22;
-        color: #a6adc8;
+        color: var(--ctp-subtext0);
         font-size: clamp(1.2rem, 3vw, 1.8rem);
     }
 
@@ -2401,12 +2920,12 @@
     }
 
     .extend-btn {
-        background: linear-gradient(135deg, #f2cdcd, #eba0ac);
+        background: linear-gradient(135deg, var(--ctp-flamingo), var(--ctp-maroon));
         color: white;
     }
 
     .extend-btn:hover {
-        background: linear-gradient(135deg, #eba0ac, #f5c2e7);
+        background: linear-gradient(135deg, var(--ctp-maroon), var(--ctp-pink));
         transform: translateY(-1px);
         box-shadow: 0 4px 15px rgba(31, 111, 235, 0.3);
     }
@@ -2440,22 +2959,22 @@
     .extend-inputs input {
         width: clamp(50px, 12vw, 70px);
         padding: clamp(4px, 1vw, 8px);
-        border: 2px solid #313244;
+        border: 2px solid var(--ctp-surface0);
         border-radius: 6px;
         text-align: center;
-        background: #1e1e2e;
-        color: #cdd6f4;
+        background: var(--ctp-base);
+        color: var(--ctp-text);
         font-size: clamp(0.8rem, 1.8vw, 0.9rem);
     }
 
     .extend-inputs input:focus {
-        border-color: #f2cdcd;
+        border-color: var(--ctp-flamingo);
         outline: none;
     }
 
     .extend-inputs span {
         font-size: clamp(0.8rem, 1.8vw, 0.9rem);
-        color: #a6adc8;
+        color: var(--ctp-subtext0);
     }
 
     .return-section {
@@ -2488,7 +3007,7 @@
     }
 
     .found-notice {
-        color: #a6e3a1;
+        color: var(--ctp-green);
         font-weight: 600;
         margin-bottom: 10px;
         font-size: clamp(0.85rem, 1.8vw, 0.95rem);
@@ -2501,8 +3020,8 @@
     }
 
     .found-btn {
-        background: #a6e3a1;
-        color: #1e1e2e;
+        background: var(--ctp-green);
+        color: var(--ctp-base);
         border: none;
         padding: clamp(8px, 2vw, 12px) clamp(14px, 2.5vw, 20px);
         border-radius: 6px;
@@ -2531,7 +3050,7 @@
     }
 
     .return-date {
-        color: #94e2d5;
+        color: var(--ctp-teal);
         font-weight: 500;
         margin: 8px 0;
     }
@@ -2552,9 +3071,9 @@
     .admin-actions {
         margin-top: 30px;
         padding: clamp(18px, 4vw, 25px);
-        background: #11111b;
+        background: var(--ctp-crust);
         border-radius: 12px;
-        border: 1px solid #313244;
+        border: 1px solid var(--ctp-surface0);
     }
 
     .cleanup-btn, .export-btn {
@@ -2592,24 +3111,24 @@
     }
 
     .subtitle-text {
-        color: #a6adc8;
+        color: var(--ctp-subtext0);
         font-style: italic;
         margin-bottom: 20px;
         font-size: clamp(0.8rem, 1.8vw, 0.9rem);
     }
 
     .credits-footer {
-        background: #11111b;
+        background: var(--ctp-crust);
         padding: clamp(15px, 3vw, 20px);
         text-align: center;
-        border-top: 1px solid #313244;
+        border-top: 1px solid var(--ctp-surface0);
         margin-top: 40px;
-        color: #a6adc8;
+        color: var(--ctp-subtext0);
         font-size: clamp(12px, 2vw, 14px);
     }
 
     .credits-footer a {
-        color: #f2cdcd;
+        color: var(--ctp-flamingo);
         text-decoration: none;
     }
 
@@ -2620,22 +3139,22 @@
 
     .loan-actions input[type="date"] {
         padding: clamp(6px, 1.5vw, 10px);
-        border: 2px solid #313244;
+        border: 2px solid var(--ctp-surface0);
         border-radius: 6px;
         flex: 1;
-        background: #1e1e2e;
-        color: #cdd6f4;
+        background: var(--ctp-base);
+        color: var(--ctp-text);
         font-size: clamp(0.8rem, 1.8vw, 0.9rem);
     }
 
     .loan-actions input[type="date"]:focus {
-        border-color: #f2cdcd;
+        border-color: var(--ctp-flamingo);
         outline: none;
     }
 
     .no-items {
         text-align: center;
-        color: #a6adc8;
+        color: var(--ctp-subtext0);
         font-style: italic;
         padding: clamp(30px, 6vw, 50px);
         font-size: clamp(1rem, 2vw, 1.1rem);
@@ -2767,10 +3286,10 @@
     }
 
     .form-card {
-        background: #313244;
+        background: var(--ctp-surface0);
         border-radius: 12px;
         padding: 24px;
-        border: 1px solid #45475a;
+        border: 1px solid var(--ctp-surface1);
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     }
 
@@ -2782,17 +3301,17 @@
         display: block;
         margin-bottom: 8px;
         font-weight: 500;
-        color: #cdd6f4;
+        color: var(--ctp-text);
     }
 
     .form-group input[type="text"],
     .form-group input[type="password"] {
         width: 100%;
         padding: 12px 16px;
-        background: #1e1e2e;
-        border: 2px solid #45475a;
+        background: var(--ctp-base);
+        border: 2px solid var(--ctp-surface1);
         border-radius: 8px;
-        color: #cdd6f4;
+        color: var(--ctp-text);
         font-size: 1rem;
         transition: all 0.2s ease;
         box-sizing: border-box;
@@ -2801,7 +3320,7 @@
     .form-group input[type="text"]:focus,
     .form-group input[type="password"]:focus {
         outline: none;
-        border-color: #89b4fa;
+        border-color: var(--ctp-blue);
         box-shadow: 0 0 0 3px rgba(137, 180, 250, 0.1);
     }
 
@@ -2824,8 +3343,8 @@
     }
 
     .submit-btn {
-        background: linear-gradient(135deg, #89b4fa, #74c7ec);
-        color: #1e1e2e;
+        background: linear-gradient(135deg, var(--ctp-blue), var(--ctp-sapphire));
+        color: var(--ctp-base);
         border: none;
         padding: 12px 24px;
         border-radius: 8px;
@@ -2847,8 +3366,8 @@
     }
 
     .cancel-btn {
-        background: #6c7086;
-        color: #cdd6f4;
+        background: var(--ctp-overlay0);
+        color: var(--ctp-text);
         border: none;
         padding: 12px 24px;
         border-radius: 8px;
@@ -2869,11 +3388,11 @@
     }
 
     .management-section {
-        background: #313244;
+        background: var(--ctp-surface0);
         border-radius: 12px;
         padding: 24px;
         margin-bottom: 24px;
-        border: 1px solid #45475a;
+        border: 1px solid var(--ctp-surface1);
     }
 
     .section-header {
@@ -2885,13 +3404,13 @@
 
     .section-header h3 {
         margin: 0;
-        color: #cdd6f4;
+        color: var(--ctp-text);
         font-size: 1.2rem;
     }
 
     .toggle-btn {
-        background: #89b4fa;
-        color: #1e1e2e;
+        background: var(--ctp-blue);
+        color: var(--ctp-base);
         border: none;
         padding: 8px 16px;
         border-radius: 6px;
@@ -2901,13 +3420,13 @@
     }
 
     .toggle-btn:hover {
-        background: #74c7ec;
+        background: var(--ctp-sapphire);
         transform: translateY(-1px);
     }
 
     .refresh-btn {
-        background: #a6e3a1;
-        color: #1e1e2e;
+        background: var(--ctp-green);
+        color: var(--ctp-base);
         border: none;
         padding: 8px 16px;
         border-radius: 6px;
@@ -2917,7 +3436,7 @@
     }
 
     .refresh-btn:hover {
-        background: #94e2d5;
+        background: var(--ctp-teal);
         transform: translateY(-1px);
     }
 
@@ -2928,10 +3447,10 @@
     }
 
     .admin-card {
-        background: #1e1e2e;
+        background: var(--ctp-base);
         border-radius: 8px;
         padding: 20px;
-        border: 1px solid #45475a;
+        border: 1px solid var(--ctp-surface1);
         transition: all 0.2s ease;
         display: flex;
         flex-direction: column;
@@ -2939,19 +3458,19 @@
     }
 
     .admin-card:hover {
-        border-color: #89b4fa;
+        border-color: var(--ctp-blue);
         box-shadow: 0 4px 12px rgba(137, 180, 250, 0.1);
     }
 
     .admin-info h4 {
         margin: 0 0 8px 0;
-        color: #cdd6f4;
+        color: var(--ctp-text);
         font-size: 1.1rem;
     }
 
     .admin-username {
         margin: 4px 0;
-        color: #89b4fa;
+        color: var(--ctp-blue);
         font-weight: 500;
     }
 
@@ -2962,7 +3481,7 @@
 
     .admin-date {
         margin: 8px 0 0 0;
-        color: #6c7086;
+        color: var(--ctp-overlay0);
         font-size: 0.9rem;
     }
 
@@ -2972,12 +3491,12 @@
         align-items: center;
         margin-top: 16px;
         padding-top: 12px;
-        border-top: 1px solid #45475a;
+        border-top: 1px solid var(--ctp-surface1);
     }
 
     .delete-admin-btn {
-        background: #f38ba8;
-        color: #1e1e2e;
+        background: var(--ctp-red);
+        color: var(--ctp-base);
         border: none;
         padding: 6px 12px;
         border-radius: 6px;
@@ -2988,13 +3507,13 @@
     }
 
     .delete-admin-btn:hover {
-        background: #eba0ac;
+        background: var(--ctp-maroon);
         transform: translateY(-1px);
     }
 
     .current-user-badge {
-        background: #a6e3a1;
-        color: #1e1e2e;
+        background: var(--ctp-green);
+        color: var(--ctp-base);
         padding: 4px 8px;
         border-radius: 4px;
         font-size: 0.8rem;
@@ -3002,8 +3521,8 @@
     }
 
     .protected-user-badge {
-        background: #cba6f7;
-        color: #1e1e2e;
+        background: var(--ctp-mauve);
+        color: var(--ctp-base);
         padding: 4px 8px;
         border-radius: 4px;
         font-size: 0.8rem;
@@ -3011,12 +3530,12 @@
     }
 
     .danger-zone {
-        border-color: #f38ba8 !important;
+        border-color: var(--ctp-red) !important;
         background: rgba(243, 139, 168, 0.1);
     }
 
     .danger-zone .section-header h3 {
-        color: #f38ba8;
+        color: var(--ctp-red);
     }
 
     .danger-actions {
@@ -3030,25 +3549,25 @@
         justify-content: space-between;
         align-items: center;
         padding: 16px;
-        background: #1e1e2e;
+        background: var(--ctp-base);
         border-radius: 8px;
-        border: 1px solid #45475a;
+        border: 1px solid var(--ctp-surface1);
     }
 
     .danger-info h4 {
         margin: 0 0 4px 0;
-        color: #f38ba8;
+        color: var(--ctp-red);
     }
 
     .danger-info p {
         margin: 0;
-        color: #cdd6f4;
+        color: var(--ctp-text);
         font-size: 0.9rem;
     }
 
     .danger-btn {
-        background: #f38ba8;
-        color: #1e1e2e;
+        background: var(--ctp-red);
+        color: var(--ctp-base);
         border: none;
         padding: 10px 20px;
         border-radius: 6px;
@@ -3060,26 +3579,26 @@
     }
 
     .danger-btn:hover {
-        background: #eba0ac;
+        background: var(--ctp-maroon);
         transform: translateY(-1px);
     }
 
     .link-btn {
         background: none;
         border: none;
-        color: #89b4fa;
+        color: var(--ctp-blue);
         cursor: pointer;
         text-decoration: underline;
         font-size: inherit;
     }
 
     .link-btn:hover {
-        color: #74c7ec;
+        color: var(--ctp-sapphire);
     }
 
     .no-data {
         text-align: center;
-        color: #6c7086;
+        color: var(--ctp-overlay0);
         padding: 20px;
     }
 
