@@ -632,7 +632,7 @@
     }
 
     async function loadPrinterFiles(printer) {
-        const response = await apiFetch(`/api/admin/printers/${printer.id}/files`);
+        const response = await apiFetch(`/api/printers/${printer.id}/files`);
         if (!response) return;
         if (response.ok) {
             uploadFiles = { ...uploadFiles, [printer.id]: await response.json() };
@@ -663,7 +663,7 @@
             // progress bar matters
             const result = await new Promise((resolve) => {
                 const xhr = new XMLHttpRequest();
-                xhr.open('POST', `/api/admin/printers/${printer.id}/files`);
+                xhr.open('POST', `/api/printers/${printer.id}/files`);
                 xhr.setRequestHeader('Authorization', `Bearer ${authToken}`);
                 xhr.upload.onprogress = (e) => {
                     if (e.lengthComputable) {
@@ -1421,41 +1421,6 @@
                                         {/if}
 
 
-                                    {#if (printer.ams && printer.ams.length > 0) || printer.external_spool}
-                                        <div class="pa-ams">
-                                            {#each printer.ams as unit}
-                                                <div class="pa-ams-unit">
-                                                    <span class="pa-ams-label">AMS</span>
-                                                    {#each unit.slots as slot}
-                                                        <span
-                                                            class="pa-slot"
-                                                            class:empty={slot.empty}
-                                                            class:active={slot.active}
-                                                            title="{slot.empty ? 'Empty' : slot.material}{slot.remain >= 0 ? ' - ' + slot.remain + '% left' : ''}"
-                                                        >
-                                                            <span class="pa-swatch" style="background: {slot.color || 'transparent'}"></span>
-                                                            <span class="pa-slot-text">
-                                                                {slot.empty ? '—' : slot.material}{#if slot.remain >= 0} <b>{slot.remain}%</b>{/if}
-                                                            </span>
-                                                        </span>
-                                                    {/each}
-                                                </div>
-                                            {/each}
-
-                                            {#if printer.external_spool && !printer.external_spool.empty}
-                                                <div class="pa-ams-unit">
-                                                    <span class="pa-ams-label">Spool</span>
-                                                    <span class="pa-slot">
-                                                        <span class="pa-swatch" style="background: {printer.external_spool.color || 'transparent'}"></span>
-                                                        <span class="pa-slot-text">
-                                                            {printer.external_spool.material}{#if printer.external_spool.remain >= 0} <b>{printer.external_spool.remain}%</b>{/if}
-                                                        </span>
-                                                    </span>
-                                                </div>
-                                            {/if}
-                                        </div>
-                                    {/if}
-
                                         <div class="pa-temps">
                                             <span>🔥 {printer.nozzle_temp.toFixed(0)}°C</span>
                                             <span>🛏️ {printer.bed_temp.toFixed(0)}°C</span>
@@ -1511,9 +1476,9 @@
                                         {#if uploadFor === printer.id}
                                             <div class="pa-send">
                                                 <p class="pa-send-hint">
-                                                    Slice in Bambu Studio, export the file, send it here.
-                                                    It lands on the printer - start it from the printer's
-                                                    screen once you have checked the plate is clear.
+                                                    File names should start with the owner's name, e.g.
+                                                    <code>srinath_bracket.3mf</code>. The file lands on the
+                                                    printer - start it from the screen once the plate is clear.
                                                 </p>
 
                                                 <label class="pa-file-pick">
@@ -2946,59 +2911,6 @@
     }
 
 
-    .pa-ams {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-        margin-top: 10px;
-    }
-
-    .pa-ams-unit {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        flex-wrap: wrap;
-    }
-
-    .pa-ams-label {
-        font-size: 0.66rem;
-        letter-spacing: 0.5px;
-        text-transform: uppercase;
-        color: var(--ctp-overlay0);
-        min-width: 34px;
-    }
-
-    .pa-slot {
-        display: inline-flex;
-        align-items: center;
-        gap: 5px;
-        padding: 3px 8px 3px 4px;
-        border: 1px solid var(--ctp-surface1);
-        border-radius: var(--radius-pill);
-        background: var(--ctp-crust);
-        font-size: 0.7rem;
-        color: var(--ctp-subtext0);
-    }
-
-    .pa-slot.active {
-        border-color: var(--ctp-green);
-        color: var(--ctp-text);
-    }
-
-    .pa-slot.empty { opacity: 0.5; }
-
-    .pa-swatch {
-        width: 12px;
-        height: 12px;
-        border-radius: 50%;
-        border: 1px solid var(--ctp-surface2);
-        flex-shrink: 0;
-    }
-
-    .pa-slot-text b {
-        color: var(--ctp-text);
-        font-weight: 650;
-    }
 
     .pa-stop {
         margin-top: 12px;

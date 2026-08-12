@@ -934,7 +934,20 @@
                         </li>
                         <li>
                             <strong>Name the file with your name</strong> (see the rule above), then
-                            send the print.
+                            send it. Two ways:
+                            <ul class="sub-steps">
+                                <li>
+                                    <strong>From this website</strong> (easiest, no wifi switching):
+                                    open <a href="/printers">3D Printers</a>, pick the machine,
+                                    <em>Send a file to print</em>, and drop your exported file in.
+                                    Then walk over, check the plate, and start it from the printer's
+                                    screen.
+                                </li>
+                                <li>
+                                    <strong>From Bambu Studio</strong>, if you are already on the
+                                    printer network.
+                                </li>
+                            </ul>
                         </li>
                         <li>
                             <strong>Watch the first layer, then check in regularly.</strong>
@@ -2800,6 +2813,16 @@
     .steps {
         padding-left: 20px;
         margin: 0;
+    }
+
+    .sub-steps {
+        margin: 8px 0 0;
+        padding-left: 18px;
+    }
+
+    .sub-steps li {
+        margin-bottom: 6px;
+        font-size: 0.88rem;
     }
 
     .steps li {

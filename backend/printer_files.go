@@ -173,6 +173,10 @@ func (p *printer) ListFiles() ([]PrinterFile, error) {
 		if !strings.HasSuffix(lower, ".3mf") && !strings.HasSuffix(lower, ".gcode") {
 			continue
 		}
+		// macOS sidecar files ("._something.3mf") are not printable
+		if strings.HasPrefix(entry.Name, "._") || strings.HasPrefix(entry.Name, ".") {
+			continue
+		}
 		files = append(files, PrinterFile{
 			Name: entry.Name,
 			Size: entry.Size,

@@ -606,6 +606,57 @@ func main() {
 			c.Data(200, "image/jpeg", frame)
 		})
 
+		// Send a sliced file to a printer. Anyone on the site can do this,
+		// because avoiding a wifi switch is the whole point - but it only
+		// *uploads*. Starting the print still needs somebody at the machine
+		// who can see the plate is clear.
+		api.POST("/printers/:id/files", func(c *gin.Context) {
+			file, err := c.FormFile("file")
+			if err != nil {
+				c.JSON(400, gin.H{"error": "Choose a sliced file to send"})
+				return
+			}
+
+			if file.Size > maxUploadBytes {
+				c.JSON(400, gin.H{"error": fmt.Sprintf(
+					"That file is %d MB. The limit is %d MB.",
+					file.Size/(1024*1024), maxUploadBytes/(1024*1024))})
+				return
+			}
+
+			opened, err := file.Open()
+			if err != nil {
+				c.JSON(400, gin.H{"error": "Could not read the uploaded file"})
+				return
+			}
+			defer opened.Close()
+
+			name, err := printers.UploadFile(c.Param("id"), file.Filename, opened)
+			if err != nil {
+				c.JSON(400, gin.H{"error": err.Error()})
+				return
+			}
+
+			log.Printf("printer %s: received upload %s", c.Param("id"), name)
+
+			c.JSON(200, gin.H{
+				"message": fmt.Sprintf(
+					"%s sent. Start it from the printer's screen.", name),
+				"file_name": name,
+			})
+		})
+
+		// What is already on the printer, so people can confirm their file
+		// arrived and find it on the screen
+		api.GET("/printers/:id/files", func(c *gin.Context) {
+			files, err := printers.ListFiles(c.Param("id"))
+			if err != nil {
+				c.JSON(400, gin.H{"error": err.Error()})
+				return
+			}
+			c.JSON(200, files)
+		})
+
 		// --- MOTION CAPTURE LAB BOOKINGS ---
 
 		// List bookings in a time range (defaults to the next 8 weeks)
@@ -977,56 +1028,8 @@ func main() {
 				c.JSON(200, gin.H{"message": "Stop command sent to the printer"})
 			})
 
-			// Send a sliced file to a printer. Upload only - this never starts
-			// a print, so somebody still checks the plate before it runs.
-			admin.POST("/printers/:id/files", func(c *gin.Context) {
-				file, err := c.FormFile("file")
-				if err != nil {
-					c.JSON(400, gin.H{"error": "Choose a sliced file to send"})
-					return
-				}
-
-				if file.Size > maxUploadBytes {
-					c.JSON(400, gin.H{"error": fmt.Sprintf(
-						"That file is %d MB. The limit is %d MB.",
-						file.Size/(1024*1024), maxUploadBytes/(1024*1024))})
-					return
-				}
-
-				opened, err := file.Open()
-				if err != nil {
-					c.JSON(400, gin.H{"error": "Could not read the uploaded file"})
-					return
-				}
-				defer opened.Close()
-
-				name, err := printers.UploadFile(c.Param("id"), file.Filename, opened)
-				if err != nil {
-					c.JSON(400, gin.H{"error": err.Error()})
-					return
-				}
-
-				log.Printf("printer %s: %s uploaded %s",
-					c.Param("id"), currentAdmin(c).Name, name)
-
-				c.JSON(200, gin.H{
-					"message": fmt.Sprintf(
-						"%s sent to the printer. Start it from the printer's screen.", name),
-					"file_name": name,
-				})
-			})
-
-			// What is already on the printer
-			admin.GET("/printers/:id/files", func(c *gin.Context) {
-				files, err := printers.ListFiles(c.Param("id"))
-				if err != nil {
-					c.JSON(400, gin.H{"error": err.Error()})
-					return
-				}
-				c.JSON(200, files)
-			})
-
-			// Tidy up old plates
+			// Tidy up old plates - deleting other people's files is an
+			// admin job, uploading is not.
 			admin.DELETE("/printers/:id/files/:name", func(c *gin.Context) {
 				if err := printers.DeleteFile(c.Param("id"), c.Param("name")); err != nil {
 					c.JSON(400, gin.H{"error": err.Error()})

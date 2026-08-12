@@ -90,6 +90,24 @@ logged-in admin can paste the new code straight into the page. It reconnects by
 itself - no editing `.env`, no restart, no downtime. The new code is saved in the
 database and overrides `PRINTERS` from then on, so it survives restarts too.
 
+### 📤 Sending files to a printer
+
+Anyone can send a sliced `.3mf` or `.gcode` from the **3D Printers** page - drag
+it onto the printer's card or tap to choose one. The file lands on the printer's
+storage, and the print is started from the printer's own screen once somebody
+has checked the plate is clear. That removes the need to switch onto the printer
+wifi just to press Print in Bambu Studio; slicing still happens in Studio.
+
+File names should start with the owner's name (`srinath_bracket.3mf`) - the
+printer reports the file name, so that is how the site shows whose print is
+running. Admins can delete files from the printer to stop the storage filling up.
+
+> Uploading is open to anyone who can reach the site, on the reasoning that it
+> only writes a file. Starting a print, stopping one, and deleting files are all
+> admin-only. To make uploading admin-only too, move the two
+> `api.POST/GET("/printers/:id/files"...)` routes into the `admin` group in
+> `backend/main.go`.
+
 ### 🎥 Motion Capture Lab booking
 
 Open **Motion Capture Lab** from the home page (or go to `/mocap`) for a week calendar of

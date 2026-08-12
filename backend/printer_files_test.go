@@ -129,3 +129,69 @@ func TestUploadListDeleteAgainstFTPServer(t *testing.T) {
 		}
 	}
 }
+
+// Goes through the manager, which is what the HTTP layer actually calls -
+// including the sanitisation step and the unknown-printer case.
+func TestManagerUploadPath(t *testing.T) {
+	addr := ftpTestAddr(t)
+	host, port := splitHostPort(t, addr)
+
+	m := &PrinterManager{byID: map[string]*printer{
+		"printer-1": {
+			cfg:          PrinterConfig{Name: "Printer 1", Host: host, AccessCode: "89a8541a"},
+			ftpPort:      port,
+			ftpPlaintext: true,
+		},
+	}}
+
+	// A browser sends the whole path on some platforms; the manager must
+	// reduce it to a bare name before it reaches the printer
+	name, err := m.UploadFile("printer-1", "C:\\Users\\srinath\\Desktop\\srinath bracket.3mf",
+		bytes.NewReader([]byte("plate")))
+	if err != nil {
+		t.Fatalf("upload through the manager failed: %v", err)
+	}
+	if name != "srinath_bracket.3mf" {
+		t.Errorf("stored name = %q, want srinath_bracket.3mf", name)
+	}
+
+	files, err := m.ListFiles("printer-1")
+	if err != nil {
+		t.Fatalf("list failed: %v", err)
+	}
+
+	var names []string
+	for _, f := range files {
+		names = append(names, f.Name)
+	}
+	if !contains(names, "srinath_bracket.3mf") {
+		t.Errorf("uploaded file missing: %v", names)
+	}
+	// The junk the real printer had in its listing must not show up
+	if contains(names, "notes.txt") || contains(names, "._junk.gcode.3mf") {
+		t.Errorf("listing should hide non-printable and sidecar files: %v", names)
+	}
+
+	if err := m.DeleteFile("printer-1", "srinath_bracket.3mf"); err != nil {
+		t.Errorf("delete failed: %v", err)
+	}
+
+	// Unknown printers must be refused rather than panicking
+	if _, err := m.UploadFile("nope", "x.3mf", bytes.NewReader(nil)); err == nil {
+		t.Error("expected an error for an unknown printer")
+	}
+
+	// The wrong sort of file never reaches the printer at all
+	if _, err := m.UploadFile("printer-1", "notes.txt", bytes.NewReader(nil)); err == nil {
+		t.Error("expected .txt to be refused")
+	}
+}
+
+func contains(list []string, want string) bool {
+	for _, v := range list {
+		if v == want {
+			return true
+		}
+	}
+	return false
+}

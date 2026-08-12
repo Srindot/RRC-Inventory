@@ -16,6 +16,13 @@
     let editingCode = '';
     let newCode = '';
     let savingCode = false;
+    // Sending a sliced file, so nobody has to switch wifi to print
+    let sendFor = '';
+    let printerFiles = {};
+    let uploading = '';
+    let uploadProgress = 0;
+    let dragOver = '';
+
     let cameraTick = Date.now();
     let statusTimer;
     let cameraTimer;
@@ -129,6 +136,88 @@
         } finally {
             savingCode = false;
         }
+    }
+
+    function toggleSend(printer) {
+        sendFor = sendFor === printer.id ? '' : printer.id;
+        if (sendFor) loadPrinterFiles(printer);
+    }
+
+    async function loadPrinterFiles(printer) {
+        try {
+            const response = await fetch(`/api/printers/${printer.id}/files`);
+            if (response.ok) {
+                printerFiles = { ...printerFiles, [printer.id]: await response.json() };
+            }
+        } catch (e) {
+            // The list is a convenience; the upload itself reports its own errors
+        }
+    }
+
+    function handleDrop(printer, event) {
+        dragOver = '';
+        const file = event.dataTransfer?.files?.[0];
+        if (file) uploadToPrinter(printer, file);
+    }
+
+    function handlePick(printer, event) {
+        const file = event.target.files?.[0];
+        if (file) uploadToPrinter(printer, file);
+        event.target.value = '';
+    }
+
+    async function uploadToPrinter(printer, file) {
+        if (!/\.(3mf|gcode)$/i.test(file.name)) {
+            error = 'Only .3mf and .gcode files can be sent to a printer';
+            setTimeout(() => (error = ''), 6000);
+            return;
+        }
+
+        uploading = printer.id;
+        uploadProgress = 0;
+
+        const form = new FormData();
+        form.append('file', file);
+
+        const result = await new Promise((resolve) => {
+            // XHR rather than fetch, because sliced files are big enough that
+            // a progress bar is worth having
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', `/api/printers/${printer.id}/files`);
+            xhr.upload.onprogress = (e) => {
+                if (e.lengthComputable) {
+                    uploadProgress = Math.round((e.loaded / e.total) * 100);
+                }
+            };
+            xhr.onload = () => {
+                let body = {};
+                try {
+                    body = JSON.parse(xhr.responseText);
+                } catch (e) {
+                    body = {};
+                }
+                resolve({ status: xhr.status, body });
+            };
+            xhr.onerror = () => resolve({ status: 0, body: {} });
+            xhr.send(form);
+        });
+
+        uploading = '';
+        uploadProgress = 0;
+
+        if (result.status === 200) {
+            notice = result.body.message || 'File sent to the printer';
+            setTimeout(() => (notice = ''), 10000);
+            loadPrinterFiles(printer);
+        } else {
+            error = result.body.error || 'The printer would not accept that file';
+            setTimeout(() => (error = ''), 8000);
+        }
+    }
+
+    function fileSize(bytes) {
+        if (bytes > 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+        return `${Math.max(Math.round(bytes / 1024), 1)} KB`;
     }
 
     // A printer is "busy" only while actually running a job
@@ -296,40 +385,70 @@
                         {/if}
 
 
-                                    {#if (printer.ams && printer.ams.length > 0) || printer.external_spool}
-                                        <div class="ams-ams">
-                                            {#each printer.ams as unit}
-                                                <div class="ams-ams-unit">
-                                                    <span class="ams-ams-label">AMS</span>
-                                                    {#each unit.slots as slot}
-                                                        <span
-                                                            class="ams-slot"
-                                                            class:empty={slot.empty}
-                                                            class:active={slot.active}
-                                                            title="{slot.empty ? 'Empty' : slot.material}{slot.remain >= 0 ? ' - ' + slot.remain + '% left' : ''}"
-                                                        >
-                                                            <span class="ams-swatch" style="background: {slot.color || 'transparent'}"></span>
-                                                            <span class="ams-slot-text">
-                                                                {slot.empty ? '—' : slot.material}{#if slot.remain >= 0} <b>{slot.remain}%</b>{/if}
-                                                            </span>
-                                                        </span>
-                                                    {/each}
-                                                </div>
-                                            {/each}
+                        <button class="send-toggle" on:click={() => toggleSend(printer)}>
+                            {sendFor === printer.id ? '✕ Close' : '📤 Send a file to print'}
+                        </button>
 
-                                            {#if printer.external_spool && !printer.external_spool.empty}
-                                                <div class="ams-ams-unit">
-                                                    <span class="ams-ams-label">Spool</span>
-                                                    <span class="ams-slot">
-                                                        <span class="ams-swatch" style="background: {printer.external_spool.color || 'transparent'}"></span>
-                                                        <span class="ams-slot-text">
-                                                            {printer.external_spool.material}{#if printer.external_spool.remain >= 0} <b>{printer.external_spool.remain}%</b>{/if}
-                                                        </span>
-                                                    </span>
-                                                </div>
-                                            {/if}
+                        {#if sendFor === printer.id}
+                            <div class="send-panel">
+                                <p class="send-rule">
+                                    <strong>Name your file with your name first</strong> -
+                                    for example <code>srinath_bracket.3mf</code>. That is how
+                                    everyone knows whose print it is.
+                                </p>
+
+                                <div
+                                    class="dropzone"
+                                    class:over={dragOver === printer.id}
+                                    role="button"
+                                    tabindex="0"
+                                    on:dragover|preventDefault={() => (dragOver = printer.id)}
+                                    on:dragleave={() => (dragOver = '')}
+                                    on:drop|preventDefault={(e) => handleDrop(printer, e)}
+                                    on:click={() => document.getElementById(`pick-${printer.id}`).click()}
+                                    on:keydown={(e) => e.key === 'Enter' && document.getElementById(`pick-${printer.id}`).click()}
+                                >
+                                    <input
+                                        id="pick-{printer.id}"
+                                        type="file"
+                                        accept=".3mf,.gcode"
+                                        on:change={(e) => handlePick(printer, e)}
+                                    />
+                                    {#if uploading === printer.id}
+                                        <span class="drop-title">Sending... {uploadProgress}%</span>
+                                        <div class="upload-bar">
+                                            <div class="upload-fill" style="width: {uploadProgress}%"></div>
                                         </div>
+                                    {:else}
+                                        <span class="drop-icon">📄</span>
+                                        <span class="drop-title">Drop a sliced file here</span>
+                                        <span class="drop-sub">or tap to choose - .3mf or .gcode</span>
                                     {/if}
+                                </div>
+
+                                <p class="send-note">
+                                    Slice in Bambu Studio and export the file. It lands on the
+                                    printer - then go to the machine, check the plate is clear,
+                                    and start it from the screen.
+                                </p>
+
+                                {#if printerFiles[printer.id]}
+                                    {#if printerFiles[printer.id].length === 0}
+                                        <p class="send-empty">No files on this printer yet.</p>
+                                    {:else}
+                                        <p class="send-listhead">On this printer:</p>
+                                        <ul class="send-list">
+                                            {#each printerFiles[printer.id].slice(0, 8) as file}
+                                                <li>
+                                                    <span class="send-file" title={file.name}>{file.name}</span>
+                                                    <span class="send-size">{fileSize(file.size)}</span>
+                                                </li>
+                                            {/each}
+                                        </ul>
+                                    {/if}
+                                {/if}
+                            </div>
+                        {/if}
 
                         <div class="temps">
                             <span>🔥 Nozzle {printer.nozzle_temp.toFixed(0)}°C</span>
@@ -786,59 +905,157 @@
     }
 
 
-    .ams-ams {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-        margin-top: 10px;
-    }
 
-    .ams-ams-unit {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        flex-wrap: wrap;
-    }
-
-    .ams-ams-label {
-        font-size: 0.66rem;
-        letter-spacing: 0.5px;
-        text-transform: uppercase;
-        color: var(--ctp-overlay0);
-        min-width: 34px;
-    }
-
-    .ams-slot {
-        display: inline-flex;
-        align-items: center;
-        gap: 5px;
-        padding: 3px 8px 3px 4px;
+    .send-toggle {
+        margin-top: 12px;
+        width: 100%;
+        min-height: 44px;
+        background: var(--ctp-surface0);
+        color: var(--ctp-text);
         border: 1px solid var(--ctp-surface1);
-        border-radius: var(--radius-pill);
+        border-radius: var(--radius-sm);
+        font-weight: 600;
+        font-family: inherit;
+        font-size: 0.88rem;
+        cursor: pointer;
+        transition: background-color var(--fast) var(--ease), transform var(--fast) var(--ease);
+    }
+
+    .send-toggle:hover {
+        background: var(--ctp-surface1);
+        transform: translateY(-1px);
+    }
+
+    .send-panel {
+        margin-top: 10px;
+        padding: 12px;
+        border: 1px solid var(--ctp-surface0);
+        border-radius: var(--radius-sm);
         background: var(--ctp-crust);
-        font-size: 0.7rem;
+        animation: rise var(--normal) var(--ease) both;
+    }
+
+    .send-rule {
+        margin: 0 0 10px;
+        font-size: 0.78rem;
+        line-height: 1.45;
         color: var(--ctp-subtext0);
     }
 
-    .ams-slot.active {
-        border-color: var(--ctp-green);
+    .send-rule strong { color: var(--ctp-mauve); }
+
+    .send-rule code {
+        background: var(--ctp-mantle);
+        border: 1px solid var(--ctp-surface0);
+        border-radius: 4px;
+        padding: 1px 5px;
         color: var(--ctp-text);
     }
 
-    .ams-slot.empty { opacity: 0.5; }
-
-    .ams-swatch {
-        width: 12px;
-        height: 12px;
-        border-radius: 50%;
-        border: 1px solid var(--ctp-surface2);
-        flex-shrink: 0;
+    .dropzone {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        padding: 20px 12px;
+        border: 2px dashed var(--ctp-surface2);
+        border-radius: var(--radius);
+        cursor: pointer;
+        text-align: center;
+        transition:
+            border-color var(--fast) var(--ease),
+            background-color var(--fast) var(--ease),
+            transform var(--fast) var(--ease);
     }
 
-    .ams-slot-text b {
+    .dropzone:hover {
+        border-color: var(--ctp-mauve);
+        background: rgba(203, 166, 247, 0.06);
+    }
+
+    .dropzone.over {
+        border-color: var(--ctp-mauve);
+        background: rgba(203, 166, 247, 0.14);
+        transform: scale(1.01);
+    }
+
+    .dropzone input { display: none; }
+
+    .drop-icon { font-size: 1.6rem; }
+
+    .drop-title {
+        font-size: 0.88rem;
+        font-weight: 600;
         color: var(--ctp-text);
-        font-weight: 650;
     }
+
+    .drop-sub {
+        font-size: 0.75rem;
+        color: var(--ctp-overlay0);
+    }
+
+    .upload-bar {
+        width: 100%;
+        height: 6px;
+        background: var(--ctp-surface0);
+        border-radius: var(--radius-pill);
+        overflow: hidden;
+        margin-top: 8px;
+    }
+
+    .upload-fill {
+        height: 100%;
+        background: linear-gradient(90deg, var(--ctp-mauve), var(--ctp-lavender));
+        transition: width var(--fast) linear;
+    }
+
+    .send-note {
+        margin: 10px 0 0;
+        font-size: 0.73rem;
+        line-height: 1.45;
+        color: var(--ctp-overlay0);
+    }
+
+    .send-listhead {
+        margin: 12px 0 4px;
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+        color: var(--ctp-overlay0);
+    }
+
+    .send-empty {
+        margin: 10px 0 0;
+        font-size: 0.75rem;
+        color: var(--ctp-overlay0);
+    }
+
+    .send-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+    }
+
+    .send-list li {
+        display: flex;
+        gap: 8px;
+        font-size: 0.72rem;
+        background: var(--ctp-mantle);
+        border-radius: 5px;
+        padding: 5px 8px;
+    }
+
+    .send-file {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .send-size { color: var(--ctp-overlay0); }
 
     .offline-note {
         margin: 8px 0 0;
