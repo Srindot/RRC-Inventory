@@ -207,8 +207,8 @@
         <p class="note">No printers are configured.</p>
     {:else}
         <div class="printer-grid">
-            {#each printers as printer (printer.id)}
-                <div class="printer-card {stateClass(printer)}">
+            {#each printers as printer, i (printer.id)}
+                <div class="printer-card {stateClass(printer)}" style="--i: {i}">
                     <div class="card-head">
                         <img src="/P1S.png" alt="" class="printer-icon" />
                         <div class="head-text">
@@ -336,8 +336,8 @@
 
 <style>
     :global(body) {
-        background: #1e1e2e;
-        color: #cdd6f4;
+        background: var(--ctp-base);
+        color: var(--ctp-text);
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         margin: 0;
         /* The home page locks the page height with overflow:hidden. That style
@@ -365,7 +365,7 @@
         align-items: center;
         gap: 12px;
         flex-wrap: wrap;
-        border-bottom: 1px solid #313244;
+        border-bottom: 1px solid var(--ctp-surface0);
         padding-bottom: 12px;
         margin-bottom: 16px;
     }
@@ -384,25 +384,25 @@
     h1 {
         margin: 0;
         font-size: clamp(1.2rem, 3vw, 1.6rem);
-        color: #fab387;
+        color: var(--ctp-peach);
     }
 
     .subtitle {
         margin: 2px 0 0;
         font-size: 0.85rem;
-        color: #a6adc8;
+        color: var(--ctp-subtext0);
     }
 
     .back-link {
-        color: #89b4fa;
+        color: var(--ctp-blue);
         text-decoration: none;
         font-size: 0.9rem;
     }
 
     .message.error {
         background: #3b2a2a;
-        color: #f38ba8;
-        border: 1px solid #f38ba8;
+        color: var(--ctp-red);
+        border: 1px solid var(--ctp-red);
         padding: 10px 14px;
         border-radius: 8px;
         margin-bottom: 14px;
@@ -411,7 +411,7 @@
 
     .note,
     .footnote {
-        color: #6c7086;
+        color: var(--ctp-overlay0);
         font-size: 0.85rem;
         text-align: center;
         margin-top: 16px;
@@ -424,18 +424,47 @@
     }
 
     .printer-card {
-        background: #11111b;
-        border: 1px solid #313244;
-        border-left: 4px solid #6c7086;
-        border-radius: 10px;
-        padding: 14px;
+        --accent: var(--ctp-overlay0);
+        position: relative;
+        background:
+            linear-gradient(180deg, rgba(205, 214, 244, 0.035), transparent 55%),
+            var(--ctp-mantle);
+        border: 1px solid var(--ctp-surface0);
+        border-left: 4px solid var(--accent);
+        border-radius: var(--radius-lg);
+        padding: 16px;
+        box-shadow: var(--shadow-sm);
+        transition:
+            transform var(--normal) var(--ease),
+            box-shadow var(--normal) var(--ease),
+            border-color var(--normal) var(--ease);
+        animation: rise var(--slow) var(--ease) both;
+        animation-delay: calc(var(--i, 0) * 70ms);
     }
 
-    .printer-card.running { border-left-color: #a6e3a1; }
-    .printer-card.failed { border-left-color: #f38ba8; }
-    .printer-card.paused { border-left-color: #f9e2af; }
-    .printer-card.finished { border-left-color: #89b4fa; }
-    .printer-card.offline { opacity: 0.6; }
+    .printer-card:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--shadow);
+    }
+
+    .printer-card.running { --accent: var(--ctp-green); }
+    .printer-card.failed { --accent: var(--ctp-red); }
+    .printer-card.paused { --accent: var(--ctp-yellow); }
+    .printer-card.finished { --accent: var(--ctp-blue); }
+    .printer-card.idle { --accent: var(--ctp-sapphire); }
+    .printer-card.offline { opacity: 0.62; }
+
+    /* A quiet heartbeat on the machines that are actually working */
+    .printer-card.running .availability.busy::before {
+        content: '';
+        display: inline-block;
+        width: 7px;
+        height: 7px;
+        margin-right: 6px;
+        border-radius: 50%;
+        background: var(--ctp-green);
+        animation: soft-pulse 1.8s ease-in-out infinite;
+    }
 
     .card-head {
         display: flex;
@@ -467,29 +496,30 @@
         font-weight: 600;
     }
 
-    .availability.free { color: #a6e3a1; }
-    .availability.busy { color: #fab387; }
+    .availability.free { color: var(--ctp-green); }
+    .availability.busy { color: var(--ctp-peach); }
 
     .state-badge {
         font-size: 0.75rem;
         padding: 3px 9px;
         border-radius: 999px;
-        background: #313244;
-        color: #cdd6f4;
+        background: var(--ctp-surface0);
+        color: var(--ctp-text);
         white-space: nowrap;
     }
 
-    .state-badge.running { background: #a6e3a1; color: #11111b; }
-    .state-badge.failed { background: #f38ba8; color: #11111b; }
-    .state-badge.paused { background: #f9e2af; color: #11111b; }
-    .state-badge.finished { background: #89b4fa; color: #11111b; }
+    .state-badge.running { background: var(--ctp-green); color: var(--ctp-crust); }
+    .state-badge.failed { background: var(--ctp-red); color: var(--ctp-crust); }
+    .state-badge.paused { background: var(--ctp-yellow); color: var(--ctp-crust); }
+    .state-badge.finished { background: var(--ctp-blue); color: var(--ctp-crust); }
 
     .camera {
         aspect-ratio: 16 / 9;
-        background: #181825;
-        border-radius: 8px;
+        background: var(--ctp-crust);
+        border: 1px solid var(--ctp-surface0);
+        border-radius: var(--radius);
         overflow: hidden;
-        margin-bottom: 10px;
+        margin-bottom: 12px;
     }
 
     .camera img {
@@ -497,6 +527,12 @@
         height: 100%;
         object-fit: cover;
         display: block;
+        animation: fade var(--normal) var(--ease);
+        transition: transform var(--slow) var(--ease);
+    }
+
+    .printer-card:hover .camera img {
+        transform: scale(1.03);
     }
 
     .camera-placeholder {
@@ -506,7 +542,7 @@
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        color: #45475a;
+        color: var(--ctp-surface1);
     }
 
     /* Scoped past the ".camera img" rule above, which would stretch it */
@@ -531,20 +567,44 @@
     .progress-bar {
         flex: 1;
         height: 8px;
-        background: #313244;
+        background: var(--ctp-surface0);
         border-radius: 999px;
         overflow: hidden;
     }
 
     .progress-fill {
+        position: relative;
         height: 100%;
-        background: linear-gradient(90deg, #a6e3a1, #94e2d5);
-        transition: width 0.4s ease;
+        border-radius: var(--radius-pill);
+        background: linear-gradient(90deg, var(--ctp-green), var(--ctp-teal));
+        transition: width var(--slow) var(--ease);
+        overflow: hidden;
+    }
+
+    /* Light sweeping across the bar, so it reads as live */
+    .progress-fill::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+            90deg,
+            transparent,
+            rgba(205, 214, 244, 0.45),
+            transparent
+        );
+        transform: translateX(-100%);
+        animation: sweep 2.2s var(--ease) infinite;
+    }
+
+    @keyframes sweep {
+        to {
+            transform: translateX(100%);
+        }
     }
 
     .progress-text {
         font-size: 0.8rem;
-        color: #a6adc8;
+        color: var(--ctp-subtext0);
         min-width: 34px;
         text-align: right;
     }
@@ -552,13 +612,13 @@
     .remaining {
         margin: 6px 0 0;
         font-size: 0.85rem;
-        color: #a6e3a1;
+        color: var(--ctp-green);
     }
 
     .file {
         margin: 8px 0 0;
         font-size: 0.8rem;
-        color: #a6adc8;
+        color: var(--ctp-subtext0);
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
@@ -570,17 +630,17 @@
         gap: 10px;
         margin-top: 10px;
         font-size: 0.78rem;
-        color: #a6adc8;
+        color: var(--ctp-subtext0);
     }
 
     .code-warning {
         background: #3b2f1e;
-        border: 1px solid #fab387;
+        border: 1px solid var(--ctp-peach);
         border-radius: 8px;
         padding: 10px 12px;
         margin-bottom: 10px;
         font-size: 0.82rem;
-        color: #f9e2af;
+        color: var(--ctp-yellow);
     }
 
     .code-warning p {
@@ -599,18 +659,18 @@
     .code-form input {
         flex: 1;
         min-width: 150px;
-        background: #1e1e2e;
-        border: 1px solid #45475a;
+        background: var(--ctp-base);
+        border: 1px solid var(--ctp-surface1);
         border-radius: 6px;
         padding: 8px;
-        color: #cdd6f4;
+        color: var(--ctp-text);
         font-size: 0.9rem;
     }
 
     .fix-code-btn,
     .save-code-btn {
-        background: #fab387;
-        color: #11111b;
+        background: var(--ctp-peach);
+        color: var(--ctp-crust);
         border: none;
         border-radius: 6px;
         padding: 8px 14px;
@@ -628,8 +688,8 @@
     }
 
     .cancel-code-btn {
-        background: #313244;
-        color: #cdd6f4;
+        background: var(--ctp-surface0);
+        color: var(--ctp-text);
         border: none;
         border-radius: 6px;
         padding: 8px 12px;
@@ -639,15 +699,15 @@
 
     .code-hint {
         font-size: 0.75rem;
-        color: #a6adc8;
+        color: var(--ctp-subtext0);
         margin-top: 6px;
     }
 
     .stop-btn {
         margin-top: 12px;
         width: 100%;
-        background: #f38ba8;
-        color: #11111b;
+        background: var(--ctp-red);
+        color: var(--ctp-crust);
         border: none;
         border-radius: 8px;
         padding: 10px;
@@ -657,7 +717,15 @@
         min-height: 44px;
     }
 
-    .stop-btn:hover { background: #eba0ac; }
+    .stop-btn {
+        transition:
+            background-color var(--fast) var(--ease),
+            transform var(--fast) var(--ease);
+    }
+
+    .stop-btn:hover { background: var(--ctp-maroon); }
+
+    .stop-btn:active { transform: scale(0.985); }
 
     .stop-btn:disabled {
         opacity: 0.6;
@@ -667,13 +735,13 @@
     .last-action {
         margin: 8px 0 0;
         font-size: 0.75rem;
-        color: #6c7086;
+        color: var(--ctp-overlay0);
     }
 
     .message.success {
         background: #2a3b2a;
-        color: #a6e3a1;
-        border: 1px solid #a6e3a1;
+        color: var(--ctp-green);
+        border: 1px solid var(--ctp-green);
         padding: 10px 14px;
         border-radius: 8px;
         margin-bottom: 14px;
@@ -683,6 +751,6 @@
     .offline-note {
         margin: 8px 0 0;
         font-size: 0.82rem;
-        color: #6c7086;
+        color: var(--ctp-overlay0);
     }
 </style>

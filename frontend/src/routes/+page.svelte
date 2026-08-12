@@ -430,25 +430,49 @@
         <div class="home-options">
             <h2>What would you like to do?</h2>
             <div class="option-buttons">
-                <button class="option-btn borrow-btn" on:click={goToBorrow}>
-                    📦 Borrow Item
-                    <p>Take equipment from the lab</p>
+                <button class="option-btn borrow-btn" style="--i: 0" on:click={goToBorrow}>
+                    <span class="tile-icon" aria-hidden="true">📦</span>
+                    <span class="tile-body">
+                        <span class="tile-title">Borrow Item</span>
+                        <span class="tile-sub">Take equipment from the lab</span>
+                    </span>
+                    <span class="tile-arrow" aria-hidden="true">→</span>
                 </button>
-                <button class="option-btn return-btn" on:click={goToReturn}>
-                    ↩️ Return Item
-                    <p>Return borrowed equipment</p>
+
+                <button class="option-btn return-btn" style="--i: 1" on:click={goToReturn}>
+                    <span class="tile-icon" aria-hidden="true">↩️</span>
+                    <span class="tile-body">
+                        <span class="tile-title">Return Item</span>
+                        <span class="tile-sub">Give equipment back</span>
+                    </span>
+                    <span class="tile-arrow" aria-hidden="true">→</span>
                 </button>
-                <a class="option-btn printers-btn" href="/printers">
-                    🖨️ 3D Printers
-                    <p>See which printers are free</p>
+
+                <a class="option-btn printers-btn" style="--i: 2" href="/printers">
+                    <img class="tile-image" src="/P1S.png" alt="" aria-hidden="true" />
+                    <span class="tile-body">
+                        <span class="tile-title">3D Printers</span>
+                        <span class="tile-sub">See which printers are free</span>
+                    </span>
+                    <span class="tile-arrow" aria-hidden="true">→</span>
                 </a>
-                <a class="option-btn mocap-btn" href="/mocap">
-                    🎥 Motion Capture Lab
-                    <p>Book a slot and see the calendar</p>
+
+                <a class="option-btn mocap-btn" style="--i: 3" href="/mocap">
+                    <span class="tile-icon" aria-hidden="true">🎥</span>
+                    <span class="tile-body">
+                        <span class="tile-title">Motion Capture Lab</span>
+                        <span class="tile-sub">Book a slot, see the calendar</span>
+                    </span>
+                    <span class="tile-arrow" aria-hidden="true">→</span>
                 </a>
-                <button class="option-btn printer-btn" on:click={goToPrinterGuide}>
-                    🖨️ Printer Guidelines
-                    <p>Bambu Labs printer instructions</p>
+
+                <button class="option-btn printer-btn" style="--i: 4" on:click={goToPrinterGuide}>
+                    <span class="tile-icon" aria-hidden="true">📖</span>
+                    <span class="tile-body">
+                        <span class="tile-title">Printer Guidelines</span>
+                        <span class="tile-sub">How to print, safely</span>
+                    </span>
+                    <span class="tile-arrow" aria-hidden="true">→</span>
                 </button>
             </div>
         </div>
@@ -1146,10 +1170,9 @@
 </footer>
 
 <style>
+    /* This page keeps its own inner scroll region, so the window itself does
+       not scroll. Other routes reset these - see printers/mocap. */
     :global(body) {
-        background: #1e1e2e;
-        color: #cdd6f4;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         margin: 0;
         padding: 0;
         height: 100vh;
@@ -1333,91 +1356,160 @@
 
     .option-buttons {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-        gap: clamp(15px, 3vw, 25px);
-        margin-top: clamp(20px, 4vw, 35px);
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: clamp(12px, 2vw, 18px);
+        margin-top: clamp(18px, 3vw, 28px);
         max-width: 1000px;
         margin-left: auto;
         margin-right: auto;
     }
 
+    /* Tiles are a row: icon, text, arrow. Reads well at any width. */
     .option-btn {
-        padding: clamp(20px, 4vw, 35px) clamp(15px, 3vw, 25px);
-        border: none;
-        border-radius: 12px;
-        font-size: clamp(1.1rem, 2.5vw, 1.4rem);
+        --tile-accent: var(--ctp-lavender);
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        width: 100%;
+        text-align: left;
+        text-decoration: none;
+        padding: clamp(14px, 2.4vw, 20px);
+        border: 1px solid var(--ctp-surface0);
+        border-radius: var(--radius-lg);
+        background:
+            linear-gradient(180deg, rgba(205, 214, 244, 0.04), transparent 60%),
+            var(--ctp-mantle);
+        color: var(--ctp-text);
+        font-family: inherit;
         cursor: pointer;
-        transition: all 0.3s ease;
-        text-align: center;
-        border: 2px solid transparent;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        overflow: hidden;
+        box-shadow: var(--shadow-sm);
+        transition:
+            transform var(--normal) var(--ease),
+            border-color var(--normal) var(--ease),
+            box-shadow var(--normal) var(--ease),
+            background-color var(--normal) var(--ease);
+        animation: rise var(--slow) var(--ease) both;
+        animation-delay: calc(var(--i, 0) * 60ms);
     }
 
-    .option-btn:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+    /* A colour wash that grows from the left edge on hover */
+    .option-btn::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+            90deg,
+            color-mix(in srgb, var(--tile-accent) 18%, transparent),
+            transparent 55%
+        );
+        opacity: 0;
+        transition: opacity var(--normal) var(--ease);
+        pointer-events: none;
     }
 
-    .borrow-btn {
-        background: linear-gradient(135deg, #f2cdcd, #eba0ac);
-        color: #11111b;
+    /* The accent stripe down the leading edge */
+    .option-btn::after {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 3px;
+        background: var(--tile-accent);
+        transform: scaleY(0.25);
+        transform-origin: center;
+        transition: transform var(--normal) var(--ease);
     }
 
-    .borrow-btn:hover {
-        background: linear-gradient(135deg, #eba0ac, #f5c2e7);
-        border-color: #f2cdcd;
+    .option-btn:hover,
+    .option-btn:focus-visible {
+        transform: translateY(-3px);
+        border-color: color-mix(in srgb, var(--tile-accent) 55%, var(--ctp-surface1));
+        box-shadow: var(--shadow);
     }
 
-    .return-btn {
-        background: linear-gradient(135deg, #74c7ec, #89b4fa);
-        color: #11111b;
+    .option-btn:hover::before,
+    .option-btn:focus-visible::before {
+        opacity: 1;
     }
 
-    .return-btn:hover {
-        background: linear-gradient(135deg, #89b4fa, #b4befe);
-        border-color: #74c7ec;
+    .option-btn:hover::after,
+    .option-btn:focus-visible::after {
+        transform: scaleY(1);
     }
 
-    .printers-btn {
-        background: linear-gradient(135deg, #fab387, #f9e2af);
-        color: #11111b;
-        display: block;
-        text-decoration: none;
+    .option-btn:active {
+        transform: translateY(-1px) scale(0.995);
     }
 
-    .printers-btn:hover {
-        background: linear-gradient(135deg, #f9e2af, #fab387);
-        border-color: #fab387;
+    .tile-icon {
+        font-size: 1.85rem;
+        line-height: 1;
+        flex-shrink: 0;
+        filter: drop-shadow(0 2px 6px rgba(17, 17, 27, 0.5));
+        transition: transform var(--normal) var(--ease);
     }
 
-    .mocap-btn {
-        background: linear-gradient(135deg, #cba6f7, #b4befe);
-        color: #11111b;
-        display: block;
-        text-decoration: none;
+    .tile-image {
+        width: 46px;
+        height: 46px;
+        object-fit: contain;
+        flex-shrink: 0;
+        transition: transform var(--normal) var(--ease);
     }
 
-    .mocap-btn:hover {
-        background: linear-gradient(135deg, #b4befe, #89b4fa);
-        border-color: #cba6f7;
+    .option-btn:hover .tile-icon,
+    .option-btn:hover .tile-image {
+        transform: scale(1.08) rotate(-2deg);
     }
 
-    .printer-btn {
-        background: linear-gradient(135deg, #a6e3a1, #94e2d5);
-        color: #11111b;
+    .tile-body {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        min-width: 0;
+        flex: 1;
     }
 
-    .printer-btn:hover {
-        background: linear-gradient(135deg, #94e2d5, #89dceb);
-        border-color: #a6e3a1;
+    .tile-title {
+        font-size: clamp(1rem, 2vw, 1.12rem);
+        font-weight: 650;
+        letter-spacing: 0.1px;
+        color: var(--tile-accent);
     }
 
-    .option-btn p {
-        font-size: clamp(0.9rem, 2vw, 1rem);
-        margin-top: 15px;
-        opacity: 0.9;
-        line-height: 1.4;
+    .tile-sub {
+        font-size: clamp(0.8rem, 1.6vw, 0.88rem);
+        color: var(--ctp-subtext0);
+        line-height: 1.35;
     }
+
+    .tile-arrow {
+        color: var(--ctp-overlay1);
+        font-size: 1.1rem;
+        flex-shrink: 0;
+        transform: translateX(-4px);
+        opacity: 0;
+        transition:
+            transform var(--normal) var(--ease),
+            opacity var(--normal) var(--ease),
+            color var(--normal) var(--ease);
+    }
+
+    .option-btn:hover .tile-arrow,
+    .option-btn:focus-visible .tile-arrow {
+        opacity: 1;
+        transform: none;
+        color: var(--tile-accent);
+    }
+
+    .borrow-btn { --tile-accent: var(--ctp-flamingo); }
+    .return-btn { --tile-accent: var(--ctp-sapphire); }
+    .printers-btn { --tile-accent: var(--ctp-peach); }
+    .mocap-btn { --tile-accent: var(--ctp-mauve); }
+    .printer-btn { --tile-accent: var(--ctp-green); }
 
     .label-row {
         display: flex;
