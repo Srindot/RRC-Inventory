@@ -21,6 +21,7 @@ Usage:
 
 import argparse
 import json
+from textwrap import indent
 import os
 import ssl
 import sys
@@ -83,6 +84,16 @@ def on_message(client, userdata, msg):
                         "subtask_name", "nozzle_temper", "bed_temper"):
                 if key in info:
                     print(f"       {key}: {info[key]}")
+
+            # The AMS sections, which is what the website's filament display
+            # reads. Absent here means the printer is not sending it.
+            if "ams" in info:
+                print("       ams section:")
+                print(indent(json.dumps(info["ams"], indent=2), "         "))
+            else:
+                print("       ams section: NOT PRESENT in this message")
+            if "vt_tray" in info:
+                print(f"       vt_tray: {json.dumps(info['vt_tray'])}")
         except Exception:  # noqa: BLE001
             print(f"     raw payload (first 200 bytes): {msg.payload[:200]!r}")
 
