@@ -1354,12 +1354,56 @@
         text-align: center;
     }
 
+    /* Once there is room, centre the choices in the space and let the tiles
+       breathe - on a desktop they were a thin strip with a void beneath. */
+    @media (min-width: 700px) and (min-height: 600px) {
+        /* Let the choices fill whatever is left under the header, rather than
+           100% of the parent - which starts below the header and overflowed,
+           pushing everything low. */
+        .main-content {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .home-options {
+            flex: 1;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .option-btn {
+            padding: 22px 24px;
+            gap: 18px;
+        }
+
+        .tile-icon {
+            font-size: 2.2rem;
+        }
+
+        .tile-image {
+            width: 58px;
+            height: 58px;
+        }
+
+        .tile-title {
+            font-size: 1.2rem;
+        }
+
+        .tile-sub {
+            font-size: 0.92rem;
+        }
+    }
+
     .option-buttons {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-        gap: clamp(12px, 2vw, 18px);
+        /* Deliberately capped: on a wide monitor four cramped columns look
+           worse than two generous ones. */
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+        gap: clamp(12px, 1.6vw, 20px);
         margin-top: clamp(18px, 3vw, 28px);
-        max-width: 1000px;
+        max-width: 780px;
         margin-left: auto;
         margin-right: auto;
     }
@@ -2084,7 +2128,7 @@
     /* Large screens */
     @media (min-width: 1200px) {
         .option-buttons {
-            max-width: 1200px;
+            max-width: 820px;
         }
 
         .items-grid {
@@ -2099,7 +2143,7 @@
         }
 
         .option-buttons {
-            max-width: 1400px;
+            max-width: 880px;
         }
     }
 

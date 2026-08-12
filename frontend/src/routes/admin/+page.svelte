@@ -28,6 +28,24 @@
 
     // Printer control, mirrored from the public page so admins never have to
     // leave the dashboard to stop a job or fix an access code.
+    // Booking calendar (same week view as the public page, with admin powers)
+    const DAY_START = 8;
+    const DAY_END = 22;
+    const HOURS = Array.from({ length: DAY_END - DAY_START }, (_, i) => DAY_START + i);
+    const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    let weekStart = startOfWeek(new Date());
+    let selectedBooking = null;
+    let showBookingForm = false;
+    let bookingForm = {
+        booked_by: '',
+        phone: '',
+        purpose: '',
+        date: toDateInput(new Date()),
+        start_hour: '10:00',
+        end_hour: '12:00'
+    };
+    let savingBooking = false;
+
     let printers = [];
     let printerTimer;
     let cameraTimer;
@@ -46,6 +64,11 @@
     // Search functionality for history
     let historySearchQuery = '';
     let filteredHistoryItems = [];
+
+    $: weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+    $: calendarColumns = weekDays.map((day) => ({ day, blocks: layOutDay(day, bookings) }));
+    $: weekLabel = `${weekDays[0].toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} - ` +
+                   `${weekDays[6].toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}`;
 
     // Simple reactive statement for history search
     $: updateFilteredHistoryItems(historyItems, historySearchQuery);
@@ -407,6 +430,132 @@
         } else {
             const error = await response.json();
             showMessage(error.error || 'Failed to delete booking', 'error');
+        }
+    }
+
+    // --- booking calendar --------------------------------------------------
+
+    function startOfWeek(date) {
+        const d = new Date(date);
+        d.setHours(0, 0, 0, 0);
+        d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); // Monday first
+        return d;
+    }
+
+    function addDays(date, days) {
+        const d = new Date(date);
+        d.setDate(d.getDate() + days);
+        return d;
+    }
+
+    function toDateInput(date) {
+        const d = new Date(date);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+
+    function sameDay(a, b) {
+        return a.getFullYear() === b.getFullYear() &&
+               a.getMonth() === b.getMonth() &&
+               a.getDate() === b.getDate();
+    }
+
+    function isToday(date) {
+        return sameDay(date, new Date());
+    }
+
+    function bookingTime(value) {
+        return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    // One column per day with its bookings already positioned
+    function layOutDay(day, allBookings) {
+        return allBookings
+            .map((b) => ({ ...b, start: new Date(b.start_time), end: new Date(b.end_time) }))
+            .filter((b) => sameDay(b.start, day))
+            .map((b) => {
+                const from = Math.max(b.start.getHours() + b.start.getMinutes() / 60, DAY_START);
+                const to = Math.min(b.end.getHours() + b.end.getMinutes() / 60, DAY_END);
+                return {
+                    ...b,
+                    top: ((from - DAY_START) / (DAY_END - DAY_START)) * 100,
+                    height: (Math.max(to - from, 0.5) / (DAY_END - DAY_START)) * 100
+                };
+            });
+    }
+
+    function goToWeek(offset) {
+        weekStart = addDays(weekStart, offset * 7);
+    }
+
+    function openSlot(day, hour) {
+        bookingForm = {
+            ...bookingForm,
+            date: toDateInput(day),
+            start_hour: `${String(hour).padStart(2, '0')}:00`,
+            end_hour: `${String(Math.min(hour + 2, DAY_END)).padStart(2, '0')}:00`
+        };
+        showBookingForm = true;
+        selectedBooking = null;
+    }
+
+    // Admins can book on someone's behalf - people ask in person constantly
+    async function createBooking() {
+        const start = new Date(`${bookingForm.date}T${bookingForm.start_hour}`);
+        const end = new Date(`${bookingForm.date}T${bookingForm.end_hour}`);
+
+        if (!(end > start)) {
+            showMessage('End time must be after the start time', 'error');
+            return;
+        }
+
+        savingBooking = true;
+        try {
+            const response = await apiFetch('/api/bookings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    booked_by: bookingForm.booked_by,
+                    phone: bookingForm.phone,
+                    purpose: bookingForm.purpose,
+                    start_time: start.toISOString(),
+                    end_time: end.toISOString()
+                })
+            });
+            if (!response) return;
+
+            const result = await response.json();
+            if (response.ok) {
+                showMessage('Booking added', 'success');
+                showBookingForm = false;
+                bookingForm = { ...bookingForm, purpose: '' };
+                weekStart = startOfWeek(start);
+                loadBookings();
+            } else {
+                showMessage(result.error || 'Could not add the booking', 'error');
+            }
+        } finally {
+            savingBooking = false;
+        }
+    }
+
+    // Admins delete without needing the booker's phone number
+    async function deleteSelectedBooking() {
+        if (!selectedBooking) return;
+        const booking = selectedBooking;
+        if (!confirm(`Delete ${booking.booked_by}'s booking?\n\n${booking.purpose}`)) {
+            return;
+        }
+
+        const response = await apiFetch(`/api/admin/bookings/${booking.ID}`, { method: 'DELETE' });
+        if (!response) return;
+
+        if (response.ok) {
+            showMessage('Booking deleted', 'success');
+            selectedBooking = null;
+            loadBookings();
+        } else {
+            const error = await response.json();
+            showMessage(error.error || 'Could not delete the booking', 'error');
         }
     }
 
@@ -1139,6 +1288,121 @@
                         Bookings from the last week onwards.
                         <a class="calendar-link" href="/mocap" target="_blank" rel="noopener">Open calendar view →</a>
                     </p>
+                    <div class="cal-toolbar">
+                        <div class="cal-nav">
+                            <button on:click={() => goToWeek(-1)} aria-label="Previous week">◀</button>
+                            <button class="cal-today" on:click={() => (weekStart = startOfWeek(new Date()))}>Today</button>
+                            <button on:click={() => goToWeek(1)} aria-label="Next week">▶</button>
+                            <span class="cal-label">{weekLabel}</span>
+                        </div>
+                        <button class="cal-add" on:click={() => { showBookingForm = !showBookingForm; selectedBooking = null; }}>
+                            {showBookingForm ? '✕ Close' : '➕ Add Booking'}
+                        </button>
+                    </div>
+
+                    {#if showBookingForm}
+                        <form class="cal-form" on:submit|preventDefault={createBooking}>
+                            <p class="cal-form-hint">Booking on someone's behalf - click a slot in the calendar to prefill the time.</p>
+                            <div class="cal-form-row">
+                                <label>
+                                    Name
+                                    <input type="text" bind:value={bookingForm.booked_by} required placeholder="Who is it for" />
+                                </label>
+                                <label>
+                                    Phone
+                                    <input type="tel" bind:value={bookingForm.phone} required placeholder="Their number" />
+                                </label>
+                            </div>
+                            <div class="cal-form-row">
+                                <label>
+                                    Date
+                                    <input type="date" bind:value={bookingForm.date} required />
+                                </label>
+                                <label>
+                                    From
+                                    <input type="time" bind:value={bookingForm.start_hour} required step="900" />
+                                </label>
+                                <label>
+                                    To
+                                    <input type="time" bind:value={bookingForm.end_hour} required step="900" />
+                                </label>
+                            </div>
+                            <label class="cal-form-full">
+                                Purpose
+                                <input type="text" bind:value={bookingForm.purpose} required placeholder="What for" />
+                            </label>
+                            <button type="submit" class="cal-save" disabled={savingBooking}>
+                                {savingBooking ? 'Adding...' : 'Add Booking'}
+                            </button>
+                        </form>
+                    {/if}
+
+                    {#if selectedBooking}
+                        <div class="cal-details">
+                            <h3>{selectedBooking.purpose}</h3>
+                            <p><strong>Booked by:</strong> {selectedBooking.booked_by}</p>
+                            <p><strong>When:</strong>
+                                {new Date(selectedBooking.start_time).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'short' })},
+                                {bookingTime(selectedBooking.start_time)} - {bookingTime(selectedBooking.end_time)}</p>
+                            <p><strong>Contact:</strong>
+                                <span
+                                    class="clickable-phone"
+                                    role="button"
+                                    tabindex="0"
+                                    on:click={() => copyToClipboard(selectedBooking.phone)}
+                                    on:keydown={(e) => e.key === 'Enter' && copyToClipboard(selectedBooking.phone)}
+                                >{selectedBooking.phone}</span>
+                            </p>
+                            <div class="cal-details-actions">
+                                <button class="cal-delete" on:click={deleteSelectedBooking}>🗑️ Delete Booking</button>
+                                <button class="cal-close" on:click={() => (selectedBooking = null)}>Close</button>
+                            </div>
+                        </div>
+                    {/if}
+
+                    <div class="cal">
+                        <div class="cal-head">
+                            <div class="cal-gutter"></div>
+                            {#each weekDays as day}
+                                <div class="cal-day-head" class:today={isToday(day)}>
+                                    <span class="cal-day-name">{DAY_NAMES[day.getDay()]}</span>
+                                    <span class="cal-day-num">{day.getDate()}</span>
+                                </div>
+                            {/each}
+                        </div>
+                        <div class="cal-body">
+                            <div class="cal-gutter">
+                                {#each HOURS as hour}
+                                    <div class="cal-time">{String(hour).padStart(2, '0')}:00</div>
+                                {/each}
+                            </div>
+                            {#each calendarColumns as column}
+                                <div class="cal-col" class:today={isToday(column.day)}>
+                                    {#each HOURS as hour}
+                                        <button
+                                            class="cal-cell"
+                                            on:click={() => openSlot(column.day, hour)}
+                                            aria-label="Add a booking at {String(hour).padStart(2, '0')}:00 on {column.day.toDateString()}"
+                                        ></button>
+                                    {/each}
+                                    {#each column.blocks as block (block.ID)}
+                                        <button
+                                            class="cal-block"
+                                            style="top: {block.top}%; height: {block.height}%;"
+                                            on:click={() => { selectedBooking = block; showBookingForm = false; }}
+                                        >
+                                            <span class="cal-block-time">{bookingTime(block.start)} - {bookingTime(block.end)}</span>
+                                            <span class="cal-block-name">{block.booked_by}</span>
+                                            <span class="cal-block-purpose">{block.purpose}</span>
+                                        </button>
+                                    {/each}
+                                </div>
+                            {/each}
+                        </div>
+                    </div>
+
+                    <h3 class="cal-list-title">All bookings</h3>
+
                     {#if loading}
                         <p>Loading bookings...</p>
                     {:else if bookings.length === 0}
@@ -2451,6 +2715,290 @@
         color: var(--ctp-blue);
         text-decoration: none;
         margin-left: 6px;
+    }
+
+    /* --- booking calendar --- */
+    .cal-toolbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin: 14px 0;
+    }
+
+    .cal-nav {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .cal-nav button {
+        background: var(--ctp-surface0);
+        color: var(--ctp-text);
+        border: none;
+        border-radius: var(--radius-sm);
+        padding: 8px 12px;
+        min-height: 40px;
+        cursor: pointer;
+        font-family: inherit;
+        transition: background-color var(--fast) var(--ease);
+    }
+
+    .cal-nav button:hover { background: var(--ctp-surface1); }
+
+    .cal-label {
+        color: var(--ctp-subtext0);
+        font-size: 0.9rem;
+        margin-left: 6px;
+    }
+
+    .cal-add,
+    .cal-save {
+        background: linear-gradient(135deg, var(--ctp-mauve), var(--ctp-lavender));
+        color: var(--ctp-crust);
+        border: none;
+        border-radius: var(--radius-sm);
+        padding: 10px 18px;
+        min-height: 42px;
+        font-weight: 650;
+        font-family: inherit;
+        cursor: pointer;
+        box-shadow: var(--shadow-sm);
+        transition: transform var(--fast) var(--ease), filter var(--fast) var(--ease);
+    }
+
+    .cal-add:hover,
+    .cal-save:hover { transform: translateY(-1px); filter: brightness(1.06); }
+    .cal-save:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    .cal-form,
+    .cal-details {
+        background: var(--ctp-mantle);
+        border: 1px solid var(--ctp-surface0);
+        border-radius: var(--radius-lg);
+        padding: 16px;
+        margin-bottom: 14px;
+        box-shadow: var(--shadow-sm);
+        animation: rise var(--normal) var(--ease) both;
+    }
+
+    .cal-form-hint {
+        margin: 0 0 10px;
+        font-size: 0.82rem;
+        color: var(--ctp-subtext0);
+    }
+
+    .cal-form-row {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+
+    .cal-form label,
+    .cal-form-full {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        font-size: 0.82rem;
+        color: var(--ctp-subtext0);
+        flex: 1;
+        min-width: 140px;
+        margin-bottom: 10px;
+    }
+
+    .cal-form input {
+        background: var(--ctp-base);
+        border: 1px solid var(--ctp-surface1);
+        border-radius: 6px;
+        padding: 9px;
+        color: var(--ctp-text);
+        font-size: 0.95rem;
+        font-family: inherit;
+    }
+
+    .cal-details h3 {
+        margin: 0 0 8px;
+        color: var(--ctp-mauve);
+    }
+
+    .cal-details p {
+        margin: 4px 0;
+        font-size: 0.9rem;
+    }
+
+    .cal-details-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: 12px;
+    }
+
+    .cal-delete {
+        background: var(--ctp-red);
+        color: var(--ctp-crust);
+        border: none;
+        border-radius: 6px;
+        padding: 9px 14px;
+        min-height: 40px;
+        font-weight: 650;
+        cursor: pointer;
+        font-family: inherit;
+    }
+
+    .cal-delete:hover { background: var(--ctp-maroon); }
+
+    .cal-close {
+        background: var(--ctp-surface0);
+        color: var(--ctp-text);
+        border: none;
+        border-radius: 6px;
+        padding: 9px 14px;
+        min-height: 40px;
+        cursor: pointer;
+        font-family: inherit;
+    }
+
+    .cal {
+        border: 1px solid var(--ctp-surface0);
+        border-radius: var(--radius-lg);
+        overflow: hidden;
+        background: var(--ctp-mantle);
+        box-shadow: var(--shadow-sm);
+        margin-bottom: 18px;
+    }
+
+    .cal-head,
+    .cal-body {
+        display: grid;
+        grid-template-columns: 56px repeat(7, minmax(80px, 1fr));
+    }
+
+    .cal-head { border-bottom: 1px solid var(--ctp-surface0); }
+
+    .cal-day-head {
+        text-align: center;
+        padding: 8px 2px;
+        border-left: 1px solid var(--ctp-surface0);
+        display: flex;
+        flex-direction: column;
+    }
+
+    .cal-day-name {
+        font-size: 0.72rem;
+        color: var(--ctp-subtext0);
+        text-transform: uppercase;
+    }
+
+    .cal-day-num {
+        font-size: 1.05rem;
+        font-weight: 650;
+    }
+
+    .cal-day-head.today .cal-day-num {
+        color: var(--ctp-crust);
+        background: var(--ctp-mauve);
+        border-radius: 50%;
+        width: 28px;
+        height: 28px;
+        line-height: 28px;
+        margin: 2px auto 0;
+    }
+
+    .cal-body {
+        position: relative;
+        max-height: 58vh;
+        overflow-y: auto;
+    }
+
+    .cal-gutter { border-right: 1px solid var(--ctp-surface0); }
+
+    .cal-time {
+        height: 46px;
+        font-size: 0.68rem;
+        color: var(--ctp-overlay0);
+        text-align: right;
+        padding-right: 6px;
+        transform: translateY(-6px);
+    }
+
+    .cal-col {
+        position: relative;
+        border-left: 1px solid var(--ctp-surface0);
+    }
+
+    .cal-col.today { background: rgba(203, 166, 247, 0.06); }
+
+    .cal-cell {
+        display: block;
+        width: 100%;
+        height: 46px;
+        border: none;
+        border-bottom: 1px solid var(--ctp-surface0);
+        background: transparent;
+        cursor: pointer;
+        padding: 0;
+        transition: background-color var(--fast) var(--ease);
+    }
+
+    .cal-cell:hover {
+        background: rgba(203, 166, 247, 0.16);
+        box-shadow: inset 0 0 0 1px rgba(203, 166, 247, 0.35);
+    }
+
+    .cal-block {
+        position: absolute;
+        left: 3px;
+        right: 3px;
+        background: linear-gradient(135deg, var(--ctp-mauve), var(--ctp-lavender));
+        color: var(--ctp-crust);
+        border: none;
+        border-radius: 6px;
+        padding: 4px 6px;
+        text-align: left;
+        overflow: hidden;
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        font-size: 0.68rem;
+        line-height: 1.15;
+        font-family: inherit;
+        box-shadow: var(--shadow-sm);
+        transition: transform var(--fast) var(--ease), filter var(--fast) var(--ease);
+    }
+
+    .cal-block:hover {
+        filter: brightness(1.08);
+        transform: translateY(-1px);
+        z-index: 2;
+    }
+
+    .cal-block-time { font-weight: 700; }
+    .cal-block-name { font-weight: 650; }
+
+    .cal-block-purpose {
+        opacity: 0.85;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .cal-list-title {
+        font-size: 1rem;
+        color: var(--ctp-subtext0);
+        margin: 18px 0 10px;
+    }
+
+    @media (max-width: 700px) {
+        .cal { overflow-x: auto; }
+
+        .cal-head,
+        .cal-body {
+            grid-template-columns: 42px repeat(7, minmax(72px, 1fr));
+        }
+
+        .cal-block-purpose { display: none; }
     }
 
     .bookings-list {
