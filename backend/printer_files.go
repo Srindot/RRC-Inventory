@@ -28,7 +28,18 @@ const (
 	// A sliced plate is usually a few MB; 3mf files with embedded previews can
 	// reach tens. This is a sanity limit, not a target.
 	maxUploadBytes = 200 * 1024 * 1024
-	ftpTimeout     = 60 * time.Second
+	// Time allowed to reach the printer. This caps connecting only - the FTP
+	// library applies it to the dial, not to the transfer.
+	ftpTimeout = 60 * time.Second
+	// Time allowed for the printer to acknowledge a finished transfer.
+	//
+	// The control connection sits idle while the file goes over the data
+	// connection, and the printer drops it if that takes long enough. The
+	// client then waits for a "closing data connection" reply that is never
+	// coming, with no deadline of its own: the upload reaches 100%, and hangs
+	// there. Small files beat the idle timeout and work, which is why this
+	// looks intermittent.
+	ftpShutTimeout = 30 * time.Second
 )
 
 // allowedUploadSuffixes are the only things worth putting on a printer, longest
@@ -126,6 +137,9 @@ func (p *printer) ftpAddress() string {
 func (p *printer) connectFTP() (*ftp.ServerConn, error) {
 	options := []ftp.DialOption{
 		ftp.DialWithTimeout(ftpTimeout),
+		// Without this an upload that outlives the printer's control-connection
+		// idle timeout blocks forever instead of failing.
+		ftp.DialWithShutTimeout(ftpShutTimeout),
 	}
 
 	// Printers use implicit TLS with a self-signed certificate. Tests run
@@ -162,6 +176,18 @@ func (c *countingReader) Read(p []byte) (int, error) {
 	return read, err
 }
 
+// removePartial deletes a half-written upload, best effort. It opens its own
+// connection because the one that failed cannot be trusted to carry a command.
+func (p *printer) removePartial(name string) {
+	conn, err := p.connectFTP()
+	if err != nil {
+		return
+	}
+	defer conn.Quit()
+
+	_ = conn.Delete(name)
+}
+
 // UploadFile sends one sliced file to the printer's storage.
 //
 // A dropped session part way through leaves a short file under the right name,
@@ -176,6 +202,12 @@ func (p *printer) UploadFile(name string, contents io.Reader) error {
 
 	counted := &countingReader{inner: contents}
 	if err := conn.Stor(name, counted); err != nil {
+		// A transfer that died part way still leaves what arrived on the card,
+		// under the name somebody is about to pick on the printer's screen. It
+		// shows "--" for time and filament because the metadata never made it,
+		// and the job exits the moment it starts. Clear it out on a fresh
+		// connection, since this one is in an unknown state.
+		p.removePartial(name)
 		return fmt.Errorf("the printer refused the file: %w", err)
 	}
 
