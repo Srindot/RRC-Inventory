@@ -135,11 +135,16 @@ func (p *printer) ftpAddress() string {
 
 // connectFTP opens an authenticated FTP session with the printer.
 func (p *printer) connectFTP() (*ftp.ServerConn, error) {
+	shut := p.ftpShut
+	if shut == 0 {
+		shut = ftpShutTimeout
+	}
+
 	options := []ftp.DialOption{
 		ftp.DialWithTimeout(ftpTimeout),
 		// Without this an upload that outlives the printer's control-connection
 		// idle timeout blocks forever instead of failing.
-		ftp.DialWithShutTimeout(ftpShutTimeout),
+		ftp.DialWithShutTimeout(shut),
 	}
 
 	// Printers use implicit TLS with a self-signed certificate. Tests run

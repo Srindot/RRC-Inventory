@@ -242,6 +242,9 @@ type printer struct {
 	// FTP settings, also overridable for tests
 	ftpPort      int
 	ftpPlaintext bool
+	// Zero means ftpShutTimeout. Tests shorten it so the hang case does not
+	// take half a minute to prove.
+	ftpShut time.Duration
 
 	// Commands carry an incrementing sequence id
 	sequence int
