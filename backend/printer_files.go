@@ -31,15 +31,37 @@ const (
 	ftpTimeout     = 60 * time.Second
 )
 
-// allowedUploadExtensions are the only things worth putting on a printer.
-var allowedUploadExtensions = map[string]bool{
-	".3mf":   true,
-	".gcode": true,
+// allowedUploadSuffixes are the only things worth putting on a printer, longest
+// first so ".gcode.3mf" is recognised before the ".3mf" it ends with.
+//
+// ".gcode.3mf" is one suffix, not an extension sitting on a base name ending in
+// ".gcode". A sliced plate whose name loses the ".gcode" part still uploads and
+// still lists on the printer's screen, but the screen browser reads it as an
+// unsliced project and selecting it does nothing.
+var allowedUploadSuffixes = []string{".gcode.3mf", ".3mf", ".gcode"}
+
+// maxUploadNameLength is what the printer's own file browser copes with.
+const maxUploadNameLength = 120
+
+// splitUploadSuffix separates a file name into its base and one of the allowed
+// suffixes, matching the suffix case-insensitively but returning it as written.
+func splitUploadSuffix(name string) (base, suffix string, ok bool) {
+	lower := strings.ToLower(name)
+	for _, candidate := range allowedUploadSuffixes {
+		if strings.HasSuffix(lower, candidate) {
+			cut := len(name) - len(candidate)
+			return name[:cut], name[cut:], true
+		}
+	}
+	return "", "", false
 }
 
 // sanitizeUploadName reduces whatever the browser sent to a plain, safe file
 // name. Directory components are stripped, so an upload cannot escape the
 // printer's upload directory.
+//
+// Only the base name is cleaned or shortened; the suffix is carried through
+// untouched.
 func sanitizeUploadName(raw string) (string, error) {
 	name := strings.TrimSpace(raw)
 
@@ -51,19 +73,14 @@ func sanitizeUploadName(raw string) (string, error) {
 		return "", fmt.Errorf("that file name is not usable")
 	}
 
-	// Keep the extension, check it against the allow list
-	lower := strings.ToLower(name)
-	ext := path.Ext(lower)
-	if strings.HasSuffix(lower, ".gcode.3mf") {
-		ext = ".3mf"
-	}
-	if !allowedUploadExtensions[ext] {
+	base, suffix, ok := splitUploadSuffix(name)
+	if !ok {
 		return "", fmt.Errorf("only .3mf and .gcode files can be sent to a printer")
 	}
 
 	// Anything outside this set risks confusing the printer's own file browser
 	var cleaned strings.Builder
-	for _, r := range name {
+	for _, r := range base {
 		switch {
 		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
 			cleaned.WriteRune(r)
@@ -74,23 +91,25 @@ func sanitizeUploadName(raw string) (string, error) {
 		}
 	}
 
-	result := strings.Trim(cleaned.String(), "._-")
+	base = strings.Trim(cleaned.String(), "._-")
 
-	// Re-check the result rather than the input: stripping characters can
-	// leave something like ".3mf" as "3mf", which has no extension at all.
-	finalExt := strings.ToLower(path.Ext(result))
-	base := strings.Trim(strings.TrimSuffix(result, path.Ext(result)), "._-")
-	if result == "" || base == "" || !allowedUploadExtensions[finalExt] {
-		return "", fmt.Errorf("that file name is not usable")
+	// A name written entirely in characters we strip - any non-Latin script -
+	// would otherwise clean down to nothing and leave every such upload sharing
+	// the bare suffix as its name, each one overwriting the last.
+	if base == "" {
+		return "", fmt.Errorf(
+			"that file name is not usable - please rename it using letters and numbers")
 	}
 
-	if len(result) > 120 {
-		// Trim the middle, never the extension
-		keep := path.Ext(result)
-		result = result[:120-len(keep)] + keep
+	// Shorten the base, never the suffix
+	if len(base)+len(suffix) > maxUploadNameLength {
+		base = strings.Trim(base[:maxUploadNameLength-len(suffix)], "._-")
+		if base == "" {
+			return "", fmt.Errorf("that file name is not usable")
+		}
 	}
 
-	return result, nil
+	return base + suffix, nil
 }
 
 // ftpAddress is the printer's FTPS endpoint. The port is a field so tests can
@@ -130,7 +149,24 @@ func (p *printer) connectFTP() (*ftp.ServerConn, error) {
 	return conn, nil
 }
 
+// countingReader records how many bytes were handed to the FTP session, so the
+// upload can be checked against what actually landed on the printer.
+type countingReader struct {
+	inner io.Reader
+	n     int64
+}
+
+func (c *countingReader) Read(p []byte) (int, error) {
+	read, err := c.inner.Read(p)
+	c.n += int64(read)
+	return read, err
+}
+
 // UploadFile sends one sliced file to the printer's storage.
+//
+// A dropped session part way through leaves a short file under the right name,
+// which the printer lists happily and then chokes on, so the size is checked
+// afterwards and a partial file is removed rather than left to be printed.
 func (p *printer) UploadFile(name string, contents io.Reader) error {
 	conn, err := p.connectFTP()
 	if err != nil {
@@ -138,9 +174,30 @@ func (p *printer) UploadFile(name string, contents io.Reader) error {
 	}
 	defer conn.Quit()
 
-	if err := conn.Stor(name, contents); err != nil {
+	counted := &countingReader{inner: contents}
+	if err := conn.Stor(name, counted); err != nil {
 		return fmt.Errorf("the printer refused the file: %w", err)
 	}
+
+	// SIZE is optional in FTP. If the printer will not answer we simply have no
+	// way to check, which is no worse than before.
+	stored, err := conn.FileSize(name)
+	if err != nil {
+		return nil
+	}
+
+	if stored != counted.n {
+		if delErr := conn.Delete(name); delErr != nil {
+			return fmt.Errorf(
+				"only %d of %d bytes reached the printer, and the partial file "+
+					"could not be removed - delete %s from the printer before printing: %w",
+				stored, counted.n, name, delErr)
+		}
+		return fmt.Errorf(
+			"only %d of %d bytes reached the printer, so the file was removed - please send it again",
+			stored, counted.n)
+	}
+
 	return nil
 }
 
@@ -207,6 +264,27 @@ func (p *printer) DeleteFile(name string) error {
 	return nil
 }
 
+// isPrinting reports whether the printer is part way through name, so an upload
+// does not rewrite a file the printer is still reading. The printer reports the
+// job by subtask name, which usually carries no extension, so the comparison is
+// made on the base name.
+func (p *printer) isPrinting(name string) bool {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	if p.state != "RUNNING" && p.state != "PAUSE" {
+		return false
+	}
+
+	current, _, _ := splitUploadSuffix(p.fileName)
+	if current == "" {
+		current = p.fileName
+	}
+	candidate, _, _ := splitUploadSuffix(name)
+
+	return current != "" && strings.EqualFold(current, candidate)
+}
+
 // --- manager wrappers ---------------------------------------------------
 
 func (m *PrinterManager) UploadFile(id, name string, contents io.Reader) (string, error) {
@@ -218,6 +296,11 @@ func (m *PrinterManager) UploadFile(id, name string, contents io.Reader) (string
 	safe, err := sanitizeUploadName(name)
 	if err != nil {
 		return "", err
+	}
+
+	if p.isPrinting(safe) {
+		return "", fmt.Errorf(
+			"%s is printing right now - rename your file or wait for it to finish", safe)
 	}
 
 	if err := p.UploadFile(safe, contents); err != nil {

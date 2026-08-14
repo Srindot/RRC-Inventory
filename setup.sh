@@ -102,8 +102,11 @@ mkdir -p backend/uploads 2>/dev/null || true
 # Set proper permissions
 print_status "Setting up permissions..."
 chmod +x start.sh 2>/dev/null || true
+chmod +x restart.sh 2>/dev/null || true
 chmod +x stop.sh 2>/dev/null || true
 chmod +x logs.sh 2>/dev/null || true
+chmod +x status.sh 2>/dev/null || true
+chmod +x compose-cmd.sh 2>/dev/null || true
 
 print_success "Setup completed successfully!"
 
@@ -111,10 +114,20 @@ print_success "Setup completed successfully!"
 print_status "Setting up auto-start on system reboot..."
 SERVICE_FILE="/etc/systemd/system/rrc-inventory.service"
 
-if sudo cp rrc-inventory.service "$SERVICE_FILE" 2>/dev/null; then
+# The unit in the repo carries the paths of whoever committed it. Rewrite them
+# for this machine, or the service silently fails to start on every boot for
+# anyone who cloned somewhere else or under a different account.
+REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+if sed -e "s|^WorkingDirectory=.*|WorkingDirectory=${REPO_DIR}|" \
+       -e "s|^ExecStart=.*|ExecStart=${REPO_DIR}/start.sh|" \
+       -e "s|^ExecStop=.*|ExecStop=${REPO_DIR}/stop.sh|" \
+       -e "s|^User=.*|User=${USER}|" \
+       -e "s|^Group=.*|Group=$(id -gn)|" \
+       rrc-inventory.service | sudo tee "$SERVICE_FILE" > /dev/null 2>&1; then
     sudo systemctl daemon-reload
     sudo systemctl enable rrc-inventory.service
-    print_success "Auto-start configured! RRC Inventory will start automatically on system reboot."
+    print_success "Auto-start configured for ${REPO_DIR} as ${USER}."
 else
     print_warning "Could not set up auto-start. You can set it up manually later with:"
     print_warning "  sudo cp rrc-inventory.service /etc/systemd/system/"

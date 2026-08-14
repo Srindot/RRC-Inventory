@@ -1,35 +1,11 @@
 #!/bin/bash
 
 # Status Script for RRC Inventory Management System
+
+source "$(dirname "$0")/compose-cmd.sh"
+
 echo "📊 RRC Inventory System Status"
 echo "================================"
-
-# Check if docker-compose is available (support both v1 and v2)
-if docker compose version &> /dev/null; then
-    COMPOSE_CMD="docker compose"
-elif docker-compose --version &> /dev/null; then
-    COMPOSE_CMD="docker-compose"
-else
-    echo "❌ docker compose is not installed."
-    exit 1
-fi
-
-# Check Docker permissions and set command accordingly
-if ! docker ps &> /dev/null; then
-    if groups $USER | grep -q docker; then
-        echo "⚠️  Using sudo for Docker commands (session needs refresh)"
-        if [[ "$COMPOSE_CMD" == "docker compose" ]]; then
-            DOCKER_COMPOSE_CMD="sudo docker compose"
-        else
-            DOCKER_COMPOSE_CMD="sudo docker-compose"
-        fi
-    else
-        echo "❌ Docker permission error. Please run: sudo usermod -aG docker \$USER"
-        exit 1
-    fi
-else
-    DOCKER_COMPOSE_CMD="$COMPOSE_CMD"
-fi
 
 # Check service status
 echo "🐳 Docker Containers:"
@@ -69,7 +45,8 @@ echo "   ℹ️  mDNS auto-update service removed from instructions"
 
 echo ""
 echo "🔧 Management Commands:"
-echo "   ./start.sh    - Start all services"
-echo "   ./stop.sh     - Stop all services"
+echo "   ./start.sh    - Start all services (--build after a git pull)"
+echo "   ./restart.sh  - Restart all services (--build after a git pull)"
+echo "   ./stop.sh     - Stop all services and disable autostart"
 echo "   ./logs.sh     - View system logs"
 echo "   ./status.sh   - Show this status"

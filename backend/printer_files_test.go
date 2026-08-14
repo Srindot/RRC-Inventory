@@ -72,6 +72,39 @@ func TestSanitizeUploadNameLength(t *testing.T) {
 	}
 }
 
+// A long sliced plate must keep the whole ".gcode.3mf" suffix. Shortening into
+// the suffix leaves something like "....g.3mf", which the printer's screen
+// browser lists as an unsliced project and refuses to start.
+func TestSanitizeUploadNameLongSlicedPlateKeepsGcodeSuffix(t *testing.T) {
+	long := strings.Repeat("a", 300) + ".gcode.3mf"
+	got, err := sanitizeUploadName(long)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) > 120 {
+		t.Errorf("name not shortened: %d chars", len(got))
+	}
+	if !strings.HasSuffix(got, ".gcode.3mf") {
+		t.Errorf("shortening ate the .gcode suffix, got %q", got)
+	}
+}
+
+// A name with nothing left after cleaning must be refused rather than collapse
+// to the bare suffix, where every such upload would overwrite the last one.
+func TestSanitizeUploadNameRejectsEmptyBase(t *testing.T) {
+	for _, input := range []string{
+		"पुर्जा.gcode.3mf",
+		"零件.3mf",
+		"___.gcode.3mf",
+		".gcode.3mf",
+	} {
+		got, err := sanitizeUploadName(input)
+		if err == nil {
+			t.Errorf("sanitizeUploadName(%q) should have failed, got %q", input, got)
+		}
+	}
+}
+
 // Exercises the real FTP command sequence (login, STOR, LIST, DELE) against a
 // live server. Skipped unless RRC_FTP_TEST_ADDR points at one.
 func TestUploadListDeleteAgainstFTPServer(t *testing.T) {
