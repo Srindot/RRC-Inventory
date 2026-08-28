@@ -595,8 +595,9 @@
     let startFile = '';
     let startBed = 'textured_plate';
     let startPlate = 1;
-    let startUseAMS = true;
-    let startSlot = 0;
+    // 'external', or the flat AMS tray number as a string. Kept as one value so
+    // the picker is a plain bind:value with no event plumbing.
+    let startSpool = 'external';
     let startLevel = true;
     let startFlow = false;
     let startTimelapse = false;
@@ -631,8 +632,7 @@
         // Default to the first loaded AMS slot, or the external spool when
         // there is no AMS fitted
         const slots = amsChoices(printer);
-        startUseAMS = slots.length > 0;
-        startSlot = slots.length > 0 ? slots[0].index : 0;
+        startSpool = slots.length > 0 ? String(slots[0].index) : 'external';
 
         loadPrinterFiles(printer);
     }
@@ -667,11 +667,15 @@
         }
 
         const bed = BED_TYPES.find((b) => b.value === startBed)?.label || startBed;
-        const spool = startUseAMS
-            ? (amsChoices(printer).find((c) => c.index === startSlot)
-                ? `AMS ${amsChoices(printer).find((c) => c.index === startSlot).unit} slot ${amsChoices(printer).find((c) => c.index === startSlot).slot}`
-                : `AMS tray ${startSlot}`)
-            : 'the external spool';
+        const useAMS = startSpool !== 'external';
+        const slot = useAMS ? Number(startSpool) : 0;
+        const chosen = amsChoices(printer).find((c) => c.index === slot);
+        let spool = 'the external spool';
+        if (useAMS) {
+            spool = chosen
+                ? `AMS ${chosen.unit} slot ${chosen.slot} — ${chosen.label}`
+                : `AMS tray ${slot}`;
+        }
 
         const ok = confirm(
             `Start ${startFile} on ${printer.name}?\n\n` +
@@ -690,8 +694,8 @@
                     file_name: startFile,
                     plate: Number(startPlate) || 1,
                     bed_type: startBed,
-                    use_ams: startUseAMS,
-                    ams_slot: Number(startSlot) || 0,
+                    use_ams: useAMS,
+                    ams_slot: slot,
                     bed_levelling: startLevel,
                     flow_cali: startFlow,
                     timelapse: startTimelapse
@@ -1740,17 +1744,7 @@
 
                                                 <label class="pa-start-row">
                                                     <span>Filament</span>
-                                                    <select
-                                                        value={startUseAMS ? String(startSlot) : 'external'}
-                                                        on:change={(e) => {
-                                                            if (e.target.value === 'external') {
-                                                                startUseAMS = false;
-                                                            } else {
-                                                                startUseAMS = true;
-                                                                startSlot = Number(e.target.value);
-                                                            }
-                                                        }}
-                                                    >
+                                                    <select bind:value={startSpool}>
                                                         {#each amsChoices(printer) as choice}
                                                             <option value={String(choice.index)}>
                                                                 AMS {choice.unit} slot {choice.slot} — {choice.label}{choice.remain >= 0 ? ` (${choice.remain}%)` : ''}
@@ -1760,15 +1754,15 @@
                                                     </select>
                                                 </label>
 
-                                                {#if startUseAMS}
+                                                {#if startSpool !== 'external'}
                                                     <div class="pa-swatches">
                                                         {#each amsChoices(printer) as choice}
                                                             <button
                                                                 class="pa-swatch"
-                                                                class:picked={startSlot === choice.index}
+                                                                class:picked={startSpool === String(choice.index)}
                                                                 style="background: {choice.color || '#666'}"
                                                                 title="AMS {choice.unit} slot {choice.slot} — {choice.label}"
-                                                                on:click={() => (startSlot = choice.index)}
+                                                                on:click={() => (startSpool = String(choice.index))}
                                                             >{choice.slot}</button>
                                                         {/each}
                                                     </div>
