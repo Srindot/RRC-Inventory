@@ -275,10 +275,12 @@
 
                     {#if printer.access_code_problem}
                         <div class="code-warning">
-                            <strong>⚠️ Access code changed</strong>
+                            <strong>⚠️ Camera not connecting</strong>
                             <p>
-                                {printer.name} is refusing our access code. This happens when
-                                LAN mode is toggled on the printer, which regenerates the code.
+                                {printer.name} accepted the connection and then hung up. Usually
+                                the access code changed - toggling LAN mode on the printer
+                                regenerates it. It also happens when the camera is already open
+                                in Bambu Studio or Handy, since the P1S allows only one viewer.
                             </p>
                             {#if adminToken}
                                 {#if editingCode === printer.id}

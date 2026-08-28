@@ -675,12 +675,46 @@ func cameraAuthPacket(username, accessCode string) []byte {
 	return packet
 }
 
+// runCamera keeps the camera stream alive, backing off when it cannot.
+//
+// A printer that is switched off, or one holding its single camera slot open
+// for somebody else, fails every retry. At a fixed ten seconds that is 8,640
+// identical lines a day per printer, which buries everything else in the log.
+// So: back off to a minute, and only print a repeat of the same failure when
+// it has been quiet for a while.
 func (p *printer) runCamera() {
+	const (
+		minCameraRetry = 10 * time.Second
+		maxCameraRetry = 60 * time.Second
+		repeatAfter    = 10 * time.Minute
+	)
+
+	retry := minCameraRetry
+	var lastError string
+	var lastLogged time.Time
+
 	for {
-		if err := p.streamCamera(); err != nil {
-			log.Printf("printer %s: camera: %v", p.cfg.Name, err)
+		err := p.streamCamera()
+		if err == nil {
+			retry = minCameraRetry
+			lastError = ""
+			continue
 		}
-		time.Sleep(10 * time.Second)
+
+		message := err.Error()
+		if message != lastError || time.Since(lastLogged) > repeatAfter {
+			log.Printf("printer %s: camera: %v", p.cfg.Name, err)
+			lastError = message
+			lastLogged = time.Now()
+		}
+
+		time.Sleep(retry)
+		if retry < maxCameraRetry {
+			retry *= 2
+			if retry > maxCameraRetry {
+				retry = maxCameraRetry
+			}
+		}
 	}
 }
 
@@ -721,13 +755,18 @@ func (p *printer) streamCamera() error {
 		// declares. Reading exact lengths avoids the frame corruption you get
 		// from trying to detect boundaries in a byte stream.
 		if _, err := io.ReadFull(conn, header); err != nil {
-			// The printer accepts the connection and then hangs up when the
-			// access code is wrong. Nothing received at all points at the
-			// credentials rather than the network.
+			// The printer accepts the connection and then hangs up without
+			// sending anything. A wrong access code does this - but so does a
+			// P1S whose single camera slot is already taken by Bambu Studio,
+			// Handy, or another viewer. The two are indistinguishable from
+			// here, so say both rather than sending someone off to re-enter a
+			// code that was never wrong.
 			if framesThisConnection == 0 &&
 				(errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)) {
 				p.setAuthFailed(true)
-				return fmt.Errorf("printer rejected our access code")
+				return fmt.Errorf(
+					"printer accepted the connection then hung up - wrong access code, " +
+						"or the camera is already in use by Bambu Studio or Handy")
 			}
 			return fmt.Errorf("read header: %w", err)
 		}
