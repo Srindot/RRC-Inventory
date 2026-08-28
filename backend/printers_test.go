@@ -571,3 +571,19 @@ func TestHMSFormatting(t *testing.T) {
 		}
 	}
 }
+
+// The wiki address is easy to get subtly wrong: the page sits under the
+// troubleshooting tree rather than /en/hms/, and the address uses the bare code
+// without the "HMS_" prefix Bambu writes in the UI. Both mistakes 404.
+func TestHMSWikiURL(t *testing.T) {
+	code := formatHMS(0x03000100, 0x00010003)
+	if code != "HMS_0300_0100_0001_0003" {
+		t.Fatalf("formatHMS = %q", code)
+	}
+
+	got := hmsWikiURL(code)
+	want := "https://wiki.bambulab.com/en/x1/troubleshooting/hmscode/0300_0100_0001_0003"
+	if got != want {
+		t.Errorf("hmsWikiURL(%q)\n got %q\nwant %q", code, got, want)
+	}
+}

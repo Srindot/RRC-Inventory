@@ -197,6 +197,21 @@ func formatHMS(attr, code uint32) string {
 		attr>>16, attr&0xFFFF, code>>16, code&0xFFFF)
 }
 
+// hmsWikiURL points at Bambu's page for one code.
+//
+// Two things the obvious guess gets wrong. The page lives under the
+// troubleshooting tree, not /en/hms/, and the address carries the bare code
+// without the "HMS_" prefix that Bambu uses when it writes the code out. Both
+// together sent people to a 404.
+//
+// The path is the X1 one because that is the tree Bambu keeps populated and
+// search-indexed; the codes themselves are shared across models, so a P1S
+// fault resolves there too.
+func hmsWikiURL(code string) string {
+	return "https://wiki.bambulab.com/en/x1/troubleshooting/hmscode/" +
+		strings.TrimPrefix(code, "HMS_")
+}
+
 // printer holds the live state of one machine.
 type printer struct {
 	cfg PrinterConfig
@@ -588,8 +603,7 @@ func (p *printer) applyReport(payload []byte) {
 			faults = append(faults, HMSFault{
 				Code:     code,
 				Severity: hmsSeverity(fault.Code),
-				// Bambu documents each code on its wiki under this path
-				URL: "https://wiki.bambulab.com/en/hms/" + code,
+				URL:      hmsWikiURL(code),
 			})
 		}
 		p.faults = faults
