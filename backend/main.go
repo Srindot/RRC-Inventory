@@ -1028,6 +1028,27 @@ func main() {
 				c.JSON(200, gin.H{"message": "Stop command sent to the printer"})
 			})
 
+			// Start a print from a file already on the printer.
+			//
+			// This is the one command that makes a machine move on its own, so
+			// it is admin-only and the printer must be idle. Whoever presses it
+			// is responsible for the plate being clear - the camera on this page
+			// is there to be looked at first.
+			admin.POST("/printers/:id/print", func(c *gin.Context) {
+				var req StartRequest
+				if err := c.ShouldBindJSON(&req); err != nil {
+					c.JSON(400, gin.H{"error": "Invalid print request"})
+					return
+				}
+
+				adminName := currentAdmin(c).Name
+				if err := printers.StartPrint(c.Param("id"), req, adminName); err != nil {
+					c.JSON(400, gin.H{"error": err.Error()})
+					return
+				}
+				c.JSON(200, gin.H{"message": "Print started"})
+			})
+
 			// Tidy up old plates - deleting other people's files is an
 			// admin job, uploading is not.
 			admin.DELETE("/printers/:id/files/:name", func(c *gin.Context) {
