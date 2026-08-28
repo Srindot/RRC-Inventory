@@ -828,6 +828,41 @@
         }
     }
 
+    let clearing = '';
+
+    // Clearing the whole card, for when a term's worth of plates has filled it
+    async function clearPrinterFiles(printer) {
+        const files = uploadFiles[printer.id] || [];
+        if (files.length === 0) {
+            showMessage('There are no files to clear', 'error');
+            return;
+        }
+
+        const ok = confirm(
+            `Delete all ${files.length} file(s) from ${printer.name}?\n\n` +
+            `This cannot be undone. Anything anyone has sent and not yet ` +
+            `printed will be gone.`
+        );
+        if (!ok) return;
+
+        clearing = printer.id;
+        try {
+            const response = await apiFetch(
+                `/api/admin/printers/${printer.id}/files`, { method: 'DELETE' });
+            if (!response) return;
+
+            const result = await response.json();
+            if (response.ok) {
+                showMessage(result.message, 'success');
+            } else {
+                showMessage(result.error || 'Could not clear the printer', 'error');
+            }
+            loadPrinterFiles(printer);
+        } finally {
+            clearing = '';
+        }
+    }
+
     async function deletePrinterFile(printer, name) {
         if (!confirm(`Delete ${name} from ${printer.name}?`)) return;
 
@@ -1707,6 +1742,16 @@
                                                                 </li>
                                                             {/each}
                                                         </ul>
+
+                                                        <button
+                                                            class="pa-clear-all"
+                                                            on:click={() => clearPrinterFiles(printer)}
+                                                            disabled={clearing === printer.id}
+                                                        >
+                                                            {clearing === printer.id
+                                                                ? 'Clearing...'
+                                                                : `🧹 Clear all ${uploadFiles[printer.id].length} file(s)`}
+                                                        </button>
                                                     {/if}
                                                 {/if}
                                             </div>
@@ -3350,6 +3395,24 @@
     }
 
     .pa-light,
+    .pa-clear-all {
+        width: 100%;
+        margin-top: 10px;
+        padding: 9px;
+        border-radius: 8px;
+        border: 1px solid var(--ctp-red);
+        background: transparent;
+        color: var(--ctp-red);
+        font-size: 0.8rem;
+        font-weight: 600;
+        cursor: pointer;
+        min-height: 40px;
+    }
+
+    .pa-clear-all:hover { background: var(--ctp-red); color: var(--ctp-crust); }
+
+    .pa-clear-all:disabled { opacity: 0.5; cursor: not-allowed; }
+
     .pa-start-toggle {
         width: 100%;
         margin-top: 8px;

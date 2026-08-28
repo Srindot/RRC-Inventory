@@ -301,15 +301,7 @@ func (p *printer) ListFiles() ([]PrinterFile, error) {
 
 	files := make([]PrinterFile, 0, len(entries))
 	for _, entry := range entries {
-		if entry.Type != ftp.EntryTypeFile {
-			continue
-		}
-		lower := strings.ToLower(entry.Name)
-		if !strings.HasSuffix(lower, ".3mf") && !strings.HasSuffix(lower, ".gcode") {
-			continue
-		}
-		// macOS sidecar files ("._something.3mf") are not printable
-		if strings.HasPrefix(entry.Name, "._") || strings.HasPrefix(entry.Name, ".") {
+		if !printableEntry(entry) {
 			continue
 		}
 		files = append(files, PrinterFile{
@@ -322,10 +314,48 @@ func (p *printer) ListFiles() ([]PrinterFile, error) {
 	return files, nil
 }
 
+// printableEntry reports whether a listing entry is a file somebody could
+// actually print, and therefore one this code will show or delete.
+func printableEntry(entry *ftp.Entry) bool {
+	if entry.Type != ftp.EntryTypeFile {
+		return false
+	}
+	lower := strings.ToLower(entry.Name)
+	if !strings.HasSuffix(lower, ".3mf") && !strings.HasSuffix(lower, ".gcode") {
+		return false
+	}
+	// macOS sidecar files ("._something.3mf") are not printable
+	return !strings.HasPrefix(entry.Name, ".")
+}
+
+// plainFileName rejects anything that could step outside the printer's upload
+// directory. Names are otherwise taken as they come, because they have to match
+// what is on the printer rather than what this code would have named it.
+func plainFileName(name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if name == "" || name == "." || name == ".." {
+		return "", fmt.Errorf("that file name is not usable")
+	}
+	if strings.ContainsAny(name, `/\`) {
+		return "", fmt.Errorf("that file name is not usable")
+	}
+	return name, nil
+}
+
 // DeleteFile removes a file from the printer, so the storage does not fill up
 // with everyone's old plates.
+//
+// The name is matched against the printer's own listing rather than pushed
+// through sanitizeUploadName. Sanitising is right for an upload, where this
+// code chooses the name, and wrong here: a file put on the card by Bambu Studio
+// keeps its spaces and brackets, and cleaning "Benchy (1).gcode.3mf" into
+// "Benchy_1.gcode.3mf" sent DELE after a file that was never there. The listing
+// showed it, the delete reported success, and the file stayed put.
+//
+// Matching a real entry is also what keeps this safe: nothing outside the
+// directory can ever be named.
 func (p *printer) DeleteFile(name string) error {
-	safe, err := sanitizeUploadName(name)
+	wanted, err := plainFileName(name)
 	if err != nil {
 		return err
 	}
@@ -336,10 +366,21 @@ func (p *printer) DeleteFile(name string) error {
 	}
 	defer conn.Quit()
 
-	if err := conn.Delete(safe); err != nil {
-		return fmt.Errorf("could not delete %s: %w", safe, err)
+	entries, err := conn.List("")
+	if err != nil {
+		return fmt.Errorf("could not list the printer's files: %w", err)
 	}
-	return nil
+
+	for _, entry := range entries {
+		if printableEntry(entry) && entry.Name == wanted {
+			if err := conn.Delete(entry.Name); err != nil {
+				return fmt.Errorf("could not delete %s: %w", entry.Name, err)
+			}
+			return nil
+		}
+	}
+
+	return fmt.Errorf("%s is not on the printer", wanted)
 }
 
 // isPrinting reports whether the printer is part way through name, so an upload
@@ -400,5 +441,74 @@ func (m *PrinterManager) DeleteFile(id, name string) error {
 	if !ok {
 		return fmt.Errorf("unknown printer")
 	}
+
+	if p.isPrinting(name) {
+		return fmt.Errorf("%s is printing right now - stop the job first", name)
+	}
 	return p.DeleteFile(name)
+}
+
+// DeleteAllFiles clears every printable file off the printer's storage and
+// reports how many went.
+//
+// Deleting one file at a time is fine for tidying; this is for a card that has
+// filled up with a term's worth of everyone's plates. It refuses outright while
+// a job is running rather than trying to skip the file in use: the printer is
+// reading from the card, and the name it reports for the job does not always
+// match the file exactly enough to be sure which one to spare.
+func (p *printer) DeleteAllFiles() (int, error) {
+	p.mu.RLock()
+	state := strings.ToUpper(p.state)
+	p.mu.RUnlock()
+
+	if state == "RUNNING" || state == "PAUSE" || state == "PREPARE" {
+		return 0, fmt.Errorf(
+			"the printer is busy (state: %s) - wait for the job to finish", state)
+	}
+
+	conn, err := p.connectFTP()
+	if err != nil {
+		return 0, err
+	}
+	defer conn.Quit()
+
+	entries, err := conn.List("")
+	if err != nil {
+		return 0, fmt.Errorf("could not list the printer's files: %w", err)
+	}
+
+	deleted := 0
+	var failed []string
+	for _, entry := range entries {
+		if !printableEntry(entry) {
+			continue
+		}
+		if err := conn.Delete(entry.Name); err != nil {
+			failed = append(failed, entry.Name)
+			continue
+		}
+		deleted++
+	}
+
+	// Report what did go, even when something would not: a partial clear is
+	// still worth knowing about, and the caller can show both numbers.
+	if len(failed) > 0 {
+		return deleted, fmt.Errorf("deleted %d, but could not delete: %s",
+			deleted, strings.Join(failed, ", "))
+	}
+	return deleted, nil
+}
+
+// DeleteAllFiles clears one printer's storage.
+func (m *PrinterManager) DeleteAllFiles(id, adminName string) (int, error) {
+	p, ok := m.byID[id]
+	if !ok {
+		return 0, fmt.Errorf("unknown printer")
+	}
+
+	deleted, err := p.DeleteAllFiles()
+	if deleted > 0 {
+		log.Printf("printer %s: %d files cleared by %s", p.cfg.Name, deleted, adminName)
+	}
+	return deleted, err
 }

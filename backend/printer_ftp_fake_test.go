@@ -74,6 +74,20 @@ func (f *fakePrinterFTP) stored(name string) ([]byte, bool) {
 	return b, ok
 }
 
+// put places a file directly, standing in for one left by Bambu Studio or by
+// an SD card written on somebody's laptop - names this code never chose.
+func (f *fakePrinterFTP) put(name string, body []byte) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.files[name] = body
+}
+
+func (f *fakePrinterFTP) count() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.files)
+}
+
 func (f *fakePrinterFTP) deleted() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()

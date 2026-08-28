@@ -1059,6 +1059,20 @@ func main() {
 				c.JSON(200, gin.H{"message": "File deleted from the printer"})
 			})
 
+			// Clear the whole card, for when a term's worth of plates has
+			// filled it up. Refuses while a job is running.
+			admin.DELETE("/printers/:id/files", func(c *gin.Context) {
+				deleted, err := printers.DeleteAllFiles(c.Param("id"), currentAdmin(c).Name)
+				if err != nil {
+					c.JSON(400, gin.H{"error": err.Error(), "deleted": deleted})
+					return
+				}
+				c.JSON(200, gin.H{
+					"message": fmt.Sprintf("Cleared %d file(s) from the printer", deleted),
+					"deleted": deleted,
+				})
+			})
+
 			// Pause the current job - reversible, unlike stop
 			admin.POST("/printers/:id/pause", func(c *gin.Context) {
 				if err := printers.Pause(c.Param("id"), currentAdmin(c).Name); err != nil {
