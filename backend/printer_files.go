@@ -16,6 +16,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
+	"log"
 	"path"
 	"strings"
 	"time"
@@ -198,7 +199,11 @@ func (p *printer) removePartial(name string) {
 // A dropped session part way through leaves a short file under the right name,
 // which the printer lists happily and then chokes on, so the size is checked
 // afterwards and a partial file is removed rather than left to be printed.
-func (p *printer) UploadFile(name string, contents io.Reader) error {
+// expected is the size the browser said the file is. Checking against that
+// rather than against what we managed to read catches a body that was cut short
+// on its way to us: counting our own reads only ever proves we copied whatever
+// we got, however little that was.
+func (p *printer) UploadFile(name string, contents io.Reader, expected int64) error {
 	conn, err := p.connectFTP()
 	if err != nil {
 		return err
@@ -216,26 +221,62 @@ func (p *printer) UploadFile(name string, contents io.Reader) error {
 		return fmt.Errorf("the printer refused the file: %w", err)
 	}
 
-	// SIZE is optional in FTP. If the printer will not answer we simply have no
-	// way to check, which is no worse than before.
-	stored, err := conn.FileSize(name)
-	if err != nil {
+	if expected > 0 && counted.n != expected {
+		p.removePartial(name)
+		return fmt.Errorf(
+			"only %d of %d bytes arrived from the browser, so the file was removed - please send it again",
+			counted.n, expected)
+	}
+
+	stored, ok := p.storedSize(conn, name)
+	if !ok {
+		// Neither SIZE nor the listing would tell us. Better to say so than to
+		// let a half file sit on the card looking finished.
+		log.Printf("printer %s: could not verify the size of %s after upload",
+			p.cfg.Name, name)
 		return nil
 	}
 
-	if stored != counted.n {
+	want := counted.n
+	if expected > 0 {
+		want = expected
+	}
+
+	if stored != want {
 		if delErr := conn.Delete(name); delErr != nil {
 			return fmt.Errorf(
 				"only %d of %d bytes reached the printer, and the partial file "+
 					"could not be removed - delete %s from the printer before printing: %w",
-				stored, counted.n, name, delErr)
+				stored, want, name, delErr)
 		}
 		return fmt.Errorf(
 			"only %d of %d bytes reached the printer, so the file was removed - please send it again",
-			stored, counted.n)
+			stored, want)
 	}
 
 	return nil
+}
+
+// storedSize asks the printer how big a file ended up.
+//
+// SIZE is optional in FTP and not every printer answers it, so fall back to the
+// listing, which this code already relies on elsewhere and which carries the
+// size too. Giving up on SIZE alone left the check silently doing nothing.
+func (p *printer) storedSize(conn *ftp.ServerConn, name string) (int64, bool) {
+	if size, err := conn.FileSize(name); err == nil {
+		return size, true
+	}
+
+	entries, err := conn.List("")
+	if err != nil {
+		return 0, false
+	}
+	for _, entry := range entries {
+		if entry.Type == ftp.EntryTypeFile && entry.Name == name {
+			return int64(entry.Size), true
+		}
+	}
+	return 0, false
 }
 
 // PrinterFile is one file already on a printer.
@@ -324,7 +365,7 @@ func (p *printer) isPrinting(name string) bool {
 
 // --- manager wrappers ---------------------------------------------------
 
-func (m *PrinterManager) UploadFile(id, name string, contents io.Reader) (string, error) {
+func (m *PrinterManager) UploadFile(id, name string, contents io.Reader, expected int64) (string, error) {
 	p, ok := m.byID[id]
 	if !ok {
 		return "", fmt.Errorf("unknown printer")
@@ -340,7 +381,7 @@ func (m *PrinterManager) UploadFile(id, name string, contents io.Reader) (string
 			"%s is printing right now - rename your file or wait for it to finish", safe)
 	}
 
-	if err := p.UploadFile(safe, contents); err != nil {
+	if err := p.UploadFile(safe, contents, expected); err != nil {
 		return "", err
 	}
 	return safe, nil

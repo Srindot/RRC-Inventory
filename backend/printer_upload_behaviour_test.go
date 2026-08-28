@@ -34,7 +34,7 @@ func TestUploadDeliversIdenticalBytes(t *testing.T) {
 		contents[i] = byte(i % 256)
 	}
 
-	if err := p.UploadFile("plate.gcode.3mf", bytes.NewReader(contents)); err != nil {
+	if err := p.UploadFile("plate.gcode.3mf", bytes.NewReader(contents), 0); err != nil {
 		t.Fatalf("upload failed: %v", err)
 	}
 
@@ -57,7 +57,7 @@ func TestUploadFailsInsteadOfHangingWhenPrinterGoesQuiet(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- p.UploadFile("plate.gcode.3mf", bytes.NewReader([]byte("sliced plate")))
+		done <- p.UploadFile("plate.gcode.3mf", bytes.NewReader([]byte("sliced plate")), 0)
 	}()
 
 	select {
@@ -80,7 +80,7 @@ func TestUploadRemovesPartialFile(t *testing.T) {
 	p := fakePrinter(fake)
 
 	contents := bytes.Repeat([]byte("x"), 8192)
-	err := p.UploadFile("plate.gcode.3mf", bytes.NewReader(contents))
+	err := p.UploadFile("plate.gcode.3mf", bytes.NewReader(contents), 0)
 	if err == nil {
 		t.Fatal("a truncated upload must report an error")
 	}
@@ -106,7 +106,7 @@ func TestUploadDetectsSizeMismatch(t *testing.T) {
 	p := fakePrinter(fake)
 
 	contents := bytes.Repeat([]byte("y"), 4096)
-	err := p.UploadFile("plate.gcode.3mf", bytes.NewReader(contents))
+	err := p.UploadFile("plate.gcode.3mf", bytes.NewReader(contents), 0)
 	if err == nil {
 		t.Fatal("expected a size mismatch to be reported")
 	}
@@ -126,7 +126,7 @@ func TestManagerUploadEndToEnd(t *testing.T) {
 
 	long := strings.Repeat("Quadcopter_Arm_", 12) + "final.gcode.3mf"
 	name, err := m.UploadFile("p1", "C:\\Users\\srinath\\Desktop\\"+long,
-		bytes.NewReader([]byte("sliced plate")))
+		bytes.NewReader([]byte("sliced plate")), 0)
 	if err != nil {
 		t.Fatalf("upload failed: %v", err)
 	}
@@ -167,18 +167,61 @@ func TestUploadRefusedWhilePrinting(t *testing.T) {
 
 	m := &PrinterManager{byID: map[string]*printer{"p1": p}}
 
-	if _, err := m.UploadFile("p1", "bracket.gcode.3mf", bytes.NewReader([]byte("x"))); err == nil {
+	if _, err := m.UploadFile("p1", "bracket.gcode.3mf", bytes.NewReader([]byte("x")), 0); err == nil {
 		t.Error("overwriting the running job was allowed")
 	}
 
 	// A different file is fine
-	if _, err := m.UploadFile("p1", "other.gcode.3mf", bytes.NewReader([]byte("x"))); err != nil {
+	if _, err := m.UploadFile("p1", "other.gcode.3mf", bytes.NewReader([]byte("x")), 0); err != nil {
 		t.Errorf("unrelated upload blocked: %v", err)
 	}
 
 	// And so is the same name once the printer is idle
 	p.state = "IDLE"
-	if _, err := m.UploadFile("p1", "bracket.gcode.3mf", bytes.NewReader([]byte("x"))); err != nil {
+	if _, err := m.UploadFile("p1", "bracket.gcode.3mf", bytes.NewReader([]byte("x")), 0); err != nil {
 		t.Errorf("upload blocked on an idle printer: %v", err)
+	}
+}
+
+// The half-printed job: a body that was cut short on its way to the server.
+// Everything downstream is consistent - we copy what we got, the printer stores
+// exactly that, and the sizes agree - so only the size the browser declared
+// catches it. Left unchecked the printer runs the gcode it has and reports the
+// job finished, part way up the model.
+func TestUploadRejectsShortBrowserBody(t *testing.T) {
+	fake := newFakePrinterFTP(t)
+	p := fakePrinter(fake)
+
+	full := int64(8192)
+	arrived := bytes.Repeat([]byte("z"), 4096) // the browser leg died at half
+
+	err := p.UploadFile("plate.gcode.3mf", bytes.NewReader(arrived), full)
+	if err == nil {
+		t.Fatal("a half sized body was accepted")
+	}
+	if !strings.Contains(err.Error(), "from the browser") {
+		t.Errorf("error should name the browser leg, got: %v", err)
+	}
+
+	if _, ok := fake.stored("plate.gcode.3mf"); ok {
+		t.Error("half file left on the printer, ready to print half a model")
+	}
+}
+
+// A printer that refuses SIZE must not silently skip verification: the listing
+// carries the size too, and that is what the fallback uses.
+func TestUploadVerifiesViaListingWhenSizeUnsupported(t *testing.T) {
+	fake := newFakePrinterFTP(t)
+	fake.refuseSize = true
+	fake.truncateAfter = 100
+
+	p := fakePrinter(fake)
+
+	err := p.UploadFile("plate.gcode.3mf", bytes.NewReader(bytes.Repeat([]byte("q"), 4096)), 0)
+	if err == nil {
+		t.Fatal("short file accepted because SIZE was unsupported")
+	}
+	if !strings.Contains(err.Error(), "reached the printer") {
+		t.Errorf("unexpected error: %v", err)
 	}
 }

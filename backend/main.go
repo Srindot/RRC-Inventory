@@ -631,7 +631,7 @@ func main() {
 			}
 			defer opened.Close()
 
-			name, err := printers.UploadFile(c.Param("id"), file.Filename, opened)
+			name, err := printers.UploadFile(c.Param("id"), file.Filename, opened, file.Size)
 			if err != nil {
 				c.JSON(400, gin.H{"error": err.Error()})
 				return

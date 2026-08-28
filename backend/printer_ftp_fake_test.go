@@ -30,6 +30,10 @@ type fakePrinterFTP struct {
 	// rest, reproducing a transfer that dies part way.
 	truncateAfter int
 
+	// refuseSize makes SIZE fail, as a printer that does not implement the
+	// optional command would.
+	refuseSize bool
+
 	mu      sync.Mutex
 	files   map[string][]byte
 	deletes []string
@@ -123,6 +127,10 @@ func (f *fakePrinterFTP) serve(conn net.Conn) {
 			f.handleList(dataListener, write)
 			dataListener = nil
 		case "SIZE":
+			if f.refuseSize {
+				write("502 not implemented")
+				continue
+			}
 			f.mu.Lock()
 			body, ok := f.files[arg]
 			f.mu.Unlock()
