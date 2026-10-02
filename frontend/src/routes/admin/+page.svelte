@@ -587,6 +587,135 @@
     let uploading = '';
     let uploadProgress = 0;
 
+    // Starting a print. This is the only thing here that makes a machine move
+    // on its own, so the form asks for the plate explicitly rather than
+    // guessing, and the confirm step spells out what is about to happen.
+    let startFor = '';
+    let starting = '';
+    let startFile = '';
+    let startBed = 'textured_plate';
+    let startPlate = 1;
+    // 'external', or the flat AMS tray number as a string. Kept as one value so
+    // the picker is a plain bind:value with no event plumbing.
+    let startSpool = 'external';
+    let startLevel = true;
+    let startFlow = false;
+    let startTimelapse = false;
+
+    const BED_TYPES = [
+        { value: 'textured_plate', label: 'Textured PEI' },
+        { value: 'cool_plate', label: 'Cool Plate' },
+        { value: 'high_temp_plate', label: 'High Temp' },
+        { value: 'eng_plate', label: 'Engineering' },
+        { value: 'supertack_plate', label: 'Cool Plate SuperTack' }
+    ];
+
+    // The firmware wants one flat, zero based tray number across every unit:
+    // the first AMS holds 0-3, the second 4-7. The UI counts slots from 1
+    // because that is what is printed on the machine.
+    function globalSlot(unit, slot) {
+        return unit.id * 4 + (slot.slot - 1);
+    }
+
+    function toggleStart(printer) {
+        if (startFor === printer.id) {
+            startFor = '';
+            return;
+        }
+        startFor = printer.id;
+        startFile = '';
+        startPlate = 1;
+        startLevel = true;
+        startFlow = false;
+        startTimelapse = false;
+
+        // Default to the first loaded AMS slot, or the external spool when
+        // there is no AMS fitted
+        const slots = amsChoices(printer);
+        startSpool = slots.length > 0 ? String(slots[0].index) : 'external';
+
+        loadPrinterFiles(printer);
+    }
+
+    // Every loaded AMS tray, flattened for the picker
+    function amsChoices(printer) {
+        const choices = [];
+        for (const unit of printer.ams || []) {
+            for (const slot of unit.slots || []) {
+                if (slot.empty) continue;
+                choices.push({
+                    index: globalSlot(unit, slot),
+                    label: `${slot.material || 'Unknown'}`,
+                    color: slot.color,
+                    unit: unit.id + 1,
+                    slot: slot.slot,
+                    remain: slot.remain
+                });
+            }
+        }
+        return choices;
+    }
+
+    function canStart(printer) {
+        return printer.online && ['IDLE', 'FINISH', 'FAILED'].includes(printer.state);
+    }
+
+    async function startPrint(printer) {
+        if (!startFile) {
+            showMessage('Choose a file to print', 'error');
+            return;
+        }
+
+        const bed = BED_TYPES.find((b) => b.value === startBed)?.label || startBed;
+        const useAMS = startSpool !== 'external';
+        const slot = useAMS ? Number(startSpool) : 0;
+        const chosen = amsChoices(printer).find((c) => c.index === slot);
+        let spool = 'the external spool';
+        if (useAMS) {
+            spool = chosen
+                ? `AMS ${chosen.unit} slot ${chosen.slot} — ${chosen.label}`
+                : `AMS tray ${slot}`;
+        }
+
+        const ok = confirm(
+            `Start ${startFile} on ${printer.name}?\n\n` +
+            `Plate: ${bed}\nFilament: ${spool}\n\n` +
+            `The printer will start moving. Check the plate is clear and the ` +
+            `right one is fitted before continuing.`
+        );
+        if (!ok) return;
+
+        starting = printer.id;
+        try {
+            const response = await apiFetch(`/api/admin/printers/${printer.id}/print`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    file_name: startFile,
+                    plate: Number(startPlate) || 1,
+                    bed_type: startBed,
+                    use_ams: useAMS,
+                    ams_slot: slot,
+                    bed_levelling: startLevel,
+                    flow_cali: startFlow,
+                    timelapse: startTimelapse
+                })
+            });
+            if (!response) return;
+
+            const result = await response.json();
+            if (response.ok) {
+                showMessage(`Started ${startFile} on ${printer.name}`, 'success');
+                startFor = '';
+                loadPrinters();
+            } else {
+                showMessage(result.error || 'The printer refused that job', 'error');
+            }
+        } finally {
+            starting = '';
+        }
+    }
+
     // Every printer command goes through here so the UI stays consistent
     async function printerCommand(printer, path, options, successMessage) {
         busyPrinter = printer.id + path;
@@ -696,6 +825,41 @@
             uploading = '';
             uploadProgress = 0;
             event.target.value = '';
+        }
+    }
+
+    let clearing = '';
+
+    // Clearing the whole card, for when a term's worth of plates has filled it
+    async function clearPrinterFiles(printer) {
+        const files = uploadFiles[printer.id] || [];
+        if (files.length === 0) {
+            showMessage('There are no files to clear', 'error');
+            return;
+        }
+
+        const ok = confirm(
+            `Delete all ${files.length} file(s) from ${printer.name}?\n\n` +
+            `This cannot be undone. Anything anyone has sent and not yet ` +
+            `printed will be gone.`
+        );
+        if (!ok) return;
+
+        clearing = printer.id;
+        try {
+            const response = await apiFetch(
+                `/api/admin/printers/${printer.id}/files`, { method: 'DELETE' });
+            if (!response) return;
+
+            const result = await response.json();
+            if (response.ok) {
+                showMessage(result.message, 'success');
+            } else {
+                showMessage(result.error || 'Could not clear the printer', 'error');
+            }
+            loadPrinterFiles(printer);
+        } finally {
+            clearing = '';
         }
     }
 
@@ -1578,8 +1742,100 @@
                                                                 </li>
                                                             {/each}
                                                         </ul>
+
+                                                        <button
+                                                            class="pa-clear-all"
+                                                            on:click={() => clearPrinterFiles(printer)}
+                                                            disabled={clearing === printer.id}
+                                                        >
+                                                            {clearing === printer.id
+                                                                ? 'Clearing...'
+                                                                : `🧹 Clear all ${uploadFiles[printer.id].length} file(s)`}
+                                                        </button>
                                                     {/if}
                                                 {/if}
+                                            </div>
+                                        {/if}
+
+                                        {#if canStart(printer)}
+                                            <button
+                                                class="pa-start-toggle"
+                                                on:click={() => toggleStart(printer)}
+                                            >
+                                                {startFor === printer.id ? '✕ Close' : '▶ Start a print'}
+                                            </button>
+                                        {/if}
+
+                                        {#if startFor === printer.id}
+                                            <div class="pa-start">
+                                                <label class="pa-start-row">
+                                                    <span>File</span>
+                                                    <select bind:value={startFile}>
+                                                        <option value="">Choose a file...</option>
+                                                        {#each uploadFiles[printer.id] || [] as file}
+                                                            <option value={file.name}>{file.name}</option>
+                                                        {/each}
+                                                    </select>
+                                                </label>
+
+                                                <label class="pa-start-row">
+                                                    <span>Plate fitted</span>
+                                                    <select bind:value={startBed}>
+                                                        {#each BED_TYPES as bed}
+                                                            <option value={bed.value}>{bed.label}</option>
+                                                        {/each}
+                                                    </select>
+                                                </label>
+
+                                                <label class="pa-start-row">
+                                                    <span>Filament</span>
+                                                    <select bind:value={startSpool}>
+                                                        {#each amsChoices(printer) as choice}
+                                                            <option value={String(choice.index)}>
+                                                                AMS {choice.unit} slot {choice.slot} — {choice.label}{choice.remain >= 0 ? ` (${choice.remain}%)` : ''}
+                                                            </option>
+                                                        {/each}
+                                                        <option value="external">External spool</option>
+                                                    </select>
+                                                </label>
+
+                                                {#if startSpool !== 'external'}
+                                                    <div class="pa-swatches">
+                                                        {#each amsChoices(printer) as choice}
+                                                            <button
+                                                                class="pa-swatch"
+                                                                class:picked={startSpool === String(choice.index)}
+                                                                style="background: {choice.color || '#666'}"
+                                                                title="AMS {choice.unit} slot {choice.slot} — {choice.label}"
+                                                                on:click={() => (startSpool = String(choice.index))}
+                                                            >{choice.slot}</button>
+                                                        {/each}
+                                                    </div>
+                                                {/if}
+
+                                                <label class="pa-start-row">
+                                                    <span>Plate number</span>
+                                                    <input type="number" min="1" max="64" bind:value={startPlate} />
+                                                </label>
+
+                                                <div class="pa-start-opts">
+                                                    <label><input type="checkbox" bind:checked={startLevel} /> Bed levelling</label>
+                                                    <label><input type="checkbox" bind:checked={startFlow} /> Flow calibration</label>
+                                                    <label><input type="checkbox" bind:checked={startTimelapse} /> Timelapse</label>
+                                                </div>
+
+                                                <p class="pa-start-warn">
+                                                    Check the camera above: the plate must be clear and the
+                                                    plate type must match what you chose.
+                                                </p>
+
+                                                <button
+                                                    class="pa-start-go"
+                                                    on:click={() => startPrint(printer)}
+                                                    disabled={starting === printer.id || !startFile}
+                                                >
+                                                    {starting === printer.id ? 'Starting...' : '▶ Start print'}
+                                                </button>
                                             </div>
                                         {/if}
 
@@ -3139,6 +3395,126 @@
     }
 
     .pa-light,
+    .pa-clear-all {
+        width: 100%;
+        margin-top: 10px;
+        padding: 9px;
+        border-radius: 8px;
+        border: 1px solid var(--ctp-red);
+        background: transparent;
+        color: var(--ctp-red);
+        font-size: 0.8rem;
+        font-weight: 600;
+        cursor: pointer;
+        min-height: 40px;
+    }
+
+    .pa-clear-all:hover { background: var(--ctp-red); color: var(--ctp-crust); }
+
+    .pa-clear-all:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .pa-start-toggle {
+        width: 100%;
+        margin-top: 8px;
+        padding: 9px;
+        border-radius: 8px;
+        border: 1px solid var(--ctp-green);
+        background: transparent;
+        color: var(--ctp-green);
+        font-weight: 600;
+        cursor: pointer;
+        min-height: 40px;
+    }
+
+    .pa-start {
+        margin-top: 10px;
+        padding: 12px;
+        border-radius: 10px;
+        background: var(--ctp-mantle);
+        border: 1px solid var(--ctp-surface0);
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .pa-start-row {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        font-size: 0.78rem;
+        color: var(--ctp-subtext0);
+    }
+
+    .pa-start-row select,
+    .pa-start-row input {
+        padding: 8px;
+        border-radius: 8px;
+        border: 1px solid var(--ctp-surface1);
+        background: var(--ctp-base);
+        color: var(--ctp-text);
+        font-size: 0.85rem;
+        min-height: 40px;
+    }
+
+    .pa-swatches {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
+    .pa-swatch {
+        width: 34px;
+        height: 34px;
+        border-radius: 8px;
+        border: 2px solid var(--ctp-surface1);
+        color: var(--ctp-crust);
+        font-weight: 700;
+        font-size: 0.75rem;
+        cursor: pointer;
+        text-shadow: 0 0 3px rgba(255, 255, 255, 0.7);
+    }
+
+    .pa-swatch.picked {
+        border-color: var(--ctp-green);
+        transform: scale(1.06);
+    }
+
+    .pa-start-opts {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        font-size: 0.78rem;
+        color: var(--ctp-subtext0);
+    }
+
+    .pa-start-opts label {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .pa-start-warn {
+        margin: 0;
+        font-size: 0.75rem;
+        color: var(--ctp-yellow);
+    }
+
+    .pa-start-go {
+        padding: 11px;
+        border-radius: 8px;
+        border: none;
+        background: var(--ctp-green);
+        color: var(--ctp-crust);
+        font-weight: 700;
+        cursor: pointer;
+        min-height: 44px;
+    }
+
+    .pa-start-go:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
     .pa-pause,
     .pa-resume {
         flex: 1;

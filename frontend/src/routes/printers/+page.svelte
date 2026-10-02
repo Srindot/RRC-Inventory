@@ -8,9 +8,8 @@
     let loaded = false;
     let error = '';
     let notice = '';
-    let stopping = '';
-    // Stopping a print is admin-only; the button only appears when an admin
-    // session is present, and the backend checks the token regardless.
+    // Admin actions live on the admin page; this page only needs the token to
+    // offer the access-code fix when a printer rejects our credentials.
     let adminToken = '';
     // Printer id currently showing the "change access code" box
     let editingCode = '';
@@ -53,41 +52,6 @@
             error = 'Could not reach the server';
         } finally {
             loaded = true;
-        }
-    }
-
-    async function stopPrint(printer) {
-        const job = printer.file_name ? tidyFileName(printer.file_name) : 'the current job';
-        if (!confirm(`Stop ${job} on ${printer.name}?\n\nThis cannot be undone - the print will be cancelled.`)) {
-            return;
-        }
-
-        stopping = printer.id;
-        try {
-            const response = await fetch(`/api/admin/printers/${printer.id}/stop`, {
-                method: 'POST',
-                headers: { Authorization: `Bearer ${adminToken}` }
-            });
-
-            if (response.status === 401) {
-                adminToken = '';
-                error = 'Your admin session expired. Log in again to stop prints.';
-                return;
-            }
-
-            const result = await response.json();
-            if (response.ok) {
-                notice = `Stop command sent to ${printer.name}`;
-                setTimeout(() => (notice = ''), 6000);
-                loadPrinters();
-            } else {
-                error = result.error || 'Could not stop the print';
-                setTimeout(() => (error = ''), 6000);
-            }
-        } catch (e) {
-            error = 'Could not reach the server';
-        } finally {
-            stopping = '';
         }
     }
 
@@ -311,10 +275,12 @@
 
                     {#if printer.access_code_problem}
                         <div class="code-warning">
-                            <strong>⚠️ Access code changed</strong>
+                            <strong>⚠️ Camera not connecting</strong>
                             <p>
-                                {printer.name} is refusing our access code. This happens when
-                                LAN mode is toggled on the printer, which regenerates the code.
+                                {printer.name} accepted the connection and then hung up. Usually
+                                the access code changed - toggling LAN mode on the printer
+                                regenerates it. It also happens when the camera is already open
+                                in Bambu Studio or Handy, since the P1S allows only one viewer.
                             </p>
                             {#if adminToken}
                                 {#if editingCode === printer.id}
@@ -517,16 +483,6 @@
                                 <span>📦 Chamber {printer.chamber_temp.toFixed(0)}°C</span>
                             {/if}
                         </div>
-                        {#if adminToken && isPrinting(printer)}
-                            <button
-                                class="stop-btn"
-                                on:click={() => stopPrint(printer)}
-                                disabled={stopping === printer.id}
-                            >
-                                {stopping === printer.id ? 'Stopping...' : '⏹ Stop Print'}
-                            </button>
-                        {/if}
-
                         {#if printer.last_action_by}
                             <p class="last-action">Last stopped by {printer.last_action_by}</p>
                         {/if}
@@ -542,9 +498,6 @@
         <p class="footnote">
             Status refreshes automatically. The camera updates about once every two
             seconds - that is the fastest the P1S allows over the local network.
-            {#if !adminToken}
-                Stopping a print requires an <a href="/admin">admin login</a>.
-            {/if}
         </p>
     {/if}
 </div>
@@ -917,35 +870,6 @@
         font-size: 0.75rem;
         color: var(--ctp-subtext0);
         margin-top: 6px;
-    }
-
-    .stop-btn {
-        margin-top: 12px;
-        width: 100%;
-        background: var(--ctp-red);
-        color: var(--ctp-crust);
-        border: none;
-        border-radius: 8px;
-        padding: 10px;
-        font-weight: 600;
-        font-size: 0.9rem;
-        cursor: pointer;
-        min-height: 44px;
-    }
-
-    .stop-btn {
-        transition:
-            background-color var(--fast) var(--ease),
-            transform var(--fast) var(--ease);
-    }
-
-    .stop-btn:hover { background: var(--ctp-maroon); }
-
-    .stop-btn:active { transform: scale(0.985); }
-
-    .stop-btn:disabled {
-        opacity: 0.6;
-        cursor: not-allowed;
     }
 
     .last-action {

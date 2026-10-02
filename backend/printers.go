@@ -197,6 +197,21 @@ func formatHMS(attr, code uint32) string {
 		attr>>16, attr&0xFFFF, code>>16, code&0xFFFF)
 }
 
+// hmsWikiURL points at Bambu's page for one code.
+//
+// Two things the obvious guess gets wrong. The page lives under the
+// troubleshooting tree, not /en/hms/, and the address carries the bare code
+// without the "HMS_" prefix that Bambu uses when it writes the code out. Both
+// together sent people to a 404.
+//
+// The path is the X1 one because that is the tree Bambu keeps populated and
+// search-indexed; the codes themselves are shared across models, so a P1S
+// fault resolves there too.
+func hmsWikiURL(code string) string {
+	return "https://wiki.bambulab.com/en/x1/troubleshooting/hmscode/" +
+		strings.TrimPrefix(code, "HMS_")
+}
+
 // printer holds the live state of one machine.
 type printer struct {
 	cfg PrinterConfig
@@ -242,6 +257,9 @@ type printer struct {
 	// FTP settings, also overridable for tests
 	ftpPort      int
 	ftpPlaintext bool
+	// Zero means ftpShutTimeout. Tests shorten it so the hang case does not
+	// take half a minute to prove.
+	ftpShut time.Duration
 
 	// Commands carry an incrementing sequence id
 	sequence int
@@ -585,8 +603,7 @@ func (p *printer) applyReport(payload []byte) {
 			faults = append(faults, HMSFault{
 				Code:     code,
 				Severity: hmsSeverity(fault.Code),
-				// Bambu documents each code on its wiki under this path
-				URL: "https://wiki.bambulab.com/en/hms/" + code,
+				URL:      hmsWikiURL(code),
 			})
 		}
 		p.faults = faults
@@ -672,12 +689,46 @@ func cameraAuthPacket(username, accessCode string) []byte {
 	return packet
 }
 
+// runCamera keeps the camera stream alive, backing off when it cannot.
+//
+// A printer that is switched off, or one holding its single camera slot open
+// for somebody else, fails every retry. At a fixed ten seconds that is 8,640
+// identical lines a day per printer, which buries everything else in the log.
+// So: back off to a minute, and only print a repeat of the same failure when
+// it has been quiet for a while.
 func (p *printer) runCamera() {
+	const (
+		minCameraRetry = 10 * time.Second
+		maxCameraRetry = 60 * time.Second
+		repeatAfter    = 10 * time.Minute
+	)
+
+	retry := minCameraRetry
+	var lastError string
+	var lastLogged time.Time
+
 	for {
-		if err := p.streamCamera(); err != nil {
-			log.Printf("printer %s: camera: %v", p.cfg.Name, err)
+		err := p.streamCamera()
+		if err == nil {
+			retry = minCameraRetry
+			lastError = ""
+			continue
 		}
-		time.Sleep(10 * time.Second)
+
+		message := err.Error()
+		if message != lastError || time.Since(lastLogged) > repeatAfter {
+			log.Printf("printer %s: camera: %v", p.cfg.Name, err)
+			lastError = message
+			lastLogged = time.Now()
+		}
+
+		time.Sleep(retry)
+		if retry < maxCameraRetry {
+			retry *= 2
+			if retry > maxCameraRetry {
+				retry = maxCameraRetry
+			}
+		}
 	}
 }
 
@@ -718,13 +769,18 @@ func (p *printer) streamCamera() error {
 		// declares. Reading exact lengths avoids the frame corruption you get
 		// from trying to detect boundaries in a byte stream.
 		if _, err := io.ReadFull(conn, header); err != nil {
-			// The printer accepts the connection and then hangs up when the
-			// access code is wrong. Nothing received at all points at the
-			// credentials rather than the network.
+			// The printer accepts the connection and then hangs up without
+			// sending anything. A wrong access code does this - but so does a
+			// P1S whose single camera slot is already taken by Bambu Studio,
+			// Handy, or another viewer. The two are indistinguishable from
+			// here, so say both rather than sending someone off to re-enter a
+			// code that was never wrong.
 			if framesThisConnection == 0 &&
 				(errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)) {
 				p.setAuthFailed(true)
-				return fmt.Errorf("printer rejected our access code")
+				return fmt.Errorf(
+					"printer accepted the connection then hung up - wrong access code, " +
+						"or the camera is already in use by Bambu Studio or Handy")
 			}
 			return fmt.Errorf("read header: %w", err)
 		}

@@ -16,6 +16,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
+	"log"
 	"path"
 	"strings"
 	"time"
@@ -28,7 +29,18 @@ const (
 	// A sliced plate is usually a few MB; 3mf files with embedded previews can
 	// reach tens. This is a sanity limit, not a target.
 	maxUploadBytes = 200 * 1024 * 1024
-	ftpTimeout     = 60 * time.Second
+	// Time allowed to reach the printer. This caps connecting only - the FTP
+	// library applies it to the dial, not to the transfer.
+	ftpTimeout = 60 * time.Second
+	// Time allowed for the printer to acknowledge a finished transfer.
+	//
+	// The control connection sits idle while the file goes over the data
+	// connection, and the printer drops it if that takes long enough. The
+	// client then waits for a "closing data connection" reply that is never
+	// coming, with no deadline of its own: the upload reaches 100%, and hangs
+	// there. Small files beat the idle timeout and work, which is why this
+	// looks intermittent.
+	ftpShutTimeout = 30 * time.Second
 )
 
 // allowedUploadSuffixes are the only things worth putting on a printer, longest
@@ -124,8 +136,16 @@ func (p *printer) ftpAddress() string {
 
 // connectFTP opens an authenticated FTP session with the printer.
 func (p *printer) connectFTP() (*ftp.ServerConn, error) {
+	shut := p.ftpShut
+	if shut == 0 {
+		shut = ftpShutTimeout
+	}
+
 	options := []ftp.DialOption{
 		ftp.DialWithTimeout(ftpTimeout),
+		// Without this an upload that outlives the printer's control-connection
+		// idle timeout blocks forever instead of failing.
+		ftp.DialWithShutTimeout(shut),
 	}
 
 	// Printers use implicit TLS with a self-signed certificate. Tests run
@@ -162,12 +182,28 @@ func (c *countingReader) Read(p []byte) (int, error) {
 	return read, err
 }
 
+// removePartial deletes a half-written upload, best effort. It opens its own
+// connection because the one that failed cannot be trusted to carry a command.
+func (p *printer) removePartial(name string) {
+	conn, err := p.connectFTP()
+	if err != nil {
+		return
+	}
+	defer conn.Quit()
+
+	_ = conn.Delete(name)
+}
+
 // UploadFile sends one sliced file to the printer's storage.
 //
 // A dropped session part way through leaves a short file under the right name,
 // which the printer lists happily and then chokes on, so the size is checked
 // afterwards and a partial file is removed rather than left to be printed.
-func (p *printer) UploadFile(name string, contents io.Reader) error {
+// expected is the size the browser said the file is. Checking against that
+// rather than against what we managed to read catches a body that was cut short
+// on its way to us: counting our own reads only ever proves we copied whatever
+// we got, however little that was.
+func (p *printer) UploadFile(name string, contents io.Reader, expected int64) error {
 	conn, err := p.connectFTP()
 	if err != nil {
 		return err
@@ -176,29 +212,71 @@ func (p *printer) UploadFile(name string, contents io.Reader) error {
 
 	counted := &countingReader{inner: contents}
 	if err := conn.Stor(name, counted); err != nil {
+		// A transfer that died part way still leaves what arrived on the card,
+		// under the name somebody is about to pick on the printer's screen. It
+		// shows "--" for time and filament because the metadata never made it,
+		// and the job exits the moment it starts. Clear it out on a fresh
+		// connection, since this one is in an unknown state.
+		p.removePartial(name)
 		return fmt.Errorf("the printer refused the file: %w", err)
 	}
 
-	// SIZE is optional in FTP. If the printer will not answer we simply have no
-	// way to check, which is no worse than before.
-	stored, err := conn.FileSize(name)
-	if err != nil {
+	if expected > 0 && counted.n != expected {
+		p.removePartial(name)
+		return fmt.Errorf(
+			"only %d of %d bytes arrived from the browser, so the file was removed - please send it again",
+			counted.n, expected)
+	}
+
+	stored, ok := p.storedSize(conn, name)
+	if !ok {
+		// Neither SIZE nor the listing would tell us. Better to say so than to
+		// let a half file sit on the card looking finished.
+		log.Printf("printer %s: could not verify the size of %s after upload",
+			p.cfg.Name, name)
 		return nil
 	}
 
-	if stored != counted.n {
+	want := counted.n
+	if expected > 0 {
+		want = expected
+	}
+
+	if stored != want {
 		if delErr := conn.Delete(name); delErr != nil {
 			return fmt.Errorf(
 				"only %d of %d bytes reached the printer, and the partial file "+
 					"could not be removed - delete %s from the printer before printing: %w",
-				stored, counted.n, name, delErr)
+				stored, want, name, delErr)
 		}
 		return fmt.Errorf(
 			"only %d of %d bytes reached the printer, so the file was removed - please send it again",
-			stored, counted.n)
+			stored, want)
 	}
 
 	return nil
+}
+
+// storedSize asks the printer how big a file ended up.
+//
+// SIZE is optional in FTP and not every printer answers it, so fall back to the
+// listing, which this code already relies on elsewhere and which carries the
+// size too. Giving up on SIZE alone left the check silently doing nothing.
+func (p *printer) storedSize(conn *ftp.ServerConn, name string) (int64, bool) {
+	if size, err := conn.FileSize(name); err == nil {
+		return size, true
+	}
+
+	entries, err := conn.List("")
+	if err != nil {
+		return 0, false
+	}
+	for _, entry := range entries {
+		if entry.Type == ftp.EntryTypeFile && entry.Name == name {
+			return int64(entry.Size), true
+		}
+	}
+	return 0, false
 }
 
 // PrinterFile is one file already on a printer.
@@ -223,15 +301,7 @@ func (p *printer) ListFiles() ([]PrinterFile, error) {
 
 	files := make([]PrinterFile, 0, len(entries))
 	for _, entry := range entries {
-		if entry.Type != ftp.EntryTypeFile {
-			continue
-		}
-		lower := strings.ToLower(entry.Name)
-		if !strings.HasSuffix(lower, ".3mf") && !strings.HasSuffix(lower, ".gcode") {
-			continue
-		}
-		// macOS sidecar files ("._something.3mf") are not printable
-		if strings.HasPrefix(entry.Name, "._") || strings.HasPrefix(entry.Name, ".") {
+		if !printableEntry(entry) {
 			continue
 		}
 		files = append(files, PrinterFile{
@@ -244,10 +314,48 @@ func (p *printer) ListFiles() ([]PrinterFile, error) {
 	return files, nil
 }
 
+// printableEntry reports whether a listing entry is a file somebody could
+// actually print, and therefore one this code will show or delete.
+func printableEntry(entry *ftp.Entry) bool {
+	if entry.Type != ftp.EntryTypeFile {
+		return false
+	}
+	lower := strings.ToLower(entry.Name)
+	if !strings.HasSuffix(lower, ".3mf") && !strings.HasSuffix(lower, ".gcode") {
+		return false
+	}
+	// macOS sidecar files ("._something.3mf") are not printable
+	return !strings.HasPrefix(entry.Name, ".")
+}
+
+// plainFileName rejects anything that could step outside the printer's upload
+// directory. Names are otherwise taken as they come, because they have to match
+// what is on the printer rather than what this code would have named it.
+func plainFileName(name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if name == "" || name == "." || name == ".." {
+		return "", fmt.Errorf("that file name is not usable")
+	}
+	if strings.ContainsAny(name, `/\`) {
+		return "", fmt.Errorf("that file name is not usable")
+	}
+	return name, nil
+}
+
 // DeleteFile removes a file from the printer, so the storage does not fill up
 // with everyone's old plates.
+//
+// The name is matched against the printer's own listing rather than pushed
+// through sanitizeUploadName. Sanitising is right for an upload, where this
+// code chooses the name, and wrong here: a file put on the card by Bambu Studio
+// keeps its spaces and brackets, and cleaning "Benchy (1).gcode.3mf" into
+// "Benchy_1.gcode.3mf" sent DELE after a file that was never there. The listing
+// showed it, the delete reported success, and the file stayed put.
+//
+// Matching a real entry is also what keeps this safe: nothing outside the
+// directory can ever be named.
 func (p *printer) DeleteFile(name string) error {
-	safe, err := sanitizeUploadName(name)
+	wanted, err := plainFileName(name)
 	if err != nil {
 		return err
 	}
@@ -258,10 +366,21 @@ func (p *printer) DeleteFile(name string) error {
 	}
 	defer conn.Quit()
 
-	if err := conn.Delete(safe); err != nil {
-		return fmt.Errorf("could not delete %s: %w", safe, err)
+	entries, err := conn.List("")
+	if err != nil {
+		return fmt.Errorf("could not list the printer's files: %w", err)
 	}
-	return nil
+
+	for _, entry := range entries {
+		if printableEntry(entry) && entry.Name == wanted {
+			if err := conn.Delete(entry.Name); err != nil {
+				return fmt.Errorf("could not delete %s: %w", entry.Name, err)
+			}
+			return nil
+		}
+	}
+
+	return fmt.Errorf("%s is not on the printer", wanted)
 }
 
 // isPrinting reports whether the printer is part way through name, so an upload
@@ -287,7 +406,7 @@ func (p *printer) isPrinting(name string) bool {
 
 // --- manager wrappers ---------------------------------------------------
 
-func (m *PrinterManager) UploadFile(id, name string, contents io.Reader) (string, error) {
+func (m *PrinterManager) UploadFile(id, name string, contents io.Reader, expected int64) (string, error) {
 	p, ok := m.byID[id]
 	if !ok {
 		return "", fmt.Errorf("unknown printer")
@@ -303,7 +422,7 @@ func (m *PrinterManager) UploadFile(id, name string, contents io.Reader) (string
 			"%s is printing right now - rename your file or wait for it to finish", safe)
 	}
 
-	if err := p.UploadFile(safe, contents); err != nil {
+	if err := p.UploadFile(safe, contents, expected); err != nil {
 		return "", err
 	}
 	return safe, nil
@@ -322,5 +441,74 @@ func (m *PrinterManager) DeleteFile(id, name string) error {
 	if !ok {
 		return fmt.Errorf("unknown printer")
 	}
+
+	if p.isPrinting(name) {
+		return fmt.Errorf("%s is printing right now - stop the job first", name)
+	}
 	return p.DeleteFile(name)
+}
+
+// DeleteAllFiles clears every printable file off the printer's storage and
+// reports how many went.
+//
+// Deleting one file at a time is fine for tidying; this is for a card that has
+// filled up with a term's worth of everyone's plates. It refuses outright while
+// a job is running rather than trying to skip the file in use: the printer is
+// reading from the card, and the name it reports for the job does not always
+// match the file exactly enough to be sure which one to spare.
+func (p *printer) DeleteAllFiles() (int, error) {
+	p.mu.RLock()
+	state := strings.ToUpper(p.state)
+	p.mu.RUnlock()
+
+	if state == "RUNNING" || state == "PAUSE" || state == "PREPARE" {
+		return 0, fmt.Errorf(
+			"the printer is busy (state: %s) - wait for the job to finish", state)
+	}
+
+	conn, err := p.connectFTP()
+	if err != nil {
+		return 0, err
+	}
+	defer conn.Quit()
+
+	entries, err := conn.List("")
+	if err != nil {
+		return 0, fmt.Errorf("could not list the printer's files: %w", err)
+	}
+
+	deleted := 0
+	var failed []string
+	for _, entry := range entries {
+		if !printableEntry(entry) {
+			continue
+		}
+		if err := conn.Delete(entry.Name); err != nil {
+			failed = append(failed, entry.Name)
+			continue
+		}
+		deleted++
+	}
+
+	// Report what did go, even when something would not: a partial clear is
+	// still worth knowing about, and the caller can show both numbers.
+	if len(failed) > 0 {
+		return deleted, fmt.Errorf("deleted %d, but could not delete: %s",
+			deleted, strings.Join(failed, ", "))
+	}
+	return deleted, nil
+}
+
+// DeleteAllFiles clears one printer's storage.
+func (m *PrinterManager) DeleteAllFiles(id, adminName string) (int, error) {
+	p, ok := m.byID[id]
+	if !ok {
+		return 0, fmt.Errorf("unknown printer")
+	}
+
+	deleted, err := p.DeleteAllFiles()
+	if deleted > 0 {
+		log.Printf("printer %s: %d files cleared by %s", p.cfg.Name, deleted, adminName)
+	}
+	return deleted, err
 }

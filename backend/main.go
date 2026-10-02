@@ -631,7 +631,7 @@ func main() {
 			}
 			defer opened.Close()
 
-			name, err := printers.UploadFile(c.Param("id"), file.Filename, opened)
+			name, err := printers.UploadFile(c.Param("id"), file.Filename, opened, file.Size)
 			if err != nil {
 				c.JSON(400, gin.H{"error": err.Error()})
 				return
@@ -1028,6 +1028,27 @@ func main() {
 				c.JSON(200, gin.H{"message": "Stop command sent to the printer"})
 			})
 
+			// Start a print from a file already on the printer.
+			//
+			// This is the one command that makes a machine move on its own, so
+			// it is admin-only and the printer must be idle. Whoever presses it
+			// is responsible for the plate being clear - the camera on this page
+			// is there to be looked at first.
+			admin.POST("/printers/:id/print", func(c *gin.Context) {
+				var req StartRequest
+				if err := c.ShouldBindJSON(&req); err != nil {
+					c.JSON(400, gin.H{"error": "Invalid print request"})
+					return
+				}
+
+				adminName := currentAdmin(c).Name
+				if err := printers.StartPrint(c.Param("id"), req, adminName); err != nil {
+					c.JSON(400, gin.H{"error": err.Error()})
+					return
+				}
+				c.JSON(200, gin.H{"message": "Print started"})
+			})
+
 			// Tidy up old plates - deleting other people's files is an
 			// admin job, uploading is not.
 			admin.DELETE("/printers/:id/files/:name", func(c *gin.Context) {
@@ -1036,6 +1057,20 @@ func main() {
 					return
 				}
 				c.JSON(200, gin.H{"message": "File deleted from the printer"})
+			})
+
+			// Clear the whole card, for when a term's worth of plates has
+			// filled it up. Refuses while a job is running.
+			admin.DELETE("/printers/:id/files", func(c *gin.Context) {
+				deleted, err := printers.DeleteAllFiles(c.Param("id"), currentAdmin(c).Name)
+				if err != nil {
+					c.JSON(400, gin.H{"error": err.Error(), "deleted": deleted})
+					return
+				}
+				c.JSON(200, gin.H{
+					"message": fmt.Sprintf("Cleared %d file(s) from the printer", deleted),
+					"deleted": deleted,
+				})
 			})
 
 			// Pause the current job - reversible, unlike stop

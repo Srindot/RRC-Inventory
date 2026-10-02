@@ -118,7 +118,7 @@ func TestUploadListDeleteAgainstFTPServer(t *testing.T) {
 	}
 
 	contents := []byte("sliced plate, pretend this is a 3mf")
-	if err := p.UploadFile("srinath_bracket.gcode.3mf", bytes.NewReader(contents)); err != nil {
+	if err := p.UploadFile("srinath_bracket.gcode.3mf", bytes.NewReader(contents), 0); err != nil {
 		t.Fatalf("upload failed: %v", err)
 	}
 
@@ -180,7 +180,7 @@ func TestManagerUploadPath(t *testing.T) {
 	// A browser sends the whole path on some platforms; the manager must
 	// reduce it to a bare name before it reaches the printer
 	name, err := m.UploadFile("printer-1", "C:\\Users\\srinath\\Desktop\\srinath bracket.3mf",
-		bytes.NewReader([]byte("plate")))
+		bytes.NewReader([]byte("plate")), 0)
 	if err != nil {
 		t.Fatalf("upload through the manager failed: %v", err)
 	}
@@ -210,12 +210,12 @@ func TestManagerUploadPath(t *testing.T) {
 	}
 
 	// Unknown printers must be refused rather than panicking
-	if _, err := m.UploadFile("nope", "x.3mf", bytes.NewReader(nil)); err == nil {
+	if _, err := m.UploadFile("nope", "x.3mf", bytes.NewReader(nil), 0); err == nil {
 		t.Error("expected an error for an unknown printer")
 	}
 
 	// The wrong sort of file never reaches the printer at all
-	if _, err := m.UploadFile("printer-1", "notes.txt", bytes.NewReader(nil)); err == nil {
+	if _, err := m.UploadFile("printer-1", "notes.txt", bytes.NewReader(nil), 0); err == nil {
 		t.Error("expected .txt to be refused")
 	}
 }
