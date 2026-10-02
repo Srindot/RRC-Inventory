@@ -3,15 +3,26 @@
 #
 #   ./restore.sh backups/rrc-backup-20260811-120000.tar.gz
 #
-# This REPLACES the current data. It asks for confirmation first.
+# This REPLACES the current data. It asks for confirmation first, then saves a
+# safety copy of the current data (backups/rrc-pre-restore-*.tar.gz) before it
+# touches anything. Pass --skip-safety-backup only when the current data is
+# already lost and the safety copy cannot be made.
 
 set -euo pipefail
 cd "$(dirname "$0")"
+umask 077
 
-ARCHIVE="${1:-}"
+ARCHIVE=""
+SAFETY_BACKUP=true
+for ARG in "$@"; do
+    case "$ARG" in
+        --skip-safety-backup) SAFETY_BACKUP=false ;;
+        *) ARCHIVE="$ARG" ;;
+    esac
+done
 
 if [ -z "$ARCHIVE" ]; then
-    echo "Usage: ./restore.sh <backup-archive.tar.gz>"
+    echo "Usage: ./restore.sh [--skip-safety-backup] <backup-archive.tar.gz>"
     echo ""
     echo "Available backups:"
     ls -1t backups/*.tar.gz 2>/dev/null || echo "  (none found in ./backups)"
@@ -61,15 +72,32 @@ if ! docker ps &> /dev/null; then
 fi
 
 DB_CONTAINER="$($COMPOSE_CMD ps -q db 2>/dev/null | head -1)"
-BACKEND_CONTAINER="$($COMPOSE_CMD ps -q backend 2>/dev/null | head -1)"
+# -a: also find the backend if it is stopped. The photos are copied into it
+# while it is down, and "docker cp" works on a stopped container.
+BACKEND_CONTAINER="$($COMPOSE_CMD ps -a -q backend 2>/dev/null | head -1)"
 
 if [ -z "$DB_CONTAINER" ]; then
     echo "❌ The database container is not running. Start the system first (./start.sh)."
     exit 1
 fi
 
+if [ -z "$BACKEND_CONTAINER" ]; then
+    echo "❌ There is no backend container. Start the system first (./start.sh)."
+    exit 1
+fi
+
 STAGING="$(mktemp -d)"
-trap 'rm -rf "$STAGING"' EXIT
+BACKEND_STOPPED=false
+cleanup() {
+    rm -rf "$STAGING"
+    # Never leave the site down because a step below failed.
+    if [ "$BACKEND_STOPPED" = true ]; then
+        echo "🔄 Starting the backend again..."
+        $COMPOSE_CMD start backend > /dev/null || echo "❌ Could not start the backend - run ./start.sh"
+    fi
+}
+trap cleanup EXIT
+
 tar -xzf "$ARCHIVE" -C "$STAGING"
 
 if [ ! -f "$STAGING/database.sql" ]; then
@@ -85,6 +113,10 @@ echo "   Archive: $ARCHIVE"
 echo "   Photos:  $PHOTO_COUNT"
 echo ""
 echo "⚠️  This REPLACES all current loans, bookings, admins and photos."
+if [ "$PHOTO_COUNT" = "0" ]; then
+    echo "⚠️  The archive has no photos, so the current photos will be KEPT as they are."
+    echo "   (Older backups could silently miss them; wiping on that basis would lose them.)"
+fi
 read -r -p "Type 'restore' to continue: " CONFIRM
 
 if [ "$CONFIRM" != "restore" ]; then
@@ -92,19 +124,51 @@ if [ "$CONFIRM" != "restore" ]; then
     exit 1
 fi
 
-echo "📦 Restoring the database..."
-$DOCKER_CMD exec -i "$DB_CONTAINER" psql -q -U "$POSTGRES_USER" -d "$POSTGRES_DB" < "$STAGING/database.sql" > /dev/null
-
-echo "🖼️  Restoring item photos..."
-if [ -n "$BACKEND_CONTAINER" ]; then
-    $DOCKER_CMD exec "$BACKEND_CONTAINER" sh -c 'rm -rf /app/uploads/* || true'
-    if [ "$PHOTO_COUNT" != "0" ]; then
-        $DOCKER_CMD cp "$STAGING/uploads/." "$BACKEND_CONTAINER:/app/uploads/"
+if [ "$SAFETY_BACKUP" = true ]; then
+    echo "🛟 Saving a safety copy of the current data first..."
+    if ! SAFETY_ARCHIVE="$(./backup.sh --quiet --print-path --prefix rrc-pre-restore)"; then
+        echo "❌ The safety backup failed, so nothing was changed."
+        echo "   Fix the error above, or rerun with --skip-safety-backup if the current data is not worth keeping."
+        exit 1
     fi
+    echo "   Saved to $SAFETY_ARCHIVE"
 fi
 
-echo "🔄 Restarting the backend..."
-$COMPOSE_CMD restart backend > /dev/null
+# The backend holds database connections and writes photos; stop it so the
+# restore cannot race a request or be blocked by its locks.
+echo "⏸️  Stopping the backend..."
+$COMPOSE_CMD stop backend > /dev/null
+BACKEND_STOPPED=true
+
+echo "📦 Restoring the database..."
+# One transaction, stop at the first error: a bad dump rolls back and leaves
+# the current data untouched instead of half-replaced.
+if ! $DOCKER_CMD exec -i "$DB_CONTAINER" psql -q -v ON_ERROR_STOP=1 --single-transaction \
+        -U "$POSTGRES_USER" -d "$POSTGRES_DB" < "$STAGING/database.sql" > /dev/null; then
+    echo "❌ The database restore failed and was rolled back. The current data is unchanged."
+    exit 1
+fi
+
+if [ "$PHOTO_COUNT" = "0" ]; then
+    echo "🖼️  No photos in the archive - leaving the current photos in place."
+else
+    echo "🖼️  Restoring item photos..."
+    # A one-off container on the same volume, since the backend is stopped.
+    $COMPOSE_CMD run --rm --no-deps -T --entrypoint sh backend \
+        -c 'find /app/uploads -mindepth 1 -delete' > /dev/null
+    $DOCKER_CMD cp "$STAGING/uploads/." "$BACKEND_CONTAINER:/app/uploads/"
+fi
+
+echo "🔄 Starting the backend..."
+$COMPOSE_CMD start backend > /dev/null
+BACKEND_STOPPED=false
 
 echo ""
-echo "✅ Restore complete - $PHOTO_COUNT photo(s) and the full database are back."
+if [ "$PHOTO_COUNT" = "0" ]; then
+    echo "✅ Restore complete - the full database is back (photos left unchanged)."
+else
+    echo "✅ Restore complete - $PHOTO_COUNT photo(s) and the full database are back."
+fi
+if [ "$SAFETY_BACKUP" = true ]; then
+    echo "   The data from before the restore is in $SAFETY_ARCHIVE"
+fi

@@ -1,15 +1,51 @@
 # Caddyfile for RRC Inventory Application
 # This configuration routes API requests to Go backend and serves SvelteKit static files
+#
+# Two sites, same content:
+#   http://<anything>:80          plain HTTP, exactly as before - lab users keep
+#                                 using http://<server-ip>. Never redirected.
+#   https://{$SITE_HOST}:443      HTTPS with a certificate from Caddy's own
+#                                 local CA ("tls internal"). Browsers warn until
+#                                 that CA is trusted - see README.
+#
+# SITE_HOST comes from .env through docker-compose.yml (default: localhost, so
+# Caddy always starts). Set it to the address users type, e.g. 10.1.69.243.
 
-# For local network access (multiple interfaces)
-:80 {
+{
+    # Keep http:// working: no automatic HTTP -> HTTPS redirects.
+    auto_https disable_redirects
+    # The internal CA cannot be added to a container's trust store; don't try.
+    skip_install_trust
+    # Browsers send no SNI when connecting to a bare IP address, so tell Caddy
+    # which certificate to hand out in that case.
+    default_sni {$SITE_HOST:localhost}
+}
+
+# Everything both sites share.
+(app) {
+    # Upload size caps, checked before the body reaches the backend. Sliced
+    # printer files may be up to 200 MB (maxUploadBytes in
+    # backend/printer_files.go); everything else - item photos are capped at
+    # 10 MB by the backend - gets 15 MB. Oversized requests get a 413.
+    @printer_upload path /api/printers/*/files
+    request_body @printer_upload {
+        max_size 220MB
+    }
+    @api_other {
+        path /api/*
+        not path /api/printers/*/files
+    }
+    request_body @api_other {
+        max_size 15MB
+    }
+
     # Handle API requests - proxy to Go backend
     handle /api/* {
         reverse_proxy backend:8080
     }
 
     # Serve static frontend files from the frontend container
-    handle /* {
+    handle {
         reverse_proxy frontend:80
     }
 
@@ -18,14 +54,17 @@
 
     # Security headers
     header {
-        # Enable HSTS
-        Strict-Transport-Security max-age=31536000;
+        # SvelteKit's static build boots from an inline <script> in index.html,
+        # and Svelte injects <style> for transitions, hence 'unsafe-inline'.
+        # Photos and camera snapshots are same-origin; previews use blob: / data:.
+        Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
         # Prevent MIME sniffing
         X-Content-Type-Options nosniff
         # Enable XSS protection
         X-XSS-Protection "1; mode=block"
         # Prevent clickjacking
         X-Frame-Options DENY
+        Referrer-Policy strict-origin-when-cross-origin
         # Remove server info
         -Server
     }
@@ -37,23 +76,18 @@
     }
 }
 
-# For production with SSL (uncomment and modify domain as needed)
-# yourdomain.com {
-#     handle /api/* {
-#         reverse_proxy backend:8080
-#     }
-#     
-#     handle /* {
-#         reverse_proxy frontend:80
-#     }
-#     
-#     encode gzip
-#     
-#     header {
-#         Strict-Transport-Security max-age=31536000;
-#         X-Content-Type-Options nosniff
-#         X-XSS-Protection "1; mode=block"
-#         X-Frame-Options DENY
-#         -Server
-#     }
-# }
+# For local network access (multiple interfaces). No HSTS here: browsers
+# ignore it over plain HTTP, and it must never pin users to an HTTPS site
+# whose certificate they have not trusted.
+:80 {
+    import app
+}
+
+# HTTPS for the same site. To add a real domain later, append it here, e.g.
+#   https://{$SITE_HOST:localhost}, rrc.example.com {
+# and drop "tls internal" for that domain so Caddy fetches a public certificate.
+https://{$SITE_HOST:localhost} {
+    tls internal
+    import app
+    header Strict-Transport-Security "max-age=31536000"
+}

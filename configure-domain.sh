@@ -4,6 +4,7 @@
 # This script helps set up the local domain name for easier access
 
 set -e
+cd "$(dirname "$0")"
 
 # Color codes for output
 RED='\033[0;31m'
@@ -88,6 +89,22 @@ echo ""
 
 print_success "Once configured, you can access the system at:"
 echo -e "   ${GREEN}http://$SERVER_IP${NC}"
+echo ""
+
+# HTTPS: Caddy serves https:// for the address in SITE_HOST (see Caddyfile).
+CURRENT_SITE_HOST=""
+if [ -f .env ]; then
+    CURRENT_SITE_HOST="$(grep -E '^[[:space:]]*SITE_HOST=' .env | tail -1 | cut -d= -f2- | tr -d '"'"'"' ')"
+fi
+echo -e "${YELLOW}HTTPS (optional):${NC}"
+if [ -n "$CURRENT_SITE_HOST" ]; then
+    echo -e "   HTTPS is served at ${GREEN}https://$CURRENT_SITE_HOST${NC} (SITE_HOST in .env)"
+else
+    echo "   Set SITE_HOST in .env to the address users type, then ./restart.sh:"
+    echo -e "   ${GREEN}echo 'SITE_HOST=$SERVER_IP' >> .env${NC}"
+fi
+echo "   The certificate comes from Caddy's local CA, so browsers warn until it is"
+echo "   trusted (see README). Plain http:// keeps working either way."
 echo ""
 
 print_warning "Note: This setup needs to be done on each device that wants to access the system"

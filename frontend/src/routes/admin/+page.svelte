@@ -1,21 +1,16 @@
 <script>
-    import { onMount } from 'svelte';
+    import { onMount, onDestroy } from 'svelte';
 
     // Authentication state
     let isLoggedIn = false;
     let adminInfo = null;
     let authToken = '';
-    let apiBase = ''; // set when logging in through the IP fallback
 
     // Login form
     let loginForm = {
         username: '',
         password: ''
     };
-    // Fallback: allow entering server IP when mDNS/name resolution fails
-    let showIpFallback = false;
-    let altHost = '';
-    let ipLoading = false;
     
     // Current view
     let currentView = 'login'; // login, dashboard, printers, lost-missing, history, lab-view, admin-management, change-password
@@ -143,7 +138,10 @@
         // Restore a previous session, if the token is still valid
         const savedAdmin = localStorage.getItem('adminInfo');
         const savedToken = localStorage.getItem('adminToken');
-        apiBase = localStorage.getItem('adminApiBase') || '';
+        // Left over from the removed "login via IP" fallback, which sent every
+        // request (token included) to whatever host had been typed in. The API
+        // is always same-origin now; drop the stale setting.
+        localStorage.removeItem('adminApiBase');
         if (savedAdmin && savedToken) {
             adminInfo = JSON.parse(savedAdmin);
             authToken = savedToken;
@@ -165,7 +163,7 @@
 
         let response;
         try {
-            response = await fetch(`${apiBase}${path}`, { ...options, headers });
+            response = await fetch(path, { ...options, headers });
         } catch (e) {
             showMessage('Network error. Please try again.', 'error');
             return null;
@@ -179,13 +177,11 @@
         return response;
     }
 
-    function saveSession(data, base = '') {
+    function saveSession(data) {
         adminInfo = data.admin;
         authToken = data.token;
-        apiBase = base;
         localStorage.setItem('adminInfo', JSON.stringify(adminInfo));
         localStorage.setItem('adminToken', authToken);
-        localStorage.setItem('adminApiBase', base);
         isLoggedIn = true;
         currentView = 'dashboard';
         loginForm = { username: '', password: '' };
@@ -193,14 +189,12 @@
     }
 
     function clearSession() {
-        clearInterval(printerTimer);
-        clearInterval(cameraTimer);
+        stopPrinterPolling();
         localStorage.removeItem('adminInfo');
         localStorage.removeItem('adminToken');
         localStorage.removeItem('adminApiBase');
         adminInfo = null;
         authToken = '';
-        apiBase = '';
         isLoggedIn = false;
         currentView = 'login';
     }
@@ -219,47 +213,38 @@
                 saveSession(await response.json());
                 showMessage('Login successful!', 'success');
             } else {
-                const error = await response.json();
-                showMessage(error.error || 'Login failed', 'error');
+                const error = await readJSON(response);
+                showMessage(apiError(response, error, 'Login failed'), 'error');
             }
         } catch (e) {
-            // Network error (could be mDNS/name resolution). Offer IP fallback.
-            showMessage('Login failed (network). If name resolution fails, try the server IP below.', 'error');
-            showIpFallback = true;
+            showMessage('Could not reach the server. Check your network connection and try again.', 'error');
         } finally {
             loading = false;
         }
     }
 
-    // Try login by supplying an explicit host/IP (e.g. 10.2.36.243)
-    async function tryIpLogin() {
-        if (!altHost) {
-            showMessage('Please enter the server IP (e.g. 10.2.36.243)', 'error');
-            return;
-        }
-        ipLoading = true;
-        try {
-            // Trim possible http(s) prefix
-            const hostOnly = altHost.replace(/^https?:\/\//, '').replace(/\/.*/, '');
-            const base = `http://${hostOnly}`;
-            const response = await fetch(`${base}/api/admin/login`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(loginForm)
-            });
+    // Body of a response as JSON, or {} when it is not JSON. A 502 from Caddy
+    // while the backend restarts, or a 413 from the proxy's upload limit, is
+    // HTML or empty, and a bare response.json() would throw on it.
+    async function readJSON(response) {
+        return response.json().catch(() => ({}));
+    }
 
-            if (response.ok) {
-                saveSession(await response.json(), base);
-                showMessage('Login successful (via IP)!', 'success');
-            } else {
-                const error = await response.json().catch(() => ({}));
-                showMessage(error.error || `Login failed (HTTP ${response.status})`, 'error');
-            }
-        } catch (err) {
-            showMessage('Failed to contact server at that IP. Check network or try another IP.', 'error');
-        } finally {
-            ipLoading = false;
+    // What to tell the admin about a failed request: the backend's own message
+    // when it sent one, otherwise something that says what actually happened.
+    function apiError(response, body, fallback) {
+        if (body && body.error) return body.error;
+        switch (response.status) {
+            case 413:
+                return 'That file is too large to upload.';
+            case 429:
+                return 'Too many attempts. Wait a few minutes and try again.';
+            case 502:
+            case 503:
+            case 504:
+                return 'The server is not responding right now. Try again in a minute.';
         }
+        return `${fallback} (HTTP ${response.status})`;
     }
 
     // Logout function
@@ -336,8 +321,8 @@
                     loadLabLoans(selectedLab, selectedFilter);
                 }
             } else if (response) {
-                const error = await response.json();
-                showMessage(error.error || 'Failed to extend loan', 'error');
+                const error = await readJSON(response);
+                showMessage(apiError(response, error, 'Failed to extend loan'), 'error');
             }
         } finally {
             loading = false;
@@ -360,8 +345,8 @@
                 showMessage('Item marked as missing', 'success');
                 refreshCurrentView();
             } else if (response) {
-                const error = await response.json();
-                showMessage(error.error || 'Failed to mark item as missing', 'error');
+                const error = await readJSON(response);
+                showMessage(apiError(response, error, 'Failed to mark item as missing'), 'error');
             }
         } finally {
             loading = false;
@@ -380,8 +365,8 @@
                 showMessage('Item marked as found and restored to borrowed', 'success');
                 refreshCurrentView();
             } else if (response) {
-                const error = await response.json();
-                showMessage(error.error || 'Failed to mark item as found', 'error');
+                const error = await readJSON(response);
+                showMessage(apiError(response, error, 'Failed to mark item as found'), 'error');
             }
         } finally {
             loading = false;
@@ -405,7 +390,8 @@
         try {
             const from = new Date();
             from.setDate(from.getDate() - 7);
-            const response = await apiFetch(`/api/bookings?from=${from.toISOString()}`);
+            // The admin route: the public one leaves out bookers' phone numbers
+            const response = await apiFetch(`/api/admin/bookings?from=${from.toISOString()}`);
             if (response && response.ok) {
                 bookings = await response.json();
             } else if (response) {
@@ -428,8 +414,8 @@
             showMessage('Booking deleted', 'success');
             loadBookings();
         } else {
-            const error = await response.json();
-            showMessage(error.error || 'Failed to delete booking', 'error');
+            const error = await readJSON(response);
+            showMessage(apiError(response, error, 'Failed to delete booking'), 'error');
         }
     }
 
@@ -523,7 +509,7 @@
             });
             if (!response) return;
 
-            const result = await response.json();
+            const result = await readJSON(response);
             if (response.ok) {
                 showMessage('Booking added', 'success');
                 showBookingForm = false;
@@ -531,7 +517,7 @@
                 weekStart = startOfWeek(start);
                 loadBookings();
             } else {
-                showMessage(result.error || 'Could not add the booking', 'error');
+                showMessage(apiError(response, result, 'Could not add the booking'), 'error');
             }
         } finally {
             savingBooking = false;
@@ -554,8 +540,8 @@
             selectedBooking = null;
             loadBookings();
         } else {
-            const error = await response.json();
-            showMessage(error.error || 'Could not delete the booking', 'error');
+            const error = await readJSON(response);
+            showMessage(apiError(response, error, 'Could not delete the booking'), 'error');
         }
     }
 
@@ -572,11 +558,27 @@
         currentView = 'printers';
         loadPrinters();
         loadPrintJobs();
-        clearInterval(printerTimer);
-        clearInterval(cameraTimer);
+        stopPrinterPolling();
         printerTimer = setInterval(() => { loadPrinters(); loadPrintJobs(); }, 5000);
         cameraTimer = setInterval(() => (cameraTick = Date.now()), 2000);
     }
+
+    function stopPrinterPolling() {
+        clearInterval(printerTimer);
+        clearInterval(cameraTimer);
+        printerTimer = undefined;
+        cameraTimer = undefined;
+    }
+
+    // Polling belongs to the printers view only. Every way of leaving it -
+    // tabs, saving a password, logging out - changes currentView, so stop the
+    // timers here rather than in each of those places.
+    $: if (currentView !== 'printers') stopPrinterPolling();
+
+    onDestroy(() => {
+        stopPrinterPolling();
+        clearTimeout(messageTimer);
+    });
 
     let printJobs = [];
     let busyPrinter = '';
@@ -703,13 +705,13 @@
             });
             if (!response) return;
 
-            const result = await response.json();
+            const result = await readJSON(response);
             if (response.ok) {
                 showMessage(`Started ${startFile} on ${printer.name}`, 'success');
                 startFor = '';
                 loadPrinters();
             } else {
-                showMessage(result.error || 'The printer refused that job', 'error');
+                showMessage(apiError(response, result, 'The printer refused that job'), 'error');
             }
         } finally {
             starting = '';
@@ -723,12 +725,12 @@
             const response = await apiFetch(`/api/admin/printers/${printer.id}/${path}`, options);
             if (!response) return;
 
-            const result = await response.json();
+            const result = await readJSON(response);
             if (response.ok) {
                 showMessage(successMessage || result.message, 'success');
                 loadPrinters();
             } else {
-                showMessage(result.error || 'The printer refused that command', 'error');
+                showMessage(apiError(response, result, 'The printer refused that command'), 'error');
             }
         } finally {
             busyPrinter = '';
@@ -766,8 +768,8 @@
         if (response.ok) {
             uploadFiles = { ...uploadFiles, [printer.id]: await response.json() };
         } else {
-            const error = await response.json();
-            showMessage(error.error || 'Could not list the printer files', 'error');
+            const error = await readJSON(response);
+            showMessage(apiError(response, error, 'Could not list the printer files'), 'error');
         }
     }
 
@@ -818,8 +820,10 @@
             } else if (result.status === 200) {
                 showMessage(result.body.message || 'File sent to the printer', 'success');
                 loadPrinterFiles(printer);
+            } else if (result.status === 0) {
+                showMessage('The upload was interrupted. Check your connection and try again.', 'error');
             } else {
-                showMessage(result.body.error || 'The printer would not accept that file', 'error');
+                showMessage(apiError(result, result.body, 'The printer would not accept that file'), 'error');
             }
         } finally {
             uploading = '';
@@ -851,11 +855,11 @@
                 `/api/admin/printers/${printer.id}/files`, { method: 'DELETE' });
             if (!response) return;
 
-            const result = await response.json();
+            const result = await readJSON(response);
             if (response.ok) {
                 showMessage(result.message, 'success');
             } else {
-                showMessage(result.error || 'Could not clear the printer', 'error');
+                showMessage(apiError(response, result, 'Could not clear the printer'), 'error');
             }
             loadPrinterFiles(printer);
         } finally {
@@ -875,8 +879,8 @@
             showMessage('File deleted from the printer', 'success');
             loadPrinterFiles(printer);
         } else {
-            const error = await response.json();
-            showMessage(error.error || 'Could not delete the file', 'error');
+            const error = await readJSON(response);
+            showMessage(apiError(response, error, 'Could not delete the file'), 'error');
         }
     }
 
@@ -912,12 +916,12 @@
             });
             if (!response) return;
 
-            const result = await response.json();
+            const result = await readJSON(response);
             if (response.ok) {
                 showMessage(`Stop command sent to ${printer.name}`, 'success');
                 loadPrinters();
             } else {
-                showMessage(result.error || 'Could not stop the print', 'error');
+                showMessage(apiError(response, result, 'Could not stop the print'), 'error');
             }
         } finally {
             stoppingPrinter = '';
@@ -939,7 +943,7 @@
             });
             if (!response) return;
 
-            const result = await response.json();
+            const result = await readJSON(response);
             if (response.ok) {
                 showMessage(`${printer.name}: access code updated, reconnecting...`, 'success');
                 editingCode = '';
@@ -947,7 +951,7 @@
                 setTimeout(loadPrinters, 4000);
                 setTimeout(loadPrinters, 12000);
             } else {
-                showMessage(result.error || 'Could not update the access code', 'error');
+                showMessage(apiError(response, result, 'Could not update the access code'), 'error');
             }
         } finally {
             savingCode = false;
@@ -1014,10 +1018,13 @@
     }
 
     // Helper functions
+    let messageTimer;
     function showMessage(text, type) {
         message = text;
         messageType = type;
-        setTimeout(() => {
+        // Restart the countdown, or an older message's timer cuts this one short
+        clearTimeout(messageTimer);
+        messageTimer = setTimeout(() => {
             message = '';
             messageType = '';
         }, 5000);
@@ -1105,8 +1112,7 @@
 
     function goToDashboard() {
         currentView = 'dashboard';
-        clearInterval(printerTimer);
-        clearInterval(cameraTimer);
+        stopPrinterPolling();
     }
 
     // Admin Management Functions
@@ -1140,14 +1146,14 @@
         });
         if (!response) return;
 
-        const result = await response.json();
+        const result = await readJSON(response);
         if (response.ok) {
             showMessage('Admin created successfully', 'success');
             showCreateAdminForm = false;
             createAdminForm = { username: '', password: '', name: '', is_super_admin: false };
             loadAdminList();
         } else {
-            showMessage(result.error || 'Failed to create admin', 'error');
+            showMessage(apiError(response, result, 'Failed to create admin'), 'error');
         }
     }
 
@@ -1172,13 +1178,13 @@
         });
         if (!response) return;
 
-        const result = await response.json();
+        const result = await readJSON(response);
         if (response.ok) {
             showMessage('Password changed successfully', 'success');
             changePasswordForm = { old_password: '', new_password: '', confirm_password: '' };
             currentView = 'dashboard';
         } else {
-            showMessage(result.error || 'Failed to change password', 'error');
+            showMessage(apiError(response, result, 'Failed to change password'), 'error');
         }
     }
 
@@ -1196,11 +1202,11 @@
         });
         if (!response) return;
 
-        const result = await response.json();
+        const result = await readJSON(response);
         if (response.ok) {
             showMessage(`Successfully deleted ${result.deleted_count} items`, 'success');
         } else {
-            showMessage(result.error || 'Failed to delete items', 'error');
+            showMessage(apiError(response, result, 'Failed to delete items'), 'error');
         }
     }
 
@@ -1223,12 +1229,12 @@
         });
         if (!response) return;
 
-        const result = await response.json();
+        const result = await readJSON(response);
         if (response.ok) {
             showMessage(`Successfully deleted admin: ${result.deleted_admin.name}`, 'success');
             loadAdminList(); // Reload the admin list
         } else {
-            showMessage(result.error || 'Failed to delete admin', 'error');
+            showMessage(apiError(response, result, 'Failed to delete admin'), 'error');
         }
     }
 
@@ -1277,15 +1283,6 @@
                     <button type="submit" class="login-btn" disabled={loading}>
                         {loading ? 'Logging in...' : 'Login'}
                     </button>
-                    {#if showIpFallback}
-                        <div class="ip-fallback" style="margin-top:12px;">
-                            <label for="altHost">Server IP (fallback):</label>
-                            <div style="display:flex;gap:8px;margin-top:6px;align-items:center;">
-                                <input id="altHost" type="text" bind:value={altHost} placeholder="10.2.36.243" />
-                                <button type="button" class="login-btn" on:click={tryIpLogin} disabled={ipLoading}>{ipLoading ? 'Trying...' : 'Login via IP'}</button>
-                            </div>
-                        </div>
-                    {/if}
                 </form>
             </div>
         </div>
@@ -1852,7 +1849,8 @@
 
                     <div class="joblog-head">
                         <h3>📝 Print log</h3>
-                        <a class="calendar-link" href="/api/admin/export-print-jobs-csv">Export CSV</a>
+                        <!-- A plain link would go without the admin token and get a 401 -->
+                        <button type="button" class="calendar-link link-btn" on:click={() => exportCSV('/api/admin/export-print-jobs-csv', 'print_jobs.csv')}>Export CSV</button>
                     </div>
                     <p class="subtitle-text">
                         Recorded automatically from the printers - nobody fills in a form.
@@ -3861,6 +3859,18 @@
         color: var(--ctp-blue);
         text-decoration: none;
         margin-left: 6px;
+    }
+
+    .link-btn {
+        background: none;
+        border: none;
+        padding: 0;
+        font: inherit;
+        cursor: pointer;
+    }
+
+    .link-btn:hover {
+        text-decoration: underline;
     }
 
     /* --- booking calendar --- */

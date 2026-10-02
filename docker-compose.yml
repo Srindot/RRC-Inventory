@@ -1,8 +1,17 @@
+# Container logs are rotated (3 x 10 MB per service); unrotated json-file logs
+# grow until the disk is full.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   # PostgreSQL Database
   db:
     image: postgres:16-alpine
     restart: always
+    logging: *default-logging
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
@@ -19,6 +28,7 @@ services:
       context: ./backend
       target: production
     restart: always
+    logging: *default-logging
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}@db:5432/${POSTGRES_DB:-mydatabase}
       # Used only to create the first admin account on an empty database.
@@ -27,7 +37,8 @@ services:
       # Dates like a loan's return date are judged in this timezone, so the
       # site and the CSV agree with the clock on the wall.
       TZ: ${TZ:-Asia/Kolkata}
-      # Optional: comma separated list of origins allowed to call the API from a browser.
+      # Comma separated origins allowed to call the API from a browser - set it
+      # to every address users open the site on (see .env.example).
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
       # 3D printers, as Name|host|serial|accesscode entries separated by commas.
       # Leave unset to hide the printer page.
@@ -48,6 +59,7 @@ services:
       context: ./frontend
       target: production
     restart: always
+    logging: *default-logging
     expose:
       - "80"
 
@@ -55,6 +67,11 @@ services:
   caddy:
     image: caddy:2-alpine
     restart: always
+    logging: *default-logging
+    environment:
+      # Address the HTTPS site answers on (see Caddyfile). Never empty, so
+      # Caddy always has a valid site to start with.
+      SITE_HOST: ${SITE_HOST:-localhost}
     ports:
       - "80:80"
       - "443:443"

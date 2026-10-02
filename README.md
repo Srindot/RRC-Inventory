@@ -126,6 +126,33 @@ who has the lab. Click any empty slot to book it - no approval, the slot just ha
 free. Bookings are cancelled by whoever made them using the phone number they booked with,
 and admins can delete any booking from the **Mocap Bookings** tab.
 
+### 🔒 HTTPS
+
+The site is served on plain `http://` (port 80) as always, and also on
+`https://` (port 443) for the address set in `.env`:
+
+```
+SITE_HOST=10.1.69.243
+```
+
+then `./restart.sh`. There is no redirect: `http://` keeps working for everyone.
+The certificate is signed by Caddy's own local CA, so browsers show a warning
+until that CA is trusted. To trust it, export the root certificate:
+
+```bash
+docker compose exec caddy cat /data/caddy/pki/authorities/local/root.crt > rrc-root.crt
+```
+
+and import `rrc-root.crt` as a trusted root on each device (or accept the
+warning once per browser). The CA lives in the `caddy_data` volume, so it stays
+the same across restarts and rebuilds.
+
+Also set `ALLOWED_ORIGINS` in `.env` to every address the site is opened on,
+e.g. `ALLOWED_ORIGINS=http://10.1.69.243,https://10.1.69.243`.
+
+Uploads are capped at the proxy: 220 MB for files sent to a printer, 15 MB for
+everything else.
+
 > **🌐 Network Access Note:** This website is hosted locally on a server. To access it, you need to be connected to **wifi@iiith** or use **OpenVPN** to connect to the IIIT network.
 
 5. **Stop the application:**
@@ -155,7 +182,10 @@ reboots and rebuilds:
 ```
 
 Writes one self-contained archive to `backups/` holding a full database dump plus
-every item photo. Copy that single file anywhere - a laptop, a pen drive, cloud
+every item photo. The system must be running; if the database or the backend
+container is down, or the photos cannot be copied out, it fails with an error
+instead of writing an incomplete archive. `backups/` and the archives are
+readable by the owner only - they hold borrowers' names and phone numbers. Copy that single file anywhere - a laptop, a pen drive, cloud
 storage - and it is everything needed to rebuild the system.
 
 ### Restoring
@@ -165,19 +195,34 @@ storage - and it is everything needed to rebuild the system.
 ```
 
 Replaces the current database and photos with the contents of the archive, after
-asking for confirmation. This is also how you move the system to a new machine:
+asking for confirmation. Before touching anything it saves the current data to
+`backups/rrc-pre-restore-*.tar.gz`, so a restore of the wrong file can itself be
+undone. The backend is stopped while the restore runs and started again
+afterwards; the database is restored in a single transaction, so a broken dump
+changes nothing. An archive with no photos in it leaves the current photos in
+place rather than wiping them. This is also how you move the system to a new machine:
 clone the repo there, copy the `.env` and the archive over, `./start.sh`, then
 restore.
 
-### Automatic nightly backups (optional)
+### Automatic daily backups
+
+`./backup.sh --cron` is the non-interactive mode: it prints nothing unless
+something goes wrong, keeps the newest 14 `rrc-backup-*` archives and deletes
+older ones (`--keep N` changes the number; safety copies from `restore.sh` are
+never pruned). It exits non-zero on any failure, so cron reports it.
+
+Install it in the crontab of the user that runs the system (that user must be
+in the `docker` group - cron cannot answer a sudo prompt):
 
 ```bash
 crontab -e
 # then add, adjusting the path:
-0 2 * * * cd /home/USER/RRC-Inventory && ./backup.sh >> backups/backup.log 2>&1
+30 2 * * * /home/USER/RRC-Inventory/backup.sh --cron >> /home/USER/RRC-Inventory/backups/backup.log 2>&1
 ```
 
-Old archives are never deleted automatically, so prune `backups/` occasionally.
+`backups/backup.log` then only ever contains errors; an empty log means every
+night succeeded. Copy archives off the machine now and then - a backup on the
+same disk does not survive that disk.
 
 Admins can also export **Loans** and **Mocap Bookings** as CSV from the dashboard
 for a human-readable copy (spreadsheets, reports) - though CSV does not include
@@ -236,8 +281,12 @@ Note: mDNS/Bonjour references have been removed. Use the server IP address to ac
 ```bash
 ./setup.sh             # First-time setup (builds Docker images)
 ./start.sh             # Start all services
-./stop.sh              # Stop all services  
+./stop.sh              # Stop all services and disable autostart
+./stop.sh --no-disable # Stop all services, keep autostart (what systemd uses)
+./restart.sh           # Restart, leaving autostart as it is
 ./logs.sh              # View system logs
+./backup.sh            # Back up database + photos (--cron for unattended runs)
+./restore.sh <archive> # Restore a backup (saves a safety copy first)
 ```
 
 ---

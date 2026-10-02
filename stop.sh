@@ -4,8 +4,20 @@
 #
 # Stopping means "keep it down", so the boot autostart is disabled too. Use
 # ./restart.sh if you only want to bounce the services.
+#
+#   ./stop.sh --no-disable   bring the containers down, leave autostart alone
+#
+# The systemd unit's ExecStop uses --no-disable. Without it every shutdown
+# disabled autostart, so the system stayed off after the next boot. Running
+# under systemd (INVOCATION_ID is set) is treated the same way, which also
+# covers units installed before the flag existed.
 
 source "$(dirname "$0")/compose-cmd.sh"
+
+DISABLE_AUTOSTART=true
+if [ "${1:-}" = "--no-disable" ] || [ -n "${INVOCATION_ID:-}" ]; then
+    DISABLE_AUTOSTART=false
+fi
 
 echo "🛑 Stopping RRC Inventory..."
 
@@ -16,6 +28,11 @@ if ! $DOCKER_COMPOSE_CMD down; then
 fi
 
 echo "✅ RRC Inventory stopped successfully!"
+
+if [ "$DISABLE_AUTOSTART" = false ]; then
+    exit 0
+fi
+
 echo ""
 echo "🚀 To start again: ./start.sh"
 

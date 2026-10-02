@@ -80,9 +80,11 @@ fi
 print_status "Stopping any existing containers..."
 $DOCKER_COMPOSE_CMD down 2>/dev/null || true
 
-# Clean up any existing images (optional)
-print_status "Cleaning up old Docker images..."
-$DOCKER_CMD system prune -f --volumes 2>/dev/null || true
+# Clean up dangling images left by earlier builds. Never prune volumes here:
+# the database and every item photo live in named volumes, and
+# "system prune --volumes" deletes them once the containers are down.
+print_status "Cleaning up dangling Docker images..."
+$DOCKER_CMD image prune -f 2>/dev/null || true
 
 # Build all services
 print_status "Building Docker images..."
@@ -119,18 +121,31 @@ SERVICE_FILE="/etc/systemd/system/rrc-inventory.service"
 # anyone who cloned somewhere else or under a different account.
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-if sed -e "s|^WorkingDirectory=.*|WorkingDirectory=${REPO_DIR}|" \
-       -e "s|^ExecStart=.*|ExecStart=${REPO_DIR}/start.sh|" \
-       -e "s|^ExecStop=.*|ExecStop=${REPO_DIR}/stop.sh|" \
-       -e "s|^User=.*|User=${USER}|" \
-       -e "s|^Group=.*|Group=$(id -gn)|" \
-       rrc-inventory.service | sudo tee "$SERVICE_FILE" > /dev/null 2>&1; then
+# render_service writes the unit with this machine's paths filled in. The unit
+# in the repo uses @REPO_DIR@ / @USER@ / @GROUP@ placeholders; the line-anchored
+# rewrites also cover units installed from older copies with real paths in them.
+render_service() {
+    sed -e "s|@REPO_DIR@|${REPO_DIR}|g" \
+        -e "s|@USER@|${USER}|g" \
+        -e "s|@GROUP@|$(id -gn)|g" \
+        -e "s|^WorkingDirectory=.*|WorkingDirectory=${REPO_DIR}|" \
+        -e "s|^ExecStart=.*|ExecStart=${REPO_DIR}/start.sh|" \
+        -e "s|^ExecStop=.*|ExecStop=${REPO_DIR}/stop.sh --no-disable|" \
+        -e "s|^User=.*|User=${USER}|" \
+        -e "s|^Group=.*|Group=$(id -gn)|" \
+        rrc-inventory.service
+}
+
+if render_service | sudo tee "$SERVICE_FILE" > /dev/null 2>&1; then
     sudo systemctl daemon-reload
     sudo systemctl enable rrc-inventory.service
     print_success "Auto-start configured for ${REPO_DIR} as ${USER}."
 else
+    # Kept out of the repo so the rendered copy never ends up in a commit.
+    RENDERED_SERVICE="$(mktemp "${TMPDIR:-/tmp}/rrc-inventory.service.XXXXXX")"
+    render_service > "$RENDERED_SERVICE"
     print_warning "Could not set up auto-start. You can set it up manually later with:"
-    print_warning "  sudo cp rrc-inventory.service /etc/systemd/system/"
+    print_warning "  sudo cp ${RENDERED_SERVICE} ${SERVICE_FILE}"
     print_warning "  sudo systemctl daemon-reload"
     print_warning "  sudo systemctl enable rrc-inventory.service"
 fi

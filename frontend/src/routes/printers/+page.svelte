@@ -83,7 +83,8 @@
                 return;
             }
 
-            const result = await response.json();
+            // {} when the body is not JSON, e.g. a 502 page from the proxy
+            const result = await response.json().catch(() => ({}));
             if (response.ok) {
                 notice = `${printer.name}: access code updated, reconnecting...`;
                 setTimeout(() => (notice = ''), 8000);
@@ -93,7 +94,7 @@
                 setTimeout(loadPrinters, 4000);
                 setTimeout(loadPrinters, 12000);
             } else {
-                error = result.error || 'Could not update the access code';
+                error = result.error || `Could not update the access code (HTTP ${response.status})`;
             }
         } catch (e) {
             error = 'Could not reach the server';
@@ -173,8 +174,22 @@
             notice = result.body.message || 'File sent to the printer';
             setTimeout(() => (notice = ''), 10000);
             loadPrinterFiles(printer);
+        } else if (result.body.error) {
+            error = result.body.error;
+            setTimeout(() => (error = ''), 8000);
         } else {
-            error = result.body.error || 'The printer would not accept that file';
+            // The proxy's own errors (size limit, backend down) have no JSON body
+            if (result.status === 413) {
+                error = 'That file is too large to send to the printer';
+            } else if (result.status === 429) {
+                error = 'Too many uploads. Wait a few minutes and try again';
+            } else if (result.status === 0) {
+                error = 'The upload was interrupted. Check your connection and try again';
+            } else if (result.status >= 502 && result.status <= 504) {
+                error = 'The server is not responding right now. Try again in a minute';
+            } else {
+                error = `The printer would not accept that file (HTTP ${result.status})`;
+            }
             setTimeout(() => (error = ''), 8000);
         }
     }

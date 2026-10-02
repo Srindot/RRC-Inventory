@@ -1,3 +1,5 @@
+# Installed by setup.sh, which replaces @REPO_DIR@, @USER@ and @GROUP@ with
+# this machine's values. Copying this file by hand? Fill those in first.
 [Unit]
 Description=RRC Inventory Management System
 Requires=docker.service
@@ -7,12 +9,15 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-WorkingDirectory=/home/sriney/projects/rrc-inventory
-ExecStart=/home/sriney/projects/rrc-inventory/start.sh
-ExecStop=/home/sriney/projects/rrc-inventory/stop.sh
+WorkingDirectory=@REPO_DIR@
+ExecStart=@REPO_DIR@/start.sh
+# --no-disable: a shutdown or "systemctl stop" must only bring the containers
+# down. Plain ./stop.sh also disables autostart, which would leave the system
+# off after the next reboot.
+ExecStop=@REPO_DIR@/stop.sh --no-disable
 TimeoutStartSec=300
-User=sriney
-Group=sriney
+User=@USER@
+Group=@GROUP@
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 [Install]
