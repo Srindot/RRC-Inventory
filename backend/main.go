@@ -9,8 +9,10 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"mime/multipart"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -22,40 +24,343 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // --- HELPER FUNCTIONS ---
 
-// validateImageFile checks if the uploaded file is a valid image format
-func validateImageFile(file *multipart.FileHeader) error {
-	// Check file size (max 10MB)
-	maxSize := int64(10 * 1024 * 1024) // 10MB
-	if file.Size > maxSize {
-		return fmt.Errorf("file size too large. Maximum allowed size is 10MB")
+// maxPhotoBytes is the largest item photo accepted.
+const maxPhotoBytes = 10 * 1024 * 1024
+
+// allowedImageTypes maps the content types we accept, as sniffed from the
+// file itself, to the extension the photo is stored under. Only raster formats
+// that browsers render as plain images are allowed: an SVG is a document that
+// can carry script, so it would be stored XSS on our own origin.
+var allowedImageTypes = map[string]string{
+	"image/jpeg": ".jpg",
+	"image/png":  ".png",
+	"image/gif":  ".gif",
+	"image/webp": ".webp",
+	"image/bmp":  ".bmp",
+}
+
+// validateImageFile checks that the upload really is a supported image and
+// returns the extension it should be stored with. The extension the client
+// sent is ignored - only the file's content counts.
+func validateImageFile(file *multipart.FileHeader) (string, error) {
+	if file.Size > maxPhotoBytes {
+		return "", fmt.Errorf("file size too large. Maximum allowed size is 10MB")
 	}
 
-	// Get file extension
-	ext := strings.ToLower(filepath.Ext(file.Filename))
+	f, err := file.Open()
+	if err != nil {
+		return "", fmt.Errorf("could not read the uploaded file")
+	}
+	defer f.Close()
 
-	// Allowed image extensions (common smartphone formats)
-	allowedExts := map[string]bool{
-		".jpg":  true,
-		".jpeg": true,
-		".png":  true,
-		".webp": true,
-		".heic": true,
-		".heif": true,
-		".gif":  true,
-		".bmp":  true,
-		".svg":  true, // For testing purposes
+	head := make([]byte, 512)
+	n, err := io.ReadFull(f, head)
+	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) {
+		return "", fmt.Errorf("could not read the uploaded file")
 	}
 
-	if !allowedExts[ext] {
-		return fmt.Errorf("unsupported file format. Allowed formats: JPG, JPEG, PNG, WEBP, HEIC, HEIF, GIF, BMP")
+	ext, ok := allowedImageTypes[http.DetectContentType(head[:n])]
+	if !ok {
+		return "", fmt.Errorf("unsupported file format. Allowed formats: JPG, PNG, WEBP, GIF, BMP")
 	}
+	return ext, nil
+}
 
+// --- REQUEST LIMITS ---
+
+// Body size limits. The photo limit leaves room for the form fields and the
+// multipart framing around a 10 MB image.
+const (
+	defaultBodyLimit = 12 * 1024 * 1024
+	printerBodyLimit = maxUploadBytes + 1024*1024
+)
+
+// limitBody caps the request body at limit bytes. It has to run before
+// anything parses the body, so an oversized upload is cut off as it arrives
+// instead of being spooled to disk first.
+func limitBody(limit int64) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if c.Request.ContentLength > limit {
+			c.AbortWithStatusJSON(http.StatusRequestEntityTooLarge, gin.H{"error": "Upload is too large"})
+			return
+		}
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, limit)
+		c.Next()
+	}
+}
+
+// bodyTooLarge reports whether err came from hitting the limitBody cap.
+func bodyTooLarge(err error) bool {
+	var maxErr *http.MaxBytesError
+	return errors.As(err, &maxErr)
+}
+
+// photoHeaders stops an uploaded file from ever being treated as anything but
+// an image, even if something slipped past validateImageFile.
+func photoHeaders(c *gin.Context) {
+	c.Header("X-Content-Type-Options", "nosniff")
+	c.Header("Content-Security-Policy", "default-src 'none'; img-src 'self'; sandbox")
+	c.Next()
+}
+
+// --- PUBLIC VALIDATION ---
+
+// normalizePhone reduces a phone number to its digits, dropping a country
+// code or trunk prefix so "+91 98765 43210" and "9876543210" compare equal.
+func normalizePhone(phone string) string {
+	var digits strings.Builder
+	for _, r := range phone {
+		if r >= '0' && r <= '9' {
+			digits.WriteRune(r)
+		}
+	}
+	d := digits.String()
+	if len(d) > 10 {
+		d = d[len(d)-10:]
+	}
+	return d
+}
+
+// phonesMatch compares two phone numbers by their digits. A number with no
+// digits never matches anything, so an empty stored phone is not a free pass.
+func phonesMatch(a, b string) bool {
+	na, nb := normalizePhone(a), normalizePhone(b)
+	return na != "" && subtle.ConstantTimeCompare([]byte(na), []byte(nb)) == 1
+}
+
+// errReturn* are the reasons a self-service return can be refused.
+var (
+	errReturnNotActive     = errors.New("only items that are currently borrowed can be returned here")
+	errReturnAlreadyDone   = errors.New("item has already been returned")
+	errReturnPhoneMismatch = errors.New("that phone number does not match the one this item was borrowed with")
+)
+
+// checkReturn decides whether the person returning a loan may do so: the loan
+// must be active and they must know the phone number it was borrowed with.
+// Missing items go through an admin, not the public page.
+func checkReturn(loan Loan, phone string) error {
+	switch loan.Status {
+	case "active":
+	case "returned":
+		return errReturnAlreadyDone
+	default:
+		return errReturnNotActive
+	}
+	if !phonesMatch(loan.BorrowerPhone, phone) {
+		return errReturnPhoneMismatch
+	}
 	return nil
 }
+
+// borrowRequest is the validated text part of a borrow form.
+type borrowRequest struct {
+	BorrowerName       string
+	BorrowerPhone      string
+	ItemName           string
+	LabLocation        string
+	Quantity           int
+	ExpectedReturnDate string
+	Purpose            string
+}
+
+// parseBorrowForm validates the fields of a borrow form. Purpose is optional -
+// asking for it every time was friction people were routing around.
+func parseBorrowForm(values map[string][]string) (borrowRequest, error) {
+	get := func(key string) string {
+		if v := values[key]; len(v) > 0 {
+			return strings.TrimSpace(v[0])
+		}
+		return ""
+	}
+
+	req := borrowRequest{
+		BorrowerName:       get("borrower_name"),
+		BorrowerPhone:      get("borrower_phone"),
+		ItemName:           get("item_name"),
+		LabLocation:        get("lab_location"),
+		ExpectedReturnDate: get("expected_return_date"),
+		Purpose:            get("purpose"),
+	}
+
+	if req.BorrowerName == "" || req.BorrowerPhone == "" || req.ItemName == "" || req.LabLocation == "" || req.ExpectedReturnDate == "" {
+		return req, errors.New("Name, phone, item, lab and return date are required")
+	}
+	if normalizePhone(req.BorrowerPhone) == "" {
+		return req, errors.New("Enter a valid phone number")
+	}
+	if _, ok := parseReturnDate(req.ExpectedReturnDate); !ok {
+		return req, errors.New("Invalid return date")
+	}
+
+	qty, err := strconv.Atoi(get("quantity_borrowed"))
+	if err != nil || qty < 1 {
+		return req, errors.New("Quantity must be a whole number of at least 1")
+	}
+	req.Quantity = qty
+
+	if req.Purpose == "" {
+		req.Purpose = "Not specified"
+	}
+	return req, nil
+}
+
+// PublicLoan is what the public dashboard sees of a loan. It deliberately
+// leaves out the borrower's phone number and purpose: the list is open to
+// anyone, and the phone is what proves who may return the item.
+type PublicLoan struct {
+	ID                 uint       `json:"ID"`
+	CreatedAt          time.Time  `json:"CreatedAt"`
+	BorrowerName       string     `json:"borrower_name"`
+	ItemName           string     `json:"item_name"`
+	LabLocation        string     `json:"lab_location"`
+	QuantityBorrowed   int        `json:"quantity_borrowed"`
+	ExpectedReturnDate string     `json:"expected_return_date"`
+	PhotoFilename      string     `json:"photo_filename"`
+	Status             string     `json:"status"`
+	ReturnedAt         *time.Time `json:"returned_at"`
+}
+
+func toPublicLoans(loans []Loan) []PublicLoan {
+	out := make([]PublicLoan, 0, len(loans))
+	for _, l := range loans {
+		out = append(out, PublicLoan{
+			ID:                 l.ID,
+			CreatedAt:          l.CreatedAt,
+			BorrowerName:       l.BorrowerName,
+			ItemName:           l.ItemName,
+			LabLocation:        l.LabLocation,
+			QuantityBorrowed:   l.QuantityBorrowed,
+			ExpectedReturnDate: l.ExpectedReturnDate,
+			PhotoFilename:      l.PhotoFilename,
+			Status:             l.Status,
+			ReturnedAt:         l.ReturnedAt,
+		})
+	}
+	return out
+}
+
+// PublicBooking is the public calendar's view of a booking - no phone number,
+// since that is what proves who may cancel it.
+type PublicBooking struct {
+	ID        uint      `json:"ID"`
+	BookedBy  string    `json:"booked_by"`
+	Purpose   string    `json:"purpose"`
+	StartTime time.Time `json:"start_time"`
+	EndTime   time.Time `json:"end_time"`
+}
+
+func toPublicBookings(bookings []Booking) []PublicBooking {
+	out := make([]PublicBooking, 0, len(bookings))
+	for _, b := range bookings {
+		out = append(out, PublicBooking{
+			ID:        b.ID,
+			BookedBy:  b.BookedBy,
+			Purpose:   b.Purpose,
+			StartTime: b.StartTime,
+			EndTime:   b.EndTime,
+		})
+	}
+	return out
+}
+
+// errBookingClash marks a booking refused because the slot is taken.
+var errBookingClash = errors.New("that slot overlaps an existing booking")
+
+// bookingLockKey serialises bookings with a Postgres advisory lock. There is
+// only one lab, so one key; without it two overlapping requests can both pass
+// the overlap check before either inserts.
+const bookingLockKey = 7_311_001
+
+// extendReturnDate pushes a loan's due date out. Return dates are whole days
+// (an item is due at the end of its date), so an extension in hours rounds up
+// to the next whole day rather than silently disappearing.
+func extendReturnDate(current string, days, hours int) (string, error) {
+	if days < 0 || hours < 0 || days*24+hours <= 0 {
+		return "", errors.New("Extension must be a positive number of days or hours")
+	}
+	due, ok := parseReturnDate(current)
+	if !ok {
+		return "", errors.New("Invalid current return date format")
+	}
+	totalHours := days*24 + hours
+	addDays := (totalHours + 23) / 24
+	return due.AddDate(0, 0, addDays).Format("2006-01-02"), nil
+}
+
+// --- LOGIN RATE LIMITING ---
+
+const (
+	loginMaxFailures = 10
+	loginWindow      = 15 * time.Minute
+)
+
+type loginAttempts struct {
+	failures int
+	first    time.Time
+}
+
+// loginLimiter counts failed logins per client IP in a fixed window.
+type loginLimiter struct {
+	mu        sync.Mutex
+	attempts  map[string]*loginAttempts
+	lastSweep time.Time
+}
+
+func newLoginLimiter() *loginLimiter {
+	return &loginLimiter{attempts: make(map[string]*loginAttempts)}
+}
+
+// blocked reports whether ip has used up its failed attempts for now.
+func (l *loginLimiter) blocked(ip string, now time.Time) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	a, ok := l.attempts[ip]
+	if !ok {
+		return false
+	}
+	if now.Sub(a.first) > loginWindow {
+		delete(l.attempts, ip)
+		return false
+	}
+	return a.failures >= loginMaxFailures
+}
+
+// fail records a failed login from ip.
+func (l *loginLimiter) fail(ip string, now time.Time) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	// Opportunistically drop windows that have expired.
+	if now.Sub(l.lastSweep) > loginWindow {
+		for k, a := range l.attempts {
+			if now.Sub(a.first) > loginWindow {
+				delete(l.attempts, k)
+			}
+		}
+		l.lastSweep = now
+	}
+	a, ok := l.attempts[ip]
+	if !ok || now.Sub(a.first) > loginWindow {
+		l.attempts[ip] = &loginAttempts{failures: 1, first: now}
+		return
+	}
+	a.failures++
+}
+
+// succeed clears the failure count for ip.
+func (l *loginLimiter) succeed(ip string) {
+	l.mu.Lock()
+	delete(l.attempts, ip)
+	l.mu.Unlock()
+}
+
+// dummyPasswordHash is compared against when a login names an unknown user, so
+// that a wrong username takes as long to reject as a wrong password.
+var dummyPasswordHash, _ = bcrypt.GenerateFromPassword([]byte("not-a-real-password"), bcrypt.DefaultCost)
 
 // --- PASSWORD HASHING ---
 
@@ -136,6 +441,18 @@ func (s *sessionStore) revoke(token string) {
 	s.mu.Lock()
 	delete(s.sessions, token)
 	s.mu.Unlock()
+}
+
+// revokeUser ends every session belonging to username except keep, so a
+// password change logs out anyone else who had the old password.
+func (s *sessionStore) revokeUser(username, keep string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for t, sess := range s.sessions {
+		if sess.Username == username && t != keep {
+			delete(s.sessions, t)
+		}
+	}
 }
 
 // bearerToken extracts the token from an "Authorization: Bearer <token>" header.
@@ -330,6 +647,7 @@ func main() {
 	printers := loadPrinterManager(db)
 
 	sessions := newSessionStore()
+	loginLimits := newLoginLimiter()
 
 	// requireAdmin authenticates admin API calls with a bearer session token.
 	requireAdmin := func(c *gin.Context) {
@@ -388,8 +706,9 @@ func main() {
 	// --- API ROUTES ---
 	api := router.Group("/api")
 	{
-		// Serve uploaded photos
-		api.Static("/photos", "./uploads")
+		// Serve uploaded photos, locked down so a file can only ever be an image
+		photos := api.Group("/photos", photoHeaders)
+		photos.Static("/", "./uploads")
 
 		// Get a list of all items
 		api.GET("/items", func(c *gin.Context) {
@@ -403,14 +722,33 @@ func main() {
 
 		// --- NEW ENDPOINT TO CREATE ITEMS ---
 		api.POST("/items", requireAdmin, func(c *gin.Context) {
-			var newItem Item
-			if err := c.ShouldBindJSON(&newItem); err != nil {
+			type ItemRequest struct {
+				Name          string `json:"name"`
+				HomeLab       string `json:"home_lab"`
+				TotalQuantity int    `json:"total_quantity"`
+			}
+
+			var req ItemRequest
+			if err := c.ShouldBindJSON(&req); err != nil {
 				c.JSON(400, gin.H{"error": "Invalid data"})
+				return
+			}
+			if strings.TrimSpace(req.Name) == "" {
+				c.JSON(400, gin.H{"error": "Item name is required"})
+				return
+			}
+			if req.TotalQuantity < 0 {
+				c.JSON(400, gin.H{"error": "Quantity cannot be negative"})
 				return
 			}
 
 			// Set quantity on hand to be the total quantity initially
-			newItem.QuantityOnHand = newItem.TotalQuantity
+			newItem := Item{
+				Name:           strings.TrimSpace(req.Name),
+				HomeLab:        strings.TrimSpace(req.HomeLab),
+				TotalQuantity:  req.TotalQuantity,
+				QuantityOnHand: req.TotalQuantity,
+			}
 
 			if err := db.Create(&newItem).Error; err != nil {
 				c.JSON(500, gin.H{"error": "Failed to create item"})
@@ -420,7 +758,8 @@ func main() {
 		})
 		// --- END OF NEW ENDPOINT ---
 
-		// Get a list of all active loans (for the dashboard)
+		// Get a list of all active loans (for the dashboard). This is public, so
+		// it returns PublicLoan - no phone numbers.
 		api.GET("/loans/active", func(c *gin.Context) {
 			var loans []Loan
 			// Include:
@@ -443,59 +782,27 @@ func main() {
 				c.JSON(500, gin.H{"error": "Failed to retrieve active loans"})
 				return
 			}
-			c.JSON(200, loans)
+			c.JSON(200, toPublicLoans(loans))
 		})
 
 		// Endpoint for borrowing an item
-		api.POST("/borrow", func(c *gin.Context) {
+		api.POST("/borrow", limitBody(defaultBodyLimit), func(c *gin.Context) {
 			// Handle multipart form data for file upload
 			form, err := c.MultipartForm()
 			if err != nil {
-				c.JSON(400, gin.H{"error": "Invalid form data: " + err.Error()})
-				return
-			}
-
-			// Extract form fields
-			borrowerName := ""
-			borrowerPhone := ""
-			itemName := ""
-			labLocation := ""
-			quantityBorrowed := 0
-			expectedReturnDate := ""
-			purpose := ""
-
-			if values := form.Value["borrower_name"]; len(values) > 0 {
-				borrowerName = values[0]
-			}
-			if values := form.Value["borrower_phone"]; len(values) > 0 {
-				borrowerPhone = values[0]
-			}
-			if values := form.Value["item_name"]; len(values) > 0 {
-				itemName = values[0]
-			}
-			if values := form.Value["lab_location"]; len(values) > 0 {
-				labLocation = values[0]
-			}
-			if values := form.Value["quantity_borrowed"]; len(values) > 0 {
-				if qty, err := strconv.Atoi(values[0]); err == nil {
-					quantityBorrowed = qty
+				if bodyTooLarge(err) {
+					c.JSON(413, gin.H{"error": "Upload is too large. Photos can be up to 10MB."})
+					return
 				}
-			}
-			if values := form.Value["expected_return_date"]; len(values) > 0 {
-				expectedReturnDate = values[0]
-			}
-			if values := form.Value["purpose"]; len(values) > 0 {
-				purpose = values[0]
-			}
-
-			// Validate required fields. Purpose is optional - asking for it every
-			// time was friction people were routing around.
-			if borrowerName == "" || borrowerPhone == "" || itemName == "" || labLocation == "" || expectedReturnDate == "" {
-				c.JSON(400, gin.H{"error": "Name, phone, item, lab and return date are required"})
+				log.Printf("borrow: bad form: %v", err)
+				c.JSON(400, gin.H{"error": "Invalid form data"})
 				return
 			}
-			if purpose == "" {
-				purpose = "Not specified"
+
+			req, err := parseBorrowForm(form.Value)
+			if err != nil {
+				c.JSON(400, gin.H{"error": err.Error()})
+				return
 			}
 
 			// Handle file upload
@@ -503,16 +810,16 @@ func main() {
 			if files := form.File["item_photo"]; len(files) > 0 {
 				file := files[0]
 
-				// Validate image file
-				if err := validateImageFile(file); err != nil {
+				// Validate image file. The stored extension comes from what
+				// the content actually is, not from the name it was sent with.
+				ext, err := validateImageFile(file)
+				if err != nil {
 					c.JSON(400, gin.H{"error": "Invalid image file: " + err.Error()})
 					return
 				}
 
-				// Generate unique filename with original extension. The random
-				// suffix keeps two uploads in the same second from overwriting
-				// each other.
-				ext := strings.ToLower(filepath.Ext(file.Filename))
+				// Generate unique filename. The random suffix keeps two uploads
+				// in the same second from overwriting each other.
 				suffix := make([]byte, 6)
 				if _, err := rand.Read(suffix); err != nil {
 					c.JSON(500, gin.H{"error": "Failed to store photo"})
@@ -522,34 +829,38 @@ func main() {
 
 				// Save file to uploads directory
 				if err := c.SaveUploadedFile(file, "./uploads/"+photoFilename); err != nil {
-					c.JSON(500, gin.H{"error": "Failed to save photo: " + err.Error()})
+					log.Printf("borrow: saving photo: %v", err)
+					c.JSON(500, gin.H{"error": "Failed to save photo"})
 					return
 				}
 			}
 
 			// Borrowing is self-service: the loan is active immediately, no approval needed.
 			newLoan := Loan{
-				BorrowerName:       borrowerName,
-				BorrowerPhone:      borrowerPhone,
-				ItemName:           itemName,
-				LabLocation:        labLocation,
-				QuantityBorrowed:   quantityBorrowed,
-				ExpectedReturnDate: expectedReturnDate,
-				Purpose:            purpose,
+				BorrowerName:       req.BorrowerName,
+				BorrowerPhone:      req.BorrowerPhone,
+				ItemName:           req.ItemName,
+				LabLocation:        req.LabLocation,
+				QuantityBorrowed:   req.Quantity,
+				ExpectedReturnDate: req.ExpectedReturnDate,
+				Purpose:            req.Purpose,
 				PhotoFilename:      photoFilename,
 				Status:             "active",
 				ApprovalStatus:     "approved",
 			}
 
 			if err := db.Create(&newLoan).Error; err != nil {
-				c.JSON(500, gin.H{"error": "Failed to process borrow request: " + err.Error()})
+				log.Printf("borrow: creating loan: %v", err)
+				c.JSON(500, gin.H{"error": "Failed to process borrow request"})
 				return
 			}
 
 			c.JSON(200, gin.H{"message": "Item borrowed successfully! Please return it by the expected date.", "loan_id": newLoan.ID})
 		})
 
-		// Endpoint for returning an item, identified by its loan ID
+		// Endpoint for returning an item, identified by its loan ID. The
+		// borrower confirms the phone number it was borrowed with, so a
+		// stranger cannot mark someone else's item as back.
 		api.POST("/return/:id", func(c *gin.Context) {
 			loanID, err := strconv.Atoi(c.Param("id"))
 			if err != nil {
@@ -557,18 +868,24 @@ func main() {
 				return
 			}
 
+			type ReturnRequest struct {
+				Phone string `json:"phone"`
+			}
+			var req ReturnRequest
+			if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.Phone) == "" {
+				c.JSON(400, gin.H{"error": "Enter the phone number you borrowed the item with"})
+				return
+			}
+
 			// Returning is self-service: mark the loan returned right away.
 			err = db.Transaction(func(tx *gorm.DB) error {
 				var loan Loan
-				if err := tx.First(&loan, loanID).Error; err != nil {
-					if errors.Is(err, gorm.ErrRecordNotFound) {
-						return fmt.Errorf("loan not found")
-					}
+				if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&loan, loanID).Error; err != nil {
 					return err
 				}
 
-				if loan.Status == "returned" {
-					return fmt.Errorf("item has already been returned")
+				if err := checkReturn(loan, req.Phone); err != nil {
+					return err
 				}
 
 				now := time.Now()
@@ -580,8 +897,20 @@ func main() {
 				return tx.Save(&loan).Error
 			})
 
-			if err != nil {
-				c.JSON(400, gin.H{"error": err.Error()})
+			switch {
+			case err == nil:
+			case errors.Is(err, gorm.ErrRecordNotFound):
+				c.JSON(404, gin.H{"error": "Loan not found"})
+				return
+			case errors.Is(err, errReturnPhoneMismatch):
+				c.JSON(403, gin.H{"error": "That phone number does not match the one this item was borrowed with"})
+				return
+			case errors.Is(err, errReturnAlreadyDone), errors.Is(err, errReturnNotActive):
+				c.JSON(409, gin.H{"error": err.Error()})
+				return
+			default:
+				log.Printf("return %d: %v", loanID, err)
+				c.JSON(500, gin.H{"error": "Failed to return item"})
 				return
 			}
 
@@ -610,9 +939,14 @@ func main() {
 		// because avoiding a wifi switch is the whole point - but it only
 		// *uploads*. Starting the print still needs somebody at the machine
 		// who can see the plate is clear.
-		api.POST("/printers/:id/files", func(c *gin.Context) {
+		api.POST("/printers/:id/files", limitBody(printerBodyLimit), func(c *gin.Context) {
 			file, err := c.FormFile("file")
 			if err != nil {
+				if bodyTooLarge(err) {
+					c.JSON(413, gin.H{"error": fmt.Sprintf(
+						"That file is too large. The limit is %d MB.", maxUploadBytes/(1024*1024))})
+					return
+				}
 				c.JSON(400, gin.H{"error": "Choose a sliced file to send"})
 				return
 			}
@@ -659,7 +993,8 @@ func main() {
 
 		// --- MOTION CAPTURE LAB BOOKINGS ---
 
-		// List bookings in a time range (defaults to the next 8 weeks)
+		// List bookings in a time range (defaults to the next 8 weeks). Public,
+		// so phone numbers are left out - admins use /admin/bookings.
 		api.GET("/bookings", func(c *gin.Context) {
 			from := time.Now().AddDate(0, 0, -14)
 			to := time.Now().AddDate(0, 0, 56)
@@ -681,7 +1016,7 @@ func main() {
 				c.JSON(500, gin.H{"error": "Failed to retrieve bookings"})
 				return
 			}
-			c.JSON(200, bookings)
+			c.JSON(200, toPublicBookings(bookings))
 		})
 
 		// Book the lab. No approval - the slot just has to be free.
@@ -732,12 +1067,18 @@ func main() {
 				EndTime:   end,
 			}
 
-			// Reject overlaps, checked inside the transaction that inserts the row.
+			// Reject overlaps, checked inside the transaction that inserts the
+			// row. The advisory lock makes concurrent bookings take turns, so
+			// two overlapping requests cannot both see a free slot.
 			err = db.Transaction(func(tx *gorm.DB) error {
+				if err := tx.Exec("SELECT pg_advisory_xact_lock(?)", bookingLockKey).Error; err != nil {
+					return err
+				}
+
 				var clash Booking
 				err := tx.Where("start_time < ? AND end_time > ?", end, start).First(&clash).Error
 				if err == nil {
-					return fmt.Errorf("that slot overlaps an existing booking by %s (%s - %s)",
+					return fmt.Errorf("%w by %s (%s - %s)", errBookingClash,
 						clash.BookedBy,
 						clash.StartTime.Local().Format("Mon 2 Jan 15:04"),
 						clash.EndTime.Local().Format("15:04"))
@@ -749,11 +1090,16 @@ func main() {
 			})
 
 			if err != nil {
-				c.JSON(409, gin.H{"error": err.Error()})
+				if errors.Is(err, errBookingClash) {
+					c.JSON(409, gin.H{"error": err.Error()})
+					return
+				}
+				log.Printf("booking: %v", err)
+				c.JSON(500, gin.H{"error": "Failed to book the lab"})
 				return
 			}
 
-			c.JSON(200, gin.H{"message": "Motion Capture Lab booked!", "booking": newBooking})
+			c.JSON(200, gin.H{"message": "Motion Capture Lab booked!", "booking": toPublicBookings([]Booking{newBooking})[0]})
 		})
 
 		// Cancel your own booking by confirming the phone number it was made with
@@ -774,7 +1120,7 @@ func main() {
 				return
 			}
 
-			if strings.TrimSpace(req.Phone) != booking.Phone {
+			if !phonesMatch(req.Phone, booking.Phone) {
 				c.JSON(403, gin.H{"error": "That phone number does not match this booking"})
 				return
 			}
@@ -797,6 +1143,12 @@ func main() {
 					Password string `json:"password" binding:"required"`
 				}
 
+				ip := c.ClientIP()
+				if loginLimits.blocked(ip, time.Now()) {
+					c.JSON(429, gin.H{"error": "Too many failed login attempts. Try again in a few minutes."})
+					return
+				}
+
 				var req LoginRequest
 				if err := c.ShouldBindJSON(&req); err != nil {
 					c.JSON(400, gin.H{"error": "Invalid login data"})
@@ -805,15 +1157,21 @@ func main() {
 
 				var admin Admin
 				if err := db.Where("username = ?", req.Username).First(&admin).Error; err != nil {
+					// Spend the same time as a real check, so response time
+					// does not reveal which usernames exist.
+					bcrypt.CompareHashAndPassword(dummyPasswordHash, []byte(req.Password))
+					loginLimits.fail(ip, time.Now())
 					c.JSON(401, gin.H{"error": "Invalid credentials"})
 					return
 				}
 
 				ok, needsUpgrade := verifyPassword(admin.Password, req.Password)
 				if !ok {
+					loginLimits.fail(ip, time.Now())
 					c.JSON(401, gin.H{"error": "Invalid credentials"})
 					return
 				}
+				loginLimits.succeed(ip)
 
 				// Transparently migrate legacy SHA-256 hashes to bcrypt on login.
 				if needsUpgrade {
@@ -888,14 +1246,18 @@ func main() {
 				// 1. Overdue items first (red background)
 				// 2. Active loans by return date
 				// 3. Rejected items at bottom
-				orderClause := `
+				//
+				// "Today" is worked out here, in the app's timezone, rather than
+				// with CURRENT_DATE, which follows the database's timezone.
+				today := time.Now().In(time.Local).Format("2006-01-02")
+				orderClause := clause.OrderBy{Expression: clause.Expr{SQL: `
 					CASE
 						WHEN status = 'not_found' THEN 3
-						WHEN status = 'active' AND expected_return_date::date < CURRENT_DATE THEN 1
+						WHEN status = 'active' AND expected_return_date::date < ?::date THEN 1
 						ELSE 2
 					END ASC,
 					expected_return_date ASC
-				`
+				`, Vars: []interface{}{today}}}
 
 				if err := query.Order(orderClause).Find(&loans).Error; err != nil {
 					c.JSON(500, gin.H{"error": "Failed to retrieve loans"})
@@ -908,10 +1270,11 @@ func main() {
 			admin.POST("/loans/:id/extend", func(c *gin.Context) {
 				loanID := c.Param("id")
 
+				// The acting admin comes from the session; the page still sends
+				// admin_name, which is ignored.
 				type ExtendRequest struct {
-					ExtendDays  int    `json:"extend_days"`
-					ExtendHours int    `json:"extend_hours"`
-					AdminName   string `json:"admin_name" binding:"required"`
+					ExtendDays  int `json:"extend_days"`
+					ExtendHours int `json:"extend_hours"`
 				}
 
 				var req ExtendRequest
@@ -926,18 +1289,13 @@ func main() {
 					return
 				}
 
-				// Parse current return date and extend it
-				currentDate, err := time.Parse("2006-01-02", loan.ExpectedReturnDate)
+				newDate, err := extendReturnDate(loan.ExpectedReturnDate, req.ExtendDays, req.ExtendHours)
 				if err != nil {
-					c.JSON(400, gin.H{"error": "Invalid current return date format"})
+					c.JSON(400, gin.H{"error": err.Error()})
 					return
 				}
 
-				// Add the extension
-				newDate := currentDate.AddDate(0, 0, req.ExtendDays)
-				newDate = newDate.Add(time.Duration(req.ExtendHours) * time.Hour)
-
-				loan.ExpectedReturnDate = newDate.Format("2006-01-02")
+				loan.ExpectedReturnDate = newDate
 				if err := db.Save(&loan).Error; err != nil {
 					c.JSON(500, gin.H{"error": "Failed to extend loan"})
 					return
@@ -958,6 +1316,10 @@ func main() {
 
 				if loan.Status == "not_found" {
 					c.JSON(400, gin.H{"error": "Item is already marked as missing"})
+					return
+				}
+				if loan.Status != "active" {
+					c.JSON(400, gin.H{"error": "Only borrowed items can be marked as missing"})
 					return
 				}
 
@@ -1191,6 +1553,32 @@ func main() {
 				})
 			})
 
+			// Bookings with contact details, for the admin calendar. Same range
+			// rules as the public list.
+			admin.GET("/bookings", func(c *gin.Context) {
+				from := time.Now().AddDate(0, 0, -14)
+				to := time.Now().AddDate(0, 0, 56)
+
+				if v := c.Query("from"); v != "" {
+					if t, err := time.Parse(time.RFC3339, v); err == nil {
+						from = t
+					}
+				}
+				if v := c.Query("to"); v != "" {
+					if t, err := time.Parse(time.RFC3339, v); err == nil {
+						to = t
+					}
+				}
+
+				var bookings []Booking
+				if err := db.Where("start_time < ? AND end_time > ?", to, from).
+					Order("start_time ASC").Find(&bookings).Error; err != nil {
+					c.JSON(500, gin.H{"error": "Failed to retrieve bookings"})
+					return
+				}
+				c.JSON(200, bookings)
+			})
+
 			// Delete any Motion Capture Lab booking
 			admin.DELETE("/bookings/:id", func(c *gin.Context) {
 				var booking Booking
@@ -1358,6 +1746,10 @@ func main() {
 					c.JSON(500, gin.H{"error": "Failed to update password"})
 					return
 				}
+
+				// Anyone else signed in with the old password is logged out;
+				// this session stays.
+				sessions.revokeUser(admin.Username, bearerToken(c))
 
 				c.JSON(200, gin.H{"message": "Password changed successfully"})
 			})
@@ -1557,6 +1949,16 @@ func main() {
 	}
 
 	// --- START SERVER ---
+	// Only the header read is timed: a whole-request or write timeout would
+	// cut off large printer uploads and long-running camera streams.
+	server := &http.Server{
+		Addr:              ":8080",
+		Handler:           router,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
 	log.Println("Starting server on port 8080...")
-	router.Run(":8080")
+	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		log.Fatalf("server stopped: %v", err)
+	}
 }

@@ -50,6 +50,12 @@
     let searchQuery = '';
     let filteredLoans = [];
 
+    // Returning asks for the phone number the item was borrowed with, so
+    // only the borrower can mark it back. One card is open at a time.
+    let returningLoanId = null;
+    let returnPhone = '';
+    let returnError = '';
+
     // Simple reactive statement that explicitly depends on both variables
     $: updateFilteredLoans(loans, searchQuery);
     
@@ -66,8 +72,7 @@
             loansToFilter = currentLoans.filter(loan => {
                 const borrowerName = (loan.borrower_name || '').toLowerCase();
                 const itemName = (loan.item_name || '').toLowerCase();
-                const borrowerPhone = (loan.borrower_phone || '').toLowerCase();
-                return borrowerName.includes(query) || itemName.includes(query) || borrowerPhone.includes(query);
+                return borrowerName.includes(query) || itemName.includes(query);
             });
         }
         
@@ -159,9 +164,12 @@
             const response = await fetch('/api/items');
             if (response.ok) {
                 items = await response.json();
+            } else {
+                showMessage('Could not load the item list. Please refresh the page.', 'error');
             }
         } catch (e) {
             console.error('Failed to load items:', e);
+            showMessage('Could not load the item list. Check your connection and refresh.', 'error');
         }
     }
 
@@ -192,11 +200,13 @@
 			formData.append('lab_location', borrowForm.lab_location);
 			formData.append('quantity_borrowed', borrowForm.quantity_borrowed.toString());
 			
-			// Calculate expected return date
+			// Calculate expected return date. Use the local calendar date -
+			// toISOString() gives the UTC date, which is a day early here
+			// for a few hours each night.
 			const returnDate = new Date();
 			returnDate.setDate(returnDate.getDate() + borrowForm.return_days);
 			returnDate.setHours(returnDate.getHours() + borrowForm.return_hours);
-			const expectedReturnDate = returnDate.toISOString().split('T')[0];
+			const expectedReturnDate = localDateString(returnDate);
 			formData.append('expected_return_date', expectedReturnDate);
 			
 			formData.append('purpose', borrowForm.purpose);
@@ -231,24 +241,61 @@
 		}
 	}
 
+    // Open the phone check for one loan card
+    function startReturn(loanId) {
+        returningLoanId = loanId;
+        // Most people return from the device they borrowed on
+        returnPhone = returnPhone || borrowForm.borrower_phone || savedPhone();
+        returnError = '';
+    }
+
+    function cancelReturn() {
+        returningLoanId = null;
+        returnError = '';
+    }
+
+    function savedPhone() {
+        try {
+            const saved = JSON.parse(localStorage.getItem(CONTACT_KEY) || '{}');
+            return (saved && saved.phone) || '';
+        } catch (e) {
+            return '';
+        }
+    }
+
     // Return an item
     async function returnItem(loanId) {
+        if (!returnPhone.trim()) {
+            returnError = 'Enter the phone number you borrowed this item with.';
+            return;
+        }
         loading = true;
+        returnError = '';
         try {
             const response = await fetch(`/api/return/${loanId}`, {
-                method: 'POST'
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ phone: returnPhone.trim() })
             });
 
             if (response.ok) {
                 const result = await response.json();
+                returningLoanId = null;
                 showMessage(result.message, 'success');
                 loadActiveLoans(); // Refresh the list
             } else {
-                const error = await response.json();
-                showMessage(error.error || 'Failed to return item', 'error');
+                const error = await response.json().catch(() => ({}));
+                if (response.status === 403) {
+                    returnError = 'That phone number does not match the one this item was borrowed with.';
+                } else {
+                    returnError = error.error || 'Failed to return item';
+                    if (response.status === 404 || response.status === 409) {
+                        loadActiveLoans();
+                    }
+                }
             }
         } catch (e) {
-            showMessage('Failed to return item', 'error');
+            returnError = 'Network error. Please try again.';
         } finally {
             loading = false;
         }
@@ -264,10 +311,18 @@
         }, 5000);
     }
 
+    // YYYY-MM-DD for a date in the browser's own timezone
+    function localDateString(date) {
+        const pad = (n) => String(n).padStart(2, '0');
+        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+    }
+
     // An item is due at the END of its return date, so something due today is
     // not late yet. Matches the backend and the admin sort order.
     function dueDeadline(returnDate) {
-        const due = new Date(returnDate);
+        // A plain date means that day here, not midnight UTC
+        const plain = /^(\d{4})-(\d{2})-(\d{2})$/.exec(returnDate || '');
+        const due = plain ? new Date(+plain[1], +plain[2] - 1, +plain[3]) : new Date(returnDate);
         if (isNaN(due)) return null;
         due.setHours(23, 59, 59, 999);
         return due;
@@ -311,12 +366,12 @@
 
             // Validate file type
             const allowedTypes = [
-                'image/jpeg', 'image/jpg', 'image/png', 'image/webp', 
-                'image/heic', 'image/heif', 'image/gif', 'image/bmp'
+                'image/jpeg', 'image/jpg', 'image/png', 'image/webp',
+                'image/gif', 'image/bmp'
             ];
             
             if (!allowedTypes.includes(file.type)) {
-                showMessage('Unsupported file format. Please use JPG, PNG, WEBP, HEIC, or other common image formats.', 'error');
+                showMessage('Unsupported file format. Please use JPG, PNG, WEBP, GIF or BMP.', 'error');
                 event.target.value = ''; // Clear the input
                 return;
             }
@@ -654,12 +709,12 @@
                     <input 
                         type="file" 
                         id="photo" 
-                        accept="image/jpeg,image/jpg,image/png,image/webp,image/heic,image/heif,image/gif,image/bmp"
+                        accept="image/jpeg,image/jpg,image/png,image/webp,image/gif,image/bmp"
                         capture="environment"
                         required
                         on:change={handlePhotoUpload}
                     />
-                    <small class="help-text">Take a photo or upload an image (JPG, PNG, WEBP, HEIC supported - max 10MB)</small>
+                    <small class="help-text">Take a photo or upload an image (JPG, PNG, WEBP, GIF, BMP - max 10MB)</small>
                     {#if borrowForm.item_photo}
                         <div class="photo-preview">
                             <p>✅ Photo selected: {borrowForm.item_photo.name}</p>
@@ -681,13 +736,13 @@
             <button class="back-btn" on:click={goHome}>← Back to Home</button>
             
             <div class="search-container">
-                <label for="search">Search by name, item, or phone number:</label>
+                <label for="search">Search by name or item:</label>
                 <div class="search-input-group">
                     <input 
                         type="text" 
                         id="search" 
                         bind:value={searchQuery}
-                        placeholder="Enter name, item name, or phone number..."
+                        placeholder="Enter name or item name..."
                         autocomplete="off"
                     />
                     {#if searchQuery && searchQuery.trim()}
@@ -764,15 +819,6 @@
                                         <div class="detail-item">
                                             <strong>Quantity:</strong> {loan.quantity_borrowed}
                                         </div>
-                                        <div class="detail-item">
-                                            <strong>Phone:</strong> {loan.borrower_phone}
-                                        </div>
-                                    </div>
-
-                                    <div class="detail-row">
-                                        <div class="detail-item">
-                                            <strong>Purpose:</strong> {loan.purpose}
-                                        </div>
                                     </div>
 
                                     <div class="detail-row">
@@ -805,13 +851,38 @@
                                     {:else if itemCategory === 'returned'}
                                         <p class="status-message returned">✅ Successfully returned.</p>
                                     {:else if itemCategory === 'borrowed'}
-                                        <button 
-                                            class="return-action-btn" 
-                                            on:click={() => returnItem(loan.ID)}
-                                            disabled={loading}
-                                        >
-                                            ✅ Mark as Returned
-                                        </button>
+                                        {#if returningLoanId === loan.ID}
+                                            <form class="return-confirm" on:submit|preventDefault={() => returnItem(loan.ID)}>
+                                                <label for="return-phone-{loan.ID}">Phone number you borrowed it with</label>
+                                                <input
+                                                    id="return-phone-{loan.ID}"
+                                                    type="tel"
+                                                    inputmode="numeric"
+                                                    autocomplete="tel"
+                                                    bind:value={returnPhone}
+                                                    placeholder="10-digit phone number"
+                                                />
+                                                {#if returnError}
+                                                    <p class="return-error" role="alert">{returnError}</p>
+                                                {/if}
+                                                <div class="return-confirm-actions">
+                                                    <button type="submit" class="return-action-btn" disabled={loading}>
+                                                        ✅ Confirm Return
+                                                    </button>
+                                                    <button type="button" class="return-cancel-btn" on:click={cancelReturn}>
+                                                        Cancel
+                                                    </button>
+                                                </div>
+                                            </form>
+                                        {:else}
+                                            <button 
+                                                class="return-action-btn" 
+                                                on:click={() => startReturn(loan.ID)}
+                                                disabled={loading}
+                                            >
+                                                ✅ Mark as Returned
+                                            </button>
+                                        {/if}
                                     {/if}
                                 </div>
                             </div>
@@ -2632,6 +2703,53 @@
         background: linear-gradient(135deg, #94e2d5, #89dceb);
         transform: translateY(-2px);
         box-shadow: 0 4px 12px rgba(166, 227, 161, 0.3);
+    }
+
+    .return-confirm {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        text-align: left;
+    }
+
+    .return-confirm label {
+        font-weight: 600;
+        color: #cdd6f4;
+    }
+
+    .return-confirm input {
+        padding: 12px;
+        border-radius: 8px;
+        border: 1px solid #45475a;
+        background: #1e1e2e;
+        color: #cdd6f4;
+        font-size: 1rem;
+    }
+
+    .return-error {
+        margin: 0;
+        padding: 10px 12px;
+        border-radius: 8px;
+        background: rgba(243, 139, 168, 0.15);
+        color: #f38ba8;
+        border: 1px solid rgba(243, 139, 168, 0.3);
+    }
+
+    .return-confirm-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        justify-content: center;
+    }
+
+    .return-cancel-btn {
+        background: transparent;
+        color: #cdd6f4;
+        border: 1px solid #45475a;
+        padding: 12px 24px;
+        border-radius: 8px;
+        font-size: 1rem;
+        cursor: pointer;
     }
 
     .return-action-btn:disabled {

@@ -301,7 +301,6 @@
             <p><strong>Booked by:</strong> {selectedBooking.booked_by}</p>
             <p><strong>When:</strong> {new Date(selectedBooking.start_time).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'short' })},
                 {formatTime(selectedBooking.start_time)} - {formatTime(selectedBooking.end_time)}</p>
-            <p><strong>Contact:</strong> {selectedBooking.phone}</p>
             <div class="details-actions">
                 <input type="tel" bind:value={cancelPhone} placeholder="Your phone number to cancel" />
                 {#if form.phone && cancelPhone !== form.phone}
