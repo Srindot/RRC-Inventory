@@ -8,7 +8,8 @@ package main
 //     the printer streams JPEG frames, each preceded by a 16 byte header whose
 //     first 4 bytes are the payload length. Roughly one frame every 2 seconds.
 //
-// Everything here is read-only: we never send print commands.
+// Commands (stop, pause, resume, light, start) go out on the same MQTT session,
+// and only from the admin page.
 
 import (
 	"crypto/tls"
@@ -237,29 +238,52 @@ type printer struct {
 	amsUnits []AMSUnit
 	external *AMSSlot
 
-	// The job currently being tracked for the print log
-	currentJob *PrintJob
+	// The job currently being tracked for the print log. Only the file name
+	// lives under mu; the row itself belongs to the job writer (see
+	// flushJobEvents), so the database is never touched with mu held.
+	currentJob *trackedJob
+	jobEvents  []jobEvent
 	jobs       *gorm.DB
+
+	// jobsMu orders database writes for the print log. Taken before mu, never
+	// while holding it.
+	jobsMu sync.Mutex
+	dbJob  *PrintJob
 
 	// Credential health, derived from the camera handshake: the printer
 	// accepts the TCP connection and then hangs up when the code is wrong.
 	authFailed bool
 
-	// Closed and replaced when the access code changes, to force a reconnect
-	cameraConn net.Conn
-	restart    chan struct{}
+	// Closed and replaced when the access code changes, to force a reconnect.
+	// codeGeneration counts the changes, so a camera connection opened with
+	// the old code can tell it is stale before registering itself.
+	cameraConn     net.Conn
+	codeGeneration uint64
+	restart        chan struct{}
+	// Closed to stop the background loops; nil (never closed) in production
+	quit chan struct{}
 
 	// Set once the MQTT client is running, so commands can be published
 	client mqtt.Client
 
 	// Overridable so tests can point at a mock printer
 	cameraPort int
+	mqttPort   int
+	// Zero means the real backoff; tests shorten it
+	statusRetry time.Duration
 	// FTP settings, also overridable for tests
 	ftpPort      int
 	ftpPlaintext bool
 	// Zero means ftpShutTimeout. Tests shorten it so the hang case does not
 	// take half a minute to prove.
 	ftpShut time.Duration
+	// Zero means ftpIdleTimeout
+	ftpIdle time.Duration
+
+	// One semaphore of FTP sessions per printer, and its cached listing
+	ftpSlotsOnce sync.Once
+	ftpSlotsCh   chan struct{}
+	files        filesCache
 
 	// Commands carry an incrementing sequence id
 	sequence int
@@ -270,6 +294,7 @@ type PrinterManager struct {
 	printers []*printer
 	byID     map[string]*printer
 	db       *gorm.DB
+	quit     chan struct{}
 }
 
 // PrintJob is one print, recorded automatically from the printer's own state
@@ -359,7 +384,11 @@ func slugifyPrinterName(name string) string {
 // NewPrinterManager starts background connections to every configured printer.
 // Printers that are switched off simply show as offline and keep retrying.
 func NewPrinterManager(configs []PrinterConfig, db *gorm.DB) *PrinterManager {
-	m := &PrinterManager{byID: make(map[string]*printer), db: db}
+	m := &PrinterManager{
+		byID: make(map[string]*printer),
+		db:   db,
+		quit: make(chan struct{}),
+	}
 
 	// A code changed from the admin page wins over the one in PRINTERS
 	if db != nil {
@@ -384,6 +413,7 @@ func NewPrinterManager(configs []PrinterConfig, db *gorm.DB) *PrinterManager {
 			cfg:        cfg,
 			cameraPort: printerCameraPort,
 			restart:    make(chan struct{}, 1),
+			quit:       m.quit,
 			jobs:       db,
 		}
 		m.printers = append(m.printers, p)
@@ -403,10 +433,22 @@ func (p *printer) accessCode() string {
 	return p.cfg.AccessCode
 }
 
+// online reports whether the printer has reported recently.
+func (p *printer) online() bool {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.onlineLocked()
+}
+
+func (p *printer) onlineLocked() bool {
+	return !p.lastReport.IsZero() && time.Since(p.lastReport) < statusStaleAfter
+}
+
 // setAccessCode swaps the credential and forces both connections to restart.
 func (p *printer) setAccessCode(code string) {
 	p.mu.Lock()
 	p.cfg.AccessCode = code
+	p.codeGeneration++
 	// Assume the new code works until the printer says otherwise
 	p.authFailed = false
 	conn := p.cameraConn
@@ -428,16 +470,90 @@ func (p *printer) setAccessCode(code string) {
 // --- status over MQTT ---------------------------------------------------
 
 // runStatus keeps an MQTT session alive, rebuilding it whenever the access
-// code changes (paho fixes credentials at client construction).
+// code changes (paho fixes credentials at client construction) or the
+// connection drops.
+//
+// The connect loop is ours rather than paho's. With paho's ConnectRetry on,
+// Connect().Wait() does not return until a connection succeeds - and against a
+// printer whose code has changed it never does, because paho keeps retrying the
+// rejected credentials. This loop was stuck inside that wait, so it never saw
+// the restart signal, and a code fixed from the admin page never reached MQTT.
+// Here every wait also watches for a restart, and a dropped connection comes
+// back through the same path, so a new code is always the next one tried.
 func (p *printer) runStatus() {
-	for {
-		client := p.connectStatus()
+	const (
+		minStatusRetry = 10 * time.Second
+		maxStatusRetry = 60 * time.Second
+		repeatAfter    = 10 * time.Minute
+		// paho's own connect timeout is 10 s; this is the backstop
+		connectWait = 20 * time.Second
+	)
 
-		requestTopic := fmt.Sprintf("device/%s/request", p.cfg.Serial)
-		ticker := time.NewTicker(60 * time.Second)
+	minRetry := minStatusRetry
+	if p.statusRetry != 0 {
+		minRetry = p.statusRetry
+	}
+	maxRetry := maxStatusRetry
+	if maxRetry < minRetry {
+		maxRetry = minRetry
+	}
+
+	retry := minRetry
+	var lastError string
+	var lastLogged time.Time
+
+	requestTopic := fmt.Sprintf("device/%s/request", p.cfg.Serial)
+
+	for {
+		client, lost := p.newStatusClient()
+
+		restarted, quit, connErr := p.awaitConnect(client, connectWait)
+		if quit {
+			client.Disconnect(0)
+			p.clearClient(client)
+			return
+		}
+		if restarted {
+			log.Printf("printer %s: reconnecting with the new access code", p.cfg.Name)
+			client.Disconnect(0)
+			p.clearClient(client)
+			retry = minRetry
+			continue
+		}
+		if connErr != nil {
+			// Same quiet-logging rule as the camera: a printer that is off
+			// fails every attempt, and one line per attempt buries the log.
+			message := connErr.Error()
+			if message != lastError || time.Since(lastLogged) > repeatAfter {
+				log.Printf("printer %s: status connect failed: %v", p.cfg.Name, connErr)
+				lastError = message
+				lastLogged = time.Now()
+			}
+			client.Disconnect(0)
+			p.clearClient(client)
+
+			switch p.waitOrRestart(retry) {
+			case waitQuit:
+				return
+			case waitRestarted:
+				log.Printf("printer %s: reconnecting with the new access code", p.cfg.Name)
+				retry = minRetry
+			default:
+				retry *= 2
+				if retry > maxRetry {
+					retry = maxRetry
+				}
+			}
+			continue
+		}
+
+		lastError = ""
+		connectedAt := time.Now()
 
 		// Nudge the printer for a fresh dump periodically; some fields are only
 		// sent on change and we want to recover after a reconnect.
+		ticker := time.NewTicker(60 * time.Second)
+		stop, dropped := false, false
 	inner:
 		for {
 			select {
@@ -448,31 +564,125 @@ func (p *printer) runStatus() {
 			case <-p.restart:
 				log.Printf("printer %s: reconnecting with the new access code", p.cfg.Name)
 				break inner
+			case err := <-lost:
+				log.Printf("printer %s: status connection lost: %v", p.cfg.Name, err)
+				dropped = true
+				break inner
+			case <-p.quit:
+				stop = true
+				break inner
 			}
 		}
 
 		ticker.Stop()
 		client.Disconnect(250)
+		p.clearClient(client)
+		if stop {
+			return
+		}
 
-		p.mu.Lock()
-		p.client = nil
-		p.mu.Unlock()
+		// A session that lasted is a fresh start. One the printer dropped
+		// straight after accepting - which it does to a client subscribing to
+		// the wrong topic, or one it already has a session for - backs off
+		// like a failed connect, rather than spinning reconnect-drop.
+		if !dropped || time.Since(connectedAt) > maxRetry {
+			retry = minRetry
+			continue
+		}
+		switch p.waitOrRestart(retry) {
+		case waitQuit:
+			return
+		case waitRestarted:
+			retry = minRetry
+		default:
+			retry *= 2
+			if retry > maxRetry {
+				retry = maxRetry
+			}
+		}
 	}
 }
 
-func (p *printer) connectStatus() mqtt.Client {
+// awaitConnect starts a connection attempt and waits for it, a restart, or
+// shutdown - whichever comes first. err is the failure when the attempt ends
+// without connecting.
+func (p *printer) awaitConnect(client mqtt.Client, timeout time.Duration) (restarted, quit bool, err error) {
+	token := client.Connect()
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
+	select {
+	case <-token.Done():
+		return false, false, token.Error()
+	case <-timer.C:
+		return false, false, fmt.Errorf("timed out connecting")
+	case <-p.restart:
+		return true, false, nil
+	case <-p.quit:
+		return false, true, nil
+	}
+}
+
+type waitResult int
+
+const (
+	waitElapsed waitResult = iota
+	waitRestarted
+	waitQuit
+)
+
+// waitOrRestart sleeps for the backoff, cut short by a new access code - which
+// is exactly when an admin is waiting to see whether it worked.
+func (p *printer) waitOrRestart(d time.Duration) waitResult {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return waitElapsed
+	case <-p.restart:
+		return waitRestarted
+	case <-p.quit:
+		return waitQuit
+	}
+}
+
+func (p *printer) clearClient(client mqtt.Client) {
+	p.mu.Lock()
+	if p.client == client {
+		p.client = nil
+	}
+	p.mu.Unlock()
+}
+
+// newStatusClient builds a client with the current access code. lost receives
+// the error when an established connection drops.
+func (p *printer) newStatusClient() (mqtt.Client, <-chan error) {
+	port := p.mqttPort
+	if port == 0 {
+		port = printerMQTTPort
+	}
+
 	opts := mqtt.NewClientOptions()
-	opts.AddBroker(fmt.Sprintf("ssl://%s:%d", p.cfg.Host, printerMQTTPort))
+	opts.AddBroker(fmt.Sprintf("ssl://%s", net.JoinHostPort(p.cfg.Host, strconv.Itoa(port))))
 	opts.SetClientID(fmt.Sprintf("rrc-inventory-%s", p.cfg.ID))
 	opts.SetUsername("bblp")
 	opts.SetPassword(p.accessCode())
 	// The printer uses a self-signed certificate; there is no CA to check it
 	// against, and this traffic never leaves the printer network.
 	opts.SetTLSConfig(&tls.Config{InsecureSkipVerify: true}) // #nosec G402
-	opts.SetAutoReconnect(true)
-	opts.SetConnectRetry(true)
-	opts.SetConnectRetryInterval(15 * time.Second)
+	// Both off: runStatus does its own retrying, so that it can stop and
+	// pick up a new access code between attempts.
+	opts.SetAutoReconnect(false)
+	opts.SetConnectRetry(false)
 	opts.SetConnectTimeout(10 * time.Second)
+
+	lost := make(chan error, 1)
+	opts.SetConnectionLostHandler(func(_ mqtt.Client, err error) {
+		select {
+		case lost <- err:
+		default:
+		}
+	})
 
 	reportTopic := fmt.Sprintf("device/%s/report", p.cfg.Serial)
 	requestTopic := fmt.Sprintf("device/%s/request", p.cfg.Serial)
@@ -480,9 +690,10 @@ func (p *printer) connectStatus() mqtt.Client {
 	opts.SetOnConnectHandler(func(c mqtt.Client) {
 		// Subscribing to anything other than this printer's own topic gets the
 		// connection dropped by the printer, so only ever use the exact topic.
-		if token := c.Subscribe(reportTopic, 0, func(_ mqtt.Client, msg mqtt.Message) {
+		token := c.Subscribe(reportTopic, 0, func(_ mqtt.Client, msg mqtt.Message) {
 			p.applyReport(msg.Payload())
-		}); token.Wait() && token.Error() != nil {
+		})
+		if !token.WaitTimeout(10*time.Second) || token.Error() != nil {
 			log.Printf("printer %s: subscribe failed: %v", p.cfg.Name, token.Error())
 			return
 		}
@@ -499,11 +710,7 @@ func (p *printer) connectStatus() mqtt.Client {
 	p.client = client
 	p.mu.Unlock()
 
-	if token := client.Connect(); token.Wait() && token.Error() != nil {
-		log.Printf("printer %s: initial connect failed: %v", p.cfg.Name, token.Error())
-	}
-
-	return client
+	return client, lost
 }
 
 // applyReport merges a report into the printer's state. Reports are partial,
@@ -515,6 +722,10 @@ func (p *printer) applyReport(payload []byte) {
 	}
 
 	info := report.Print
+
+	// The print log is written once the lock is released: a slow database
+	// must not stall every status read and camera frame behind it.
+	defer p.flushJobEvents()
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -612,8 +823,30 @@ func (p *printer) applyReport(payload []byte) {
 	p.trackJobLocked(previousState)
 }
 
+// trackedJob is what the state machine needs to know about the open job.
+type trackedJob struct {
+	FileName string
+}
+
+// jobEvent is one change to the print log, decided under mu and written later
+// by flushJobEvents, in the order it was decided.
+type jobEvent struct {
+	open bool // false means close the current job
+
+	// for open
+	fileName  string
+	startedAt time.Time
+
+	// for close
+	result    string
+	endedAt   time.Time
+	stoppedBy string
+
+	lastPercent int
+}
+
 // trackJobLocked opens a print job when a machine starts running and closes it
-// when it stops. Called with the lock held.
+// when it stops. Called with the lock held; it only queues the database work.
 func (p *printer) trackJobLocked(previousState string) {
 	if p.jobs == nil {
 		return
@@ -627,25 +860,19 @@ func (p *printer) trackJobLocked(previousState string) {
 		if p.currentJob != nil {
 			p.closeJobLocked("interrupted", now)
 		}
-		job := &PrintJob{
-			PrinterID:   p.cfg.ID,
-			PrinterName: p.cfg.Name,
-			FileName:    p.fileName,
-			StartedAt:   now,
-			Result:      "running",
-			LastPercent: p.progress,
-		}
-		if err := p.jobs.Create(job).Error; err == nil {
-			p.currentJob = job
-		}
+		p.currentJob = &trackedJob{FileName: p.fileName}
+		p.jobEvents = append(p.jobEvents, jobEvent{
+			open:        true,
+			fileName:    p.fileName,
+			startedAt:   now,
+			lastPercent: p.progress,
+		})
 		return
 	}
 
 	if p.currentJob == nil {
 		return
 	}
-
-	p.currentJob.LastPercent = p.progress
 
 	if !running && previousState != p.state {
 		switch p.state {
@@ -664,14 +891,65 @@ func (p *printer) closeJobLocked(result string, at time.Time) {
 	if p.currentJob == nil {
 		return
 	}
-	p.currentJob.Result = result
-	p.currentJob.EndedAt = &at
+	event := jobEvent{result: result, endedAt: at, lastPercent: p.progress}
 	if result == "stopped" && p.lastActionBy != "" &&
 		time.Since(p.lastActionAt) < 2*time.Minute {
-		p.currentJob.StoppedBy = p.lastActionBy
+		event.stoppedBy = p.lastActionBy
 	}
-	p.jobs.Save(p.currentJob)
+	p.jobEvents = append(p.jobEvents, event)
 	p.currentJob = nil
+}
+
+// flushJobEvents writes queued print-log changes. jobsMu keeps them in the
+// order they were queued even if two reports race to flush.
+func (p *printer) flushJobEvents() {
+	if p.jobs == nil {
+		return
+	}
+
+	p.jobsMu.Lock()
+	defer p.jobsMu.Unlock()
+
+	p.mu.Lock()
+	events := p.jobEvents
+	p.jobEvents = nil
+	p.mu.Unlock()
+
+	for _, event := range events {
+		if event.open {
+			job := &PrintJob{
+				PrinterID:   p.cfg.ID,
+				PrinterName: p.cfg.Name,
+				FileName:    event.fileName,
+				StartedAt:   event.startedAt,
+				Result:      "running",
+				LastPercent: event.lastPercent,
+			}
+			if err := p.jobs.Create(job).Error; err != nil {
+				log.Printf("printer %s: could not record the start of %s: %v",
+					p.cfg.Name, event.fileName, err)
+				p.dbJob = nil
+				continue
+			}
+			p.dbJob = job
+			continue
+		}
+
+		if p.dbJob == nil {
+			// Its start was never recorded, so there is no row to finish
+			continue
+		}
+		endedAt := event.endedAt
+		p.dbJob.Result = event.result
+		p.dbJob.EndedAt = &endedAt
+		p.dbJob.StoppedBy = event.stoppedBy
+		p.dbJob.LastPercent = event.lastPercent
+		if err := p.jobs.Save(p.dbJob).Error; err != nil {
+			log.Printf("printer %s: could not record the end of %s: %v",
+				p.cfg.Name, p.dbJob.FileName, err)
+		}
+		p.dbJob = nil
+	}
 }
 
 // --- camera over TLS ----------------------------------------------------
@@ -739,6 +1017,13 @@ func (p *printer) streamCamera() error {
 	}
 	address := net.JoinHostPort(p.cfg.Host, fmt.Sprint(port))
 
+	// Read the code and its generation together, so a change that lands
+	// while we are dialling is caught below rather than missed.
+	p.mu.RLock()
+	code := p.cfg.AccessCode
+	generation := p.codeGeneration
+	p.mu.RUnlock()
+
 	dialer := &net.Dialer{Timeout: 10 * time.Second}
 	conn, err := tls.DialWithDialer(dialer, "tcp", address,
 		&tls.Config{InsecureSkipVerify: true}) // #nosec G402 - self-signed printer cert
@@ -747,14 +1032,30 @@ func (p *printer) streamCamera() error {
 	}
 	defer conn.Close()
 
-	if _, err := conn.Write(cameraAuthPacket("bblp", p.accessCode())); err != nil {
-		return fmt.Errorf("auth: %w", err)
-	}
-
-	// Hold the connection so a credential change can drop it immediately
+	// Hold the connection so a credential change can drop it immediately.
+	// If the code changed after we read it, setAccessCode has already been
+	// and gone and will not close this one, so give up now and let the retry
+	// use the new code.
 	p.mu.Lock()
+	if p.codeGeneration != generation {
+		p.mu.Unlock()
+		// Not a failure: retry straight away, with the new code
+		return nil
+	}
 	p.cameraConn = conn
 	p.mu.Unlock()
+
+	defer func() {
+		p.mu.Lock()
+		if p.cameraConn == conn {
+			p.cameraConn = nil
+		}
+		p.mu.Unlock()
+	}()
+
+	if _, err := conn.Write(cameraAuthPacket("bblp", code)); err != nil {
+		return fmt.Errorf("auth: %w", err)
+	}
 
 	framesThisConnection := 0
 	header := make([]byte, cameraHeaderSize)
@@ -841,15 +1142,19 @@ func (p *printer) status() PrinterStatus {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
-	online := !p.lastReport.IsZero() && time.Since(p.lastReport) < statusStaleAfter
+	online := p.onlineLocked()
 	cameraOnline := p.lastFrame != nil && time.Since(p.lastFrameAt) < cameraStaleAfter
 
+	// Empty rather than nil so the JSON carries [] and the frontend can loop
+	// without a null check.
 	status := PrinterStatus{
 		ID:                p.cfg.ID,
 		Name:              p.cfg.Name,
 		Online:            online,
 		CameraOnline:      cameraOnline,
 		AccessCodeProblem: p.authFailed,
+		AMS:               []AMSUnit{},
+		Faults:            []HMSFault{},
 	}
 
 	if p.lastActionBy != "" {
@@ -859,18 +1164,20 @@ func (p *printer) status() PrinterStatus {
 		status.LastActionAt = &at
 	}
 
-	status.LightOn = p.lightOn
-	status.AMS = p.amsUnits
-	if status.AMS == nil {
-		status.AMS = []AMSUnit{}
-	}
-	status.ExternalSpool = p.external
-	status.Faults = p.faults
-	if status.Faults == nil {
-		status.Faults = []HMSFault{}
-	}
-
+	// Everything below is the printer's last word, which stops being true the
+	// moment it goes quiet. A printer switched off overnight would otherwise
+	// show its light on, yesterday's spools and a fault that has long been
+	// cleared - so these are gated on online like the rest.
 	if online {
+		status.LightOn = p.lightOn
+		if p.amsUnits != nil {
+			status.AMS = p.amsUnits
+		}
+		status.ExternalSpool = p.external
+		if p.faults != nil {
+			status.Faults = p.faults
+		}
+
 		status.State = p.state
 		status.Progress = p.progress
 		status.RemainingMinutes = p.remaining
@@ -918,7 +1225,7 @@ var stoppableStates = map[string]bool{
 func (p *printer) publishCommand(payload string) error {
 	p.mu.Lock()
 	client := p.client
-	online := !p.lastReport.IsZero() && time.Since(p.lastReport) < statusStaleAfter
+	online := p.onlineLocked()
 	p.mu.Unlock()
 
 	if client == nil || !client.IsConnected() || !online {
@@ -1101,9 +1408,9 @@ func (m *PrinterManager) UpdateAccessCode(id, code string) error {
 		return fmt.Errorf("unknown printer")
 	}
 
-	code = strings.TrimSpace(code)
-	if code == "" {
-		return fmt.Errorf("access code cannot be empty")
+	code, err := validateAccessCode(code)
+	if err != nil {
+		return err
 	}
 
 	if m.db != nil {
@@ -1119,6 +1426,45 @@ func (m *PrinterManager) UpdateAccessCode(id, code string) error {
 	p.setAccessCode(code)
 	log.Printf("printer %s: access code updated", p.cfg.Name)
 	return nil
+}
+
+// maxAccessCodeLength is the size of the camera handshake's code field. A
+// longer code is cut short there without complaint, so the camera fails while
+// MQTT and FTP work - the kind of half-broken that takes an afternoon to find.
+const maxAccessCodeLength = 32
+
+// validateAccessCode trims and checks a code typed into the admin page. The
+// printer shows an 8 character code; anything empty, too long or containing
+// control characters or spaces is a paste gone wrong, not a code.
+func validateAccessCode(code string) (string, error) {
+	code = strings.TrimSpace(code)
+	if code == "" {
+		return "", fmt.Errorf("access code cannot be empty")
+	}
+	if len(code) > maxAccessCodeLength {
+		return "", fmt.Errorf("access code is too long (%d characters, the most is %d) - "+
+			"copy the code shown on the printer's screen", len(code), maxAccessCodeLength)
+	}
+	for _, r := range code {
+		if r <= ' ' || r > '~' {
+			return "", fmt.Errorf("access code can only contain letters and numbers, " +
+				"as shown on the printer's screen")
+		}
+	}
+	return code, nil
+}
+
+// Close stops every printer's background loops. Used by tests; the server
+// runs until the process exits.
+func (m *PrinterManager) Close() {
+	if m.quit == nil {
+		return
+	}
+	select {
+	case <-m.quit:
+	default:
+		close(m.quit)
+	}
 }
 
 // Configured reports whether any printers are set up at all.

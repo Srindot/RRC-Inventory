@@ -14,11 +14,14 @@ package main
 
 import (
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"path"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jlaffaye/ftp"
@@ -29,9 +32,25 @@ const (
 	// A sliced plate is usually a few MB; 3mf files with embedded previews can
 	// reach tens. This is a sanity limit, not a target.
 	maxUploadBytes = 200 * 1024 * 1024
-	// Time allowed to reach the printer. This caps connecting only - the FTP
-	// library applies it to the dial, not to the transfer.
-	ftpTimeout = 60 * time.Second
+	// Time allowed to reach the printer. This caps connecting only; the
+	// transfer itself is covered by ftpIdleTimeout. A printer on the lab
+	// network answers in milliseconds, so anything near this means it is off,
+	// and the public file listing should say so rather than hang for a minute.
+	ftpDialTimeout = 10 * time.Second
+	// Longest a single read or write may make no progress, on the control or
+	// the data connection. Without it a transfer whose network disappears -
+	// a USB adapter pulled, a laptop's wifi dropping - sits in the kernel's
+	// TCP retransmit timer for a quarter of an hour before anything notices.
+	ftpIdleTimeout = 30 * time.Second
+	// How long a file listing is reused. The public files page and the start
+	// dialog both ask for it, often several browsers at once, and every ask
+	// would otherwise be a fresh login on a printer that only has a few FTP
+	// sessions to give.
+	ftpListCacheFor = 10 * time.Second
+	// FTP sessions this code holds open on one printer at a time, and how long
+	// a request waits for one before giving up.
+	ftpMaxSessions = 2
+	ftpSlotWait    = 20 * time.Second
 	// Time allowed for the printer to acknowledge a finished transfer.
 	//
 	// The control connection sits idle while the file goes over the data
@@ -134,22 +153,172 @@ func (p *printer) ftpAddress() string {
 	return fmt.Sprintf("%s:%d", p.cfg.Host, port)
 }
 
-// connectFTP opens an authenticated FTP session with the printer.
-func (p *printer) connectFTP() (*ftp.ServerConn, error) {
+// ErrFileExists is returned by UploadFile when the printer already holds a
+// file under that name. The message is written for the person uploading,
+// because the HTTP layer passes it through as it is.
+//
+// Overwriting is refused rather than allowed because the old file is usually
+// somebody else's plate: with everyone naming files "bracket" or "part", a
+// silent overwrite swaps another person's job out from under them, and they
+// find out when the wrong thing comes off the bed. The comparison ignores case
+// because the printer's card is FAT, where "Bracket.3mf" and "bracket.3mf" are
+// the same file.
+var ErrFileExists = errors.New("a file with that name is already on the printer")
+
+// ErrPrinterOffline is returned by the file listing when the printer has not
+// reported recently, instead of spending the dial timeout finding out.
+var ErrPrinterOffline = errors.New("the printer is offline, so its files cannot be listed")
+
+// idleConn arms a fresh deadline before every read and write, so a transfer
+// fails once it stops making progress rather than when the kernel gives up.
+// A deadline the FTP library sets itself (its shut timeout) is still honoured:
+// whichever comes first wins.
+type idleConn struct {
+	net.Conn
+	idle time.Duration
+
+	mu       sync.Mutex
+	explicit time.Time
+}
+
+func (c *idleConn) deadline() time.Time {
+	d := time.Now().Add(c.idle)
+	c.mu.Lock()
+	explicit := c.explicit
+	c.mu.Unlock()
+	if !explicit.IsZero() && explicit.Before(d) {
+		return explicit
+	}
+	return d
+}
+
+func (c *idleConn) Read(b []byte) (int, error) {
+	if err := c.Conn.SetReadDeadline(c.deadline()); err != nil {
+		return 0, err
+	}
+	return c.Conn.Read(b)
+}
+
+func (c *idleConn) Write(b []byte) (int, error) {
+	if err := c.Conn.SetWriteDeadline(c.deadline()); err != nil {
+		return 0, err
+	}
+	return c.Conn.Write(b)
+}
+
+func (c *idleConn) setExplicit(t time.Time) {
+	c.mu.Lock()
+	c.explicit = t
+	c.mu.Unlock()
+}
+
+func (c *idleConn) SetDeadline(t time.Time) error {
+	c.setExplicit(t)
+	return c.Conn.SetDeadline(t)
+}
+
+func (c *idleConn) SetReadDeadline(t time.Time) error {
+	c.setExplicit(t)
+	return c.Conn.SetReadDeadline(t)
+}
+
+func (c *idleConn) SetWriteDeadline(t time.Time) error {
+	c.setExplicit(t)
+	return c.Conn.SetWriteDeadline(t)
+}
+
+// ftpDialFunc opens every connection of a session - control and data - with
+// the idle watchdog underneath.
+//
+// Supplying a dial function means the library no longer adds TLS itself, so it
+// is layered on here, over the watchdog so the handshake is covered too. The
+// handshake is left to the first read or write, which is what the library does
+// for data connections: some servers hang on an eager one.
+func (p *printer) ftpDialFunc() func(network, address string) (net.Conn, error) {
+	idle := p.ftpIdle
+	if idle == 0 {
+		idle = ftpIdleTimeout
+	}
+	plaintext := p.ftpPlaintext
+
+	return func(network, address string) (net.Conn, error) {
+		dialer := &net.Dialer{Timeout: ftpDialTimeout}
+		raw, err := dialer.Dial(network, address)
+		if err != nil {
+			return nil, err
+		}
+		conn := net.Conn(&idleConn{Conn: raw, idle: idle})
+		if !plaintext {
+			conn = tls.Client(conn, &tls.Config{
+				InsecureSkipVerify: true, // #nosec G402 - self-signed printer cert
+			})
+		}
+		return conn, nil
+	}
+}
+
+// ftpSession is one logged-in session holding one of the printer's FTP slots.
+// Close gives the slot back.
+type ftpSession struct {
+	*ftp.ServerConn
+	release func()
+}
+
+func (s *ftpSession) Close() {
+	_ = s.Quit()
+	s.release()
+}
+
+// ftpSlots is the per-printer semaphore. Created lazily so a printer built in
+// a test without NewPrinterManager still has one.
+func (p *printer) ftpSlots() chan struct{} {
+	p.ftpSlotsOnce.Do(func() {
+		p.ftpSlotsCh = make(chan struct{}, ftpMaxSessions)
+	})
+	return p.ftpSlotsCh
+}
+
+// acquireFTP waits for a free session slot. A P1S only serves a handful of
+// FTP sessions, and Bambu Studio or Handy may hold one; letting every browser
+// open its own makes the printer start refusing logins to all of them.
+func (p *printer) acquireFTP() (func(), error) {
+	slots := p.ftpSlots()
+	timer := time.NewTimer(ftpSlotWait)
+	defer timer.Stop()
+
+	select {
+	case slots <- struct{}{}:
+		var once sync.Once
+		return func() { once.Do(func() { <-slots }) }, nil
+	case <-timer.C:
+		return nil, fmt.Errorf("the printer is busy with other file transfers - try again in a moment")
+	}
+}
+
+// connectFTP opens an authenticated FTP session with the printer. The caller
+// must Close it, which also frees the slot for the next request.
+func (p *printer) connectFTP() (*ftpSession, error) {
+	release, err := p.acquireFTP()
+	if err != nil {
+		return nil, err
+	}
+
 	shut := p.ftpShut
 	if shut == 0 {
 		shut = ftpShutTimeout
 	}
 
 	options := []ftp.DialOption{
-		ftp.DialWithTimeout(ftpTimeout),
+		ftp.DialWithDialFunc(p.ftpDialFunc()),
 		// Without this an upload that outlives the printer's control-connection
 		// idle timeout blocks forever instead of failing.
 		ftp.DialWithShutTimeout(shut),
 	}
 
 	// Printers use implicit TLS with a self-signed certificate. Tests run
-	// against a plain server, so this is switchable.
+	// against a plain server, so this is switchable. The dial function does
+	// the encrypting; this option is still needed so the library asks for an
+	// encrypted data channel (PBSZ/PROT).
 	if !p.ftpPlaintext {
 		options = append(options, ftp.DialWithTLS(&tls.Config{
 			InsecureSkipVerify: true, // #nosec G402 - self-signed printer cert
@@ -158,15 +327,17 @@ func (p *printer) connectFTP() (*ftp.ServerConn, error) {
 
 	conn, err := ftp.Dial(p.ftpAddress(), options...)
 	if err != nil {
+		release()
 		return nil, fmt.Errorf("could not connect to the printer's file service: %w", err)
 	}
 
 	if err := conn.Login("bblp", p.accessCode()); err != nil {
 		conn.Quit()
+		release()
 		return nil, fmt.Errorf("the printer rejected our access code: %w", err)
 	}
 
-	return conn, nil
+	return &ftpSession{ServerConn: conn, release: release}, nil
 }
 
 // countingReader records how many bytes were handed to the FTP session, so the
@@ -184,12 +355,14 @@ func (c *countingReader) Read(p []byte) (int, error) {
 
 // removePartial deletes a half-written upload, best effort. It opens its own
 // connection because the one that failed cannot be trusted to carry a command.
+// The caller must have closed its own session first, or with every slot taken
+// this would wait on itself.
 func (p *printer) removePartial(name string) {
 	conn, err := p.connectFTP()
 	if err != nil {
 		return
 	}
-	defer conn.Quit()
+	defer conn.Close()
 
 	_ = conn.Delete(name)
 }
@@ -203,38 +376,64 @@ func (p *printer) removePartial(name string) {
 // rather than against what we managed to read catches a body that was cut short
 // on its way to us: counting our own reads only ever proves we copied whatever
 // we got, however little that was.
+//
+// A file already on the printer under the same name is never replaced; that
+// returns an error wrapping ErrFileExists.
 func (p *printer) UploadFile(name string, contents io.Reader, expected int64) error {
+	// Whatever happens, the listing may have changed
+	defer p.invalidateFiles()
+
+	partial, err := p.uploadFile(name, contents, expected)
+	if partial {
+		// Done here, after the failed session has given its slot back
+		p.removePartial(name)
+	}
+	return err
+}
+
+// uploadFile does the transfer on one session. partial reports that something
+// may have been left on the card under name and needs clearing on a fresh
+// connection, since this one is in an unknown state.
+func (p *printer) uploadFile(name string, contents io.Reader, expected int64) (partial bool, err error) {
 	conn, err := p.connectFTP()
 	if err != nil {
-		return err
+		return false, err
 	}
-	defer conn.Quit()
+	defer conn.Close()
+
+	entries, err := conn.List("")
+	if err != nil {
+		return false, fmt.Errorf("could not check the printer's files: %w", err)
+	}
+	for _, entry := range entries {
+		if entry.Type == ftp.EntryTypeFile && strings.EqualFold(entry.Name, name) {
+			return false, fmt.Errorf("%w (%s) - rename yours or delete the old one first",
+				ErrFileExists, entry.Name)
+		}
+	}
 
 	counted := &countingReader{inner: contents}
 	if err := conn.Stor(name, counted); err != nil {
 		// A transfer that died part way still leaves what arrived on the card,
 		// under the name somebody is about to pick on the printer's screen. It
 		// shows "--" for time and filament because the metadata never made it,
-		// and the job exits the moment it starts. Clear it out on a fresh
-		// connection, since this one is in an unknown state.
-		p.removePartial(name)
-		return fmt.Errorf("the printer refused the file: %w", err)
+		// and the job exits the moment it starts.
+		return true, fmt.Errorf("the printer refused the file: %w", err)
 	}
 
 	if expected > 0 && counted.n != expected {
-		p.removePartial(name)
-		return fmt.Errorf(
+		return true, fmt.Errorf(
 			"only %d of %d bytes arrived from the browser, so the file was removed - please send it again",
 			counted.n, expected)
 	}
 
-	stored, ok := p.storedSize(conn, name)
+	stored, ok := p.storedSize(conn.ServerConn, name)
 	if !ok {
 		// Neither SIZE nor the listing would tell us. Better to say so than to
 		// let a half file sit on the card looking finished.
 		log.Printf("printer %s: could not verify the size of %s after upload",
 			p.cfg.Name, name)
-		return nil
+		return false, nil
 	}
 
 	want := counted.n
@@ -244,17 +443,17 @@ func (p *printer) UploadFile(name string, contents io.Reader, expected int64) er
 
 	if stored != want {
 		if delErr := conn.Delete(name); delErr != nil {
-			return fmt.Errorf(
+			return false, fmt.Errorf(
 				"only %d of %d bytes reached the printer, and the partial file "+
 					"could not be removed - delete %s from the printer before printing: %w",
 				stored, want, name, delErr)
 		}
-		return fmt.Errorf(
+		return false, fmt.Errorf(
 			"only %d of %d bytes reached the printer, so the file was removed - please send it again",
 			stored, want)
 	}
 
-	return nil
+	return false, nil
 }
 
 // storedSize asks the printer how big a file ended up.
@@ -286,13 +485,24 @@ type PrinterFile struct {
 	Time string `json:"time"`
 }
 
-// ListFiles reports the printable files already on the printer.
+// ListFiles reports the printable files already on the printer, always asking
+// the printer itself. A successful answer also refreshes the cached listing.
 func (p *printer) ListFiles() ([]PrinterFile, error) {
+	generation := p.filesGeneration()
+
+	files, err := p.fetchFiles()
+	if err == nil {
+		p.storeFiles(files, nil, generation)
+	}
+	return files, err
+}
+
+func (p *printer) fetchFiles() ([]PrinterFile, error) {
 	conn, err := p.connectFTP()
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Quit()
+	defer conn.Close()
 
 	entries, err := conn.List("")
 	if err != nil {
@@ -312,6 +522,95 @@ func (p *printer) ListFiles() ([]PrinterFile, error) {
 	}
 
 	return files, nil
+}
+
+// filesCache is the short-lived copy of one printer's listing.
+type filesCache struct {
+	mu sync.Mutex
+	// generation moves on whenever the card changes, so a listing that was
+	// already in flight when an upload landed is not stored as current.
+	generation uint64
+	files      []PrinterFile
+	err        error
+	at         time.Time
+
+	// Held while asking the printer, so a crowd of requests for the same
+	// listing makes one FTP session between them rather than one each.
+	fetching sync.Mutex
+}
+
+func (p *printer) filesGeneration() uint64 {
+	p.files.mu.Lock()
+	defer p.files.mu.Unlock()
+	return p.files.generation
+}
+
+// storeFiles records a listing (or a failure to get one), unless the card has
+// changed since it was asked for.
+func (p *printer) storeFiles(files []PrinterFile, err error, generation uint64) {
+	p.files.mu.Lock()
+	defer p.files.mu.Unlock()
+	if p.files.generation != generation {
+		return
+	}
+	p.files.files = append([]PrinterFile(nil), files...)
+	p.files.err = err
+	p.files.at = time.Now()
+}
+
+// cachedFiles returns the stored listing while it is still fresh. A failure is
+// cached too: otherwise every waiting request retries a printer that has just
+// failed, one dial timeout after another.
+func (p *printer) cachedFiles() ([]PrinterFile, error, bool) {
+	p.files.mu.Lock()
+	defer p.files.mu.Unlock()
+	if p.files.at.IsZero() || time.Since(p.files.at) > ftpListCacheFor {
+		return nil, nil, false
+	}
+	if p.files.err != nil {
+		return nil, p.files.err, true
+	}
+	return append([]PrinterFile{}, p.files.files...), nil, true
+}
+
+// invalidateFiles drops the cached listing after anything that changes the
+// card, so the person who just uploaded sees their file straight away.
+func (p *printer) invalidateFiles() {
+	p.files.mu.Lock()
+	defer p.files.mu.Unlock()
+	p.files.generation++
+	p.files.files = nil
+	p.files.err = nil
+	p.files.at = time.Time{}
+}
+
+// listFilesCached is the listing as the public files page sees it: refused at
+// once when the printer is offline, and otherwise shared between requests for
+// ftpListCacheFor.
+func (p *printer) listFilesCached() ([]PrinterFile, error) {
+	if !p.online() {
+		return nil, ErrPrinterOffline
+	}
+
+	if files, err, ok := p.cachedFiles(); ok {
+		return files, err
+	}
+
+	p.files.fetching.Lock()
+	defer p.files.fetching.Unlock()
+
+	// Somebody else may have fetched it while this request waited
+	if files, err, ok := p.cachedFiles(); ok {
+		return files, err
+	}
+
+	generation := p.filesGeneration()
+	files, err := p.fetchFiles()
+	p.storeFiles(files, err, generation)
+	if err != nil {
+		return nil, err
+	}
+	return append([]PrinterFile{}, files...), nil
 }
 
 // printableEntry reports whether a listing entry is a file somebody could
@@ -360,11 +659,13 @@ func (p *printer) DeleteFile(name string) error {
 		return err
 	}
 
+	defer p.invalidateFiles()
+
 	conn, err := p.connectFTP()
 	if err != nil {
 		return err
 	}
-	defer conn.Quit()
+	defer conn.Close()
 
 	entries, err := conn.List("")
 	if err != nil {
@@ -383,6 +684,17 @@ func (p *printer) DeleteFile(name string) error {
 	return fmt.Errorf("%s is not on the printer", wanted)
 }
 
+// busyStates are the states in which the printer has a file open: printing,
+// paused, or still getting ready to print it. PREPARE (heating, levelling)
+// and SLICING come before RUNNING, and the file is already in use then -
+// deleting or replacing it there kills the job before it has visibly begun.
+var busyStates = map[string]bool{
+	"RUNNING": true,
+	"PAUSE":   true,
+	"PREPARE": true,
+	"SLICING": true,
+}
+
 // isPrinting reports whether the printer is part way through name, so an upload
 // does not rewrite a file the printer is still reading. The printer reports the
 // job by subtask name, which usually carries no extension, so the comparison is
@@ -391,7 +703,7 @@ func (p *printer) isPrinting(name string) bool {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
-	if p.state != "RUNNING" && p.state != "PAUSE" {
+	if !busyStates[strings.ToUpper(p.state)] {
 		return false
 	}
 
@@ -433,7 +745,7 @@ func (m *PrinterManager) ListFiles(id string) ([]PrinterFile, error) {
 	if !ok {
 		return nil, fmt.Errorf("unknown printer")
 	}
-	return p.ListFiles()
+	return p.listFilesCached()
 }
 
 func (m *PrinterManager) DeleteFile(id, name string) error {
@@ -461,16 +773,18 @@ func (p *printer) DeleteAllFiles() (int, error) {
 	state := strings.ToUpper(p.state)
 	p.mu.RUnlock()
 
-	if state == "RUNNING" || state == "PAUSE" || state == "PREPARE" {
+	if busyStates[state] {
 		return 0, fmt.Errorf(
 			"the printer is busy (state: %s) - wait for the job to finish", state)
 	}
+
+	defer p.invalidateFiles()
 
 	conn, err := p.connectFTP()
 	if err != nil {
 		return 0, err
 	}
-	defer conn.Quit()
+	defer conn.Close()
 
 	entries, err := conn.List("")
 	if err != nil {

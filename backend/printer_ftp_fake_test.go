@@ -5,7 +5,8 @@ package main
 // made to misbehave in the specific ways a P1S does.
 //
 // Only the commands this codebase issues are implemented: USER, PASS, TYPE,
-// PASV, STOR, LIST, DELE, SIZE, QUIT.
+// PASV, STOR, LIST, DELE, SIZE, QUIT. Names are case sensitive here, unlike on
+// the printer's FAT card.
 
 import (
 	"bufio"
@@ -34,9 +35,16 @@ type fakePrinterFTP struct {
 	// optional command would.
 	refuseSize bool
 
+	// stallStor accepts the data connection for a STOR and then never reads
+	// from it, like a printer whose network has vanished mid-transfer. The
+	// stalled handler is released when the test ends.
+	stallStor bool
+	released  chan struct{}
+
 	mu      sync.Mutex
 	files   map[string][]byte
 	deletes []string
+	logins  int
 }
 
 func newFakePrinterFTP(t *testing.T) *fakePrinterFTP {
@@ -47,7 +55,11 @@ func newFakePrinterFTP(t *testing.T) *fakePrinterFTP {
 		t.Fatalf("could not listen: %v", err)
 	}
 
-	f := &fakePrinterFTP{listener: listener, files: map[string][]byte{}}
+	f := &fakePrinterFTP{
+		listener: listener,
+		files:    map[string][]byte{},
+		released: make(chan struct{}),
+	}
 
 	go func() {
 		for {
@@ -59,7 +71,10 @@ func newFakePrinterFTP(t *testing.T) *fakePrinterFTP {
 		}
 	}()
 
-	t.Cleanup(func() { listener.Close() })
+	t.Cleanup(func() {
+		close(f.released)
+		listener.Close()
+	})
 	return f
 }
 
@@ -80,6 +95,14 @@ func (f *fakePrinterFTP) put(name string, body []byte) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.files[name] = body
+}
+
+// loginCount is how many sessions have logged in, so tests can tell a cached
+// listing from a fresh one.
+func (f *fakePrinterFTP) loginCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.logins
 }
 
 func (f *fakePrinterFTP) count() int {
@@ -123,6 +146,9 @@ func (f *fakePrinterFTP) serve(conn net.Conn) {
 		case "USER":
 			write("331 need password")
 		case "PASS":
+			f.mu.Lock()
+			f.logins++
+			f.mu.Unlock()
 			write("230 logged in")
 		case "TYPE":
 			write("200 type set")
@@ -179,6 +205,12 @@ func (f *fakePrinterFTP) handleStor(name string, dataListener net.Listener, writ
 
 	dataConn, err := dataListener.Accept()
 	if err != nil {
+		return
+	}
+
+	if f.stallStor {
+		<-f.released
+		dataConn.Close()
 		return
 	}
 

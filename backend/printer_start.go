@@ -9,8 +9,11 @@ package main
 // the camera on the admin page is there to be looked at first.
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 )
 
@@ -56,6 +59,28 @@ type StartRequest struct {
 	Timelapse    bool `json:"timelapse"`
 }
 
+// projectFileCommand is the body of a project_file command, in the order Bambu
+// Studio sends it.
+type projectFileCommand struct {
+	SequenceID    string `json:"sequence_id"`
+	Command       string `json:"command"`
+	Param         string `json:"param"`
+	URL           string `json:"url"`
+	SubtaskName   string `json:"subtask_name"`
+	BedType       string `json:"bed_type"`
+	BedLeveling   bool   `json:"bed_leveling"`
+	FlowCali      bool   `json:"flow_cali"`
+	VibrationCali bool   `json:"vibration_cali"`
+	LayerInspect  bool   `json:"layer_inspect"`
+	Timelapse     bool   `json:"timelapse"`
+	UseAMS        bool   `json:"use_ams"`
+	AMSMapping    []int  `json:"ams_mapping"`
+	ProfileID     string `json:"profile_id"`
+	ProjectID     string `json:"project_id"`
+	SubtaskID     string `json:"subtask_id"`
+	TaskID        string `json:"task_id"`
+}
+
 // projectFilePayload builds the MQTT command that starts a print.
 //
 // The shape matches what Bambu Studio sends for a file already on the printer's
@@ -64,35 +89,51 @@ type StartRequest struct {
 // plate's gcode inside the 3MF rather than the file itself. `subtask_name` is
 // what the printer puts on its screen; without it the job shows as unnamed.
 //
+// Built with encoding/json rather than formatted by hand: file names now come
+// from the printer's own listing, and a name with a quote or a backslash in it
+// would otherwise produce a command the firmware cannot parse.
+//
 // Split out from publishing so it can be asserted in tests without a printer.
 func projectFilePayload(sequence int, req StartRequest) string {
-	amsMapping := "[]"
+	amsMapping := []int{}
 	if req.UseAMS {
-		amsMapping = fmt.Sprintf("[%d]", req.AMSSlot)
+		amsMapping = []int{req.AMSSlot}
 	}
 
 	subtask := strings.TrimSuffix(req.FileName, ".gcode.3mf")
 	subtask = strings.TrimSuffix(subtask, ".3mf")
 	subtask = strings.TrimSuffix(subtask, ".gcode")
 
-	return fmt.Sprintf(`{"print":{`+
-		`"sequence_id":"%d",`+
-		`"command":"project_file",`+
-		`"param":"Metadata/plate_%d.gcode",`+
-		`"url":"ftp:///%s",`+
-		`"subtask_name":"%s",`+
-		`"bed_type":"%s",`+
-		`"bed_leveling":%t,`+
-		`"flow_cali":%t,`+
-		`"vibration_cali":true,`+
-		`"layer_inspect":false,`+
-		`"timelapse":%t,`+
-		`"use_ams":%t,`+
-		`"ams_mapping":%s,`+
-		`"profile_id":"0","project_id":"0","subtask_id":"0","task_id":"0"`+
-		`}}`,
-		sequence, req.Plate, req.FileName, subtask, req.BedType,
-		req.BedLevelling, req.FlowCali, req.Timelapse, req.UseAMS, amsMapping)
+	command := struct {
+		Print projectFileCommand `json:"print"`
+	}{projectFileCommand{
+		SequenceID:    strconv.Itoa(sequence),
+		Command:       "project_file",
+		Param:         fmt.Sprintf("Metadata/plate_%d.gcode", req.Plate),
+		URL:           "ftp:///" + req.FileName,
+		SubtaskName:   subtask,
+		BedType:       req.BedType,
+		BedLeveling:   req.BedLevelling,
+		FlowCali:      req.FlowCali,
+		VibrationCali: true,
+		LayerInspect:  false,
+		Timelapse:     req.Timelapse,
+		UseAMS:        req.UseAMS,
+		AMSMapping:    amsMapping,
+		ProfileID:     "0",
+		ProjectID:     "0",
+		SubtaskID:     "0",
+		TaskID:        "0",
+	}}
+
+	// HTML escaping off, so "Tom & Jerry.3mf" goes out as written rather than
+	// as \u0026 - correct JSON either way, but there is no reason to test the
+	// firmware's parser on it. Encoding strings, bools and ints cannot fail.
+	var encoded bytes.Buffer
+	encoder := json.NewEncoder(&encoded)
+	encoder.SetEscapeHTML(false)
+	_ = encoder.Encode(command)
+	return strings.TrimSuffix(encoded.String(), "\n")
 }
 
 // validateStart checks and normalises a request before anything is published.
@@ -101,13 +142,20 @@ func validateStart(req *StartRequest) error {
 		return fmt.Errorf("choose a file to print")
 	}
 
-	// The name has to survive the same cleaning an upload goes through, or it
-	// is not a name that can be on the printer in the first place.
-	safe, err := sanitizeUploadName(req.FileName)
+	// The name is taken as the printer lists it, for the same reason DeleteFile
+	// does: a file Bambu Studio put on the card keeps its spaces and brackets,
+	// and sanitising "Benchy (1).gcode.3mf" into "Benchy_1.gcode.3mf" asked
+	// the printer for a file that is not there. plainFileName still refuses
+	// anything that could name a path, and startPrint then requires an exact
+	// match in the listing.
+	name, err := plainFileName(req.FileName)
 	if err != nil {
 		return err
 	}
-	req.FileName = safe
+	if _, _, ok := splitUploadSuffix(name); !ok {
+		return fmt.Errorf("only .3mf and .gcode files can be printed")
+	}
+	req.FileName = name
 
 	if req.Plate == 0 {
 		req.Plate = 1

@@ -109,16 +109,20 @@ func TestValidateStart(t *testing.T) {
 		t.Errorf("plate defaulted to %d, want 1", req.Plate)
 	}
 
-	// A path from a browser must be reduced the same way an upload is
-	req = StartRequest{FileName: "../../etc/a.gcode.3mf", BedType: "cool_plate"}
+	// Names are taken as the printer lists them, spaces and brackets included
+	req = StartRequest{FileName: "Benchy (1).gcode.3mf", BedType: "cool_plate"}
 	if err := validateStart(&req); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("a name from the printer's listing was refused: %v", err)
 	}
-	if strings.ContainsAny(req.FileName, "/\\") {
-		t.Errorf("path survived validation: %q", req.FileName)
+	if req.FileName != "Benchy (1).gcode.3mf" {
+		t.Errorf("name was rewritten to %q", req.FileName)
 	}
 
 	for _, bad := range []StartRequest{
+		// Anything that could name a path is refused outright, not reduced
+		{FileName: "../../etc/a.gcode.3mf", BedType: "cool_plate"},
+		{FileName: `..\a.gcode.3mf`, BedType: "cool_plate"},
+		{FileName: "..", BedType: "cool_plate"},
 		{FileName: "", BedType: "cool_plate"},
 		{FileName: "a.gcode.3mf", BedType: ""},
 		{FileName: "a.gcode.3mf", BedType: "banana_plate"},
@@ -164,5 +168,47 @@ func TestStartRefusedWhenFileMissing(t *testing.T) {
 	}, "tester")
 	if err == nil || !strings.Contains(err.Error(), "not on the printer") {
 		t.Errorf("expected a missing-file error, got: %v", err)
+	}
+}
+
+// Bambu Studio leaves files on the card with spaces and brackets in their
+// names. Starting one used to fail because the name was sanitised into one
+// that is not on the printer; it must now get past the listing check. With no
+// MQTT session in the test the publish itself then fails, which is the proof
+// the listing check passed.
+func TestStartAcceptsNamesFromBambuStudio(t *testing.T) {
+	fake := newFakePrinterFTP(t)
+	p := fakePrinter(fake)
+	p.state = "IDLE"
+
+	for _, name := range []string{"Benchy (1).gcode.3mf", "bracket v2 [final].3mf"} {
+		fake.put(name, []byte("plate"))
+
+		err := p.startPrint(StartRequest{FileName: name, BedType: "cool_plate"}, "tester")
+		if err == nil {
+			t.Fatalf("start of %q succeeded with no printer connected", name)
+		}
+		if strings.Contains(err.Error(), "not on the printer") {
+			t.Errorf("%q is on the printer but was reported missing: %v", name, err)
+		}
+		if !strings.Contains(err.Error(), "not reachable") {
+			t.Errorf("unexpected error for %q: %v", name, err)
+		}
+	}
+}
+
+// Now that names arrive unsanitised, the payload must still be valid JSON for
+// names with quotes, backslashes or ampersands in them.
+func TestProjectFilePayloadEscapesNames(t *testing.T) {
+	name := `Tom & "Jerry" \ (1).gcode.3mf`
+	print := decodePayload(t, projectFilePayload(3, StartRequest{
+		FileName: name, Plate: 1, BedType: "cool_plate",
+	}))
+
+	if print["url"] != "ftp:///"+name {
+		t.Errorf("url = %v", print["url"])
+	}
+	if print["subtask_name"] != `Tom & "Jerry" \ (1)` {
+		t.Errorf("subtask_name = %v", print["subtask_name"])
 	}
 }
