@@ -974,24 +974,27 @@ func cameraAuthPacket(username, accessCode string) []byte {
 // identical lines a day per printer, which buries everything else in the log.
 // So: back off to a minute, and only print a repeat of the same failure when
 // it has been quiet for a while.
+//
+// A working stream is different. A P1S resets its camera connection every few
+// minutes on its own, so a drop after frames were flowing is routine: reconnect
+// almost at once and start the backoff over. Backing off across those drops
+// grew every gap to a minute and made the feed blink out for good stretches.
 func (p *printer) runCamera() {
-	const (
-		minCameraRetry = 10 * time.Second
-		maxCameraRetry = 60 * time.Second
-		repeatAfter    = 10 * time.Minute
-	)
+	const repeatAfter = 10 * time.Minute
 
 	retry := minCameraRetry
 	var lastError string
 	var lastLogged time.Time
 
 	for {
+		before := p.frameCount()
 		err := p.streamCamera()
 		if err == nil {
 			retry = minCameraRetry
 			lastError = ""
 			continue
 		}
+		gotFrames := p.frameCount() != before
 
 		message := err.Error()
 		if message != lastError || time.Since(lastLogged) > repeatAfter {
@@ -1000,14 +1003,39 @@ func (p *printer) runCamera() {
 			lastLogged = time.Now()
 		}
 
-		time.Sleep(retry)
-		if retry < maxCameraRetry {
-			retry *= 2
-			if retry > maxCameraRetry {
-				retry = maxCameraRetry
-			}
-		}
+		var wait time.Duration
+		wait, retry = nextCameraRetry(retry, gotFrames)
+		time.Sleep(wait)
 	}
+}
+
+const (
+	minCameraRetry = 10 * time.Second
+	maxCameraRetry = 60 * time.Second
+	// How soon to reconnect after a stream that was delivering frames drops
+	cameraDropRetry = 2 * time.Second
+)
+
+// nextCameraRetry returns how long to wait before reconnecting, and the
+// backoff to carry into the attempt after that. A connection that delivered
+// frames proves the printer and the code are fine, so it resets the backoff;
+// one that never did keeps doubling it up to the cap.
+func nextCameraRetry(current time.Duration, gotFrames bool) (wait, next time.Duration) {
+	if gotFrames {
+		return cameraDropRetry, minCameraRetry
+	}
+	next = current * 2
+	if next > maxCameraRetry {
+		next = maxCameraRetry
+	}
+	return current, next
+}
+
+// frameCount is the number of frames received so far, across connections.
+func (p *printer) frameCount() uint64 {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.frameVersion
 }
 
 func (p *printer) streamCamera() error {

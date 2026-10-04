@@ -1,5 +1,6 @@
 <script>
     import { onMount, onDestroy } from 'svelte';
+    import { cameraFeed } from '$lib/camera.js';
 
     const STATUS_INTERVAL = 5000;   // printers report every few seconds
     const CAMERA_INTERVAL = 2000;   // the camera itself only manages ~0.5 fps
@@ -22,7 +23,8 @@
     let uploadProgress = 0;
     let dragOver = '';
 
-    let cameraTick = Date.now();
+    // Latest good frame per printer
+    const camera = cameraFeed();
     let statusTimer;
     let cameraTimer;
 
@@ -31,12 +33,13 @@
 
         loadPrinters();
         statusTimer = setInterval(loadPrinters, STATUS_INTERVAL);
-        cameraTimer = setInterval(() => (cameraTick = Date.now()), CAMERA_INTERVAL);
+        cameraTimer = setInterval(() => camera.refresh(printers), CAMERA_INTERVAL);
     });
 
     onDestroy(() => {
         clearInterval(statusTimer);
         clearInterval(cameraTimer);
+        camera.destroy();
     });
 
     async function loadPrinters() {
@@ -333,15 +336,15 @@
                     {/if}
 
                     <div class="camera">
-                        {#if printer.camera_online}
+                        {#if printer.camera_online && $camera[printer.id]}
                             <img
-                                src="/api/printers/{printer.id}/snapshot?t={cameraTick}"
+                                src={$camera[printer.id]}
                                 alt="Camera view of {printer.name}"
                             />
                         {:else}
                             <div class="camera-placeholder">
                                 <img src="/P1S.png" alt="" class="placeholder-icon" />
-                                <p>No camera image</p>
+                                <p>{printer.camera_online ? 'Loading camera…' : 'No camera image'}</p>
                             </div>
                         {/if}
                     </div>

@@ -1,5 +1,6 @@
 <script>
     import { onMount, onDestroy } from 'svelte';
+    import { cameraFeed } from '$lib/camera.js';
 
     // Authentication state
     let isLoggedIn = false;
@@ -44,8 +45,8 @@
     let printers = [];
     let printerTimer;
     let cameraTimer;
-    // Bumped on a timer so the <img> refetches; the P1S manages ~0.5 fps
-    let cameraTick = Date.now();
+    // Latest good frame per printer; the P1S manages ~0.5 fps
+    const camera = cameraFeed();
     let stoppingPrinter = '';
     let editingCode = '';
     let newCode = '';
@@ -560,7 +561,7 @@
         loadPrintJobs();
         stopPrinterPolling();
         printerTimer = setInterval(() => { loadPrinters(); loadPrintJobs(); }, 5000);
-        cameraTimer = setInterval(() => (cameraTick = Date.now()), 2000);
+        cameraTimer = setInterval(() => camera.refresh(printers), 2000);
     }
 
     function stopPrinterPolling() {
@@ -577,6 +578,7 @@
 
     onDestroy(() => {
         stopPrinterPolling();
+        camera.destroy();
         clearTimeout(messageTimer);
     });
 
@@ -1513,15 +1515,15 @@
                                     </div>
 
                                     <div class="pa-camera">
-                                        {#if printer.camera_online}
+                                        {#if printer.camera_online && $camera[printer.id]}
                                             <img
-                                                src="/api/printers/{printer.id}/snapshot?t={cameraTick}"
+                                                src={$camera[printer.id]}
                                                 alt="Camera view of {printer.name}"
                                             />
                                         {:else}
                                             <div class="pa-camera-empty">
                                                 <img src="/P1S.png" alt="" />
-                                                <p>No camera image</p>
+                                                <p>{printer.camera_online ? 'Loading camera…' : 'No camera image'}</p>
                                             </div>
                                         {/if}
                                     </div>

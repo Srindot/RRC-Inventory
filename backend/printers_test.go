@@ -587,3 +587,28 @@ func TestHMSWikiURL(t *testing.T) {
 		t.Errorf("hmsWikiURL(%q)\n got %q\nwant %q", code, got, want)
 	}
 }
+
+func TestNextCameraRetry(t *testing.T) {
+	tests := []struct {
+		name      string
+		current   time.Duration
+		gotFrames bool
+		wantWait  time.Duration
+		wantNext  time.Duration
+	}{
+		{"routine drop reconnects fast", maxCameraRetry, true, cameraDropRetry, minCameraRetry},
+		{"routine drop resets backoff", 40 * time.Second, true, cameraDropRetry, minCameraRetry},
+		{"failure backs off", minCameraRetry, false, minCameraRetry, 2 * minCameraRetry},
+		{"failure capped", 40 * time.Second, false, 40 * time.Second, maxCameraRetry},
+		{"failure at cap stays", maxCameraRetry, false, maxCameraRetry, maxCameraRetry},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			wait, next := nextCameraRetry(tt.current, tt.gotFrames)
+			if wait != tt.wantWait || next != tt.wantNext {
+				t.Errorf("nextCameraRetry(%v, %v) = (%v, %v), want (%v, %v)",
+					tt.current, tt.gotFrames, wait, next, tt.wantWait, tt.wantNext)
+			}
+		})
+	}
+}
