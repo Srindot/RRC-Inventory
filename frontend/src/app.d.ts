@@ -5,7 +5,11 @@ declare global {
 		// interface Error {}
 		// interface Locals {}
 		// interface PageData {}
-		// interface PageState {}
+		// Home page views live in history so the phone's back button works
+		interface PageState {
+			view?: string;
+			pushed?: boolean;
+		}
 		// interface Platform {}
 	}
 }

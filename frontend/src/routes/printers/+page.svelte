@@ -1,6 +1,9 @@
 <script>
     import { onMount, onDestroy } from 'svelte';
     import { cameraFeed } from '$lib/camera.js';
+    import { api, can, getToken, getUser, loginUrl } from '$lib/auth.js';
+    import Icon from '$lib/Icon.svelte';
+    import { AREA } from '$lib/palette.js';
 
     const STATUS_INTERVAL = 5000;   // printers report every few seconds
     const CAMERA_INTERVAL = 2000;   // the camera itself only manages ~0.5 fps
@@ -9,9 +12,9 @@
     let loaded = false;
     let error = '';
     let notice = '';
-    // Admin actions live on the admin page; this page only needs the token to
-    // offer the access-code fix when a printer rejects our credentials.
-    let adminToken = '';
+    // Admin actions live on the admin page; this page only needs the user to
+    // offer the access-code fix and to send files.
+    let user = null;
     // Printer id currently showing the "change access code" box
     let editingCode = '';
     let newCode = '';
@@ -29,7 +32,7 @@
     let cameraTimer;
 
     onMount(() => {
-        adminToken = localStorage.getItem('adminToken') || '';
+        user = getUser();
 
         loadPrinters();
         statusTimer = setInterval(loadPrinters, STATUS_INTERVAL);
@@ -71,18 +74,15 @@
 
         savingCode = true;
         try {
-            const response = await fetch(`/api/admin/printers/${printer.id}/access-code`, {
+            const response = await api(`/api/admin/printers/${printer.id}/access-code`, {
                 method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${adminToken}`
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ access_code: newCode.trim() })
             });
 
             if (response.status === 401) {
-                adminToken = '';
-                error = 'Your admin session expired. Log in again.';
+                user = null;
+                error = 'Your session expired. Log in again.';
                 return;
             }
 
@@ -140,6 +140,15 @@
             setTimeout(() => (error = ''), 6000);
             return;
         }
+        if (!can(user, 'upload_prints')) {
+            if (!user) {
+                location.href = loginUrl();
+                return;
+            }
+            error = "Your account can't send files to printers. Ask a server admin.";
+            setTimeout(() => (error = ''), 8000);
+            return;
+        }
 
         uploading = printer.id;
         uploadProgress = 0;
@@ -152,6 +161,7 @@
             // a progress bar is worth having
             const xhr = new XMLHttpRequest();
             xhr.open('POST', `/api/printers/${printer.id}/files`);
+            xhr.setRequestHeader('Authorization', `Bearer ${getToken()}`);
             xhr.upload.onprogress = (e) => {
                 if (e.lengthComputable) {
                     uploadProgress = Math.round((e.loaded / e.total) * 100);
@@ -221,15 +231,12 @@
         }
     }
 
-    function stateClass(printer) {
-        if (!printer.online) return 'offline';
-        switch (printer.state) {
-            case 'RUNNING': return 'running';
-            case 'FAILED': return 'failed';
-            case 'PAUSE': return 'paused';
-            case 'FINISH': return 'finished';
-            default: return 'idle';
-        }
+    // Green printing, blue ready, yellow paused; problems keep the semantic colours
+    function chip(printer) {
+        if (!printer.online) return { cls: 'warn', hue: '' };
+        if (printer.state === 'FAILED') return { cls: 'danger', hue: '' };
+        if (printer.state === 'PAUSE') return { cls: 'hue', hue: 'var(--ctp-yellow)' };
+        return { cls: 'hue', hue: isPrinting(printer) ? 'var(--ctp-green)' : 'var(--ctp-blue)' };
     }
 
     // "Free" is what most people actually want to know
@@ -253,17 +260,17 @@
     }
 </script>
 
-<div class="container">
-    <div class="header">
-        <div class="logo-title">
-            <a href="/"><img src="/rrc_logo.png" alt="RRC Logo" class="logo" /></a>
+<div class="page">
+    <header class="page-head">
+        <div class="title">
+            <span class="icon-badge" style="--hue: {AREA.printers}"><Icon name="printer" /></span>
             <div>
-                <h1>🖨️ 3D Printers</h1>
-                <p class="subtitle">Live status of the lab's Bambu Lab P1S printers</p>
+                <h1>3D printers</h1>
+                <p>Live status of the lab's Bambu Lab P1S printers</p>
             </div>
         </div>
-        <a href="/" class="back-link">← Back to Home</a>
-    </div>
+        <a href="/?view=printer-guide" class="btn">How to print</a>
+    </header>
 
     {#if error}
         <div class="message error">{error}</div>
@@ -273,34 +280,32 @@
     {/if}
 
     {#if !loaded}
-        <p class="note">Loading printers...</p>
+        <p class="muted">Loading printers…</p>
     {:else if printers.length === 0}
-        <p class="note">No printers are configured.</p>
+        <p class="muted">No printers are configured.</p>
     {:else}
-        <div class="printer-grid">
-            {#each printers as printer, i (printer.id)}
-                <div class="printer-card {stateClass(printer)}" style="--i: {i}">
-                    <div class="card-head">
-                        <img src="/P1S.png" alt="" class="printer-icon" />
+        <div class="grid printers">
+            {#each printers as printer (printer.id)}
+                {@const status = chip(printer)}
+                <div class="card">
+                    <div class="head">
                         <div class="head-text">
                             <h2>{printer.name}</h2>
-                            <span class="availability {isPrinting(printer) ? 'busy' : 'free'}">
-                                {availability(printer)}
-                            </span>
+                            <p class="small muted">{availability(printer)}</p>
                         </div>
-                        <span class="state-badge {stateClass(printer)}">{stateLabel(printer)}</span>
+                        <span class="chip {status.cls}" style={status.hue ? `--hue: ${status.hue}` : undefined}>{stateLabel(printer)}</span>
                     </div>
 
                     {#if printer.access_code_problem}
                         <div class="code-warning">
-                            <strong>⚠️ Camera not connecting</strong>
+                            <strong>Camera not connecting</strong>
                             <p>
                                 {printer.name} accepted the connection and then hung up. Usually
                                 the access code changed - toggling LAN mode on the printer
                                 regenerates it. It also happens when the camera is already open
                                 in Bambu Studio or Handy, since the P1S allows only one viewer.
                             </p>
-                            {#if adminToken}
+                            {#if can(user, 'manage_printers')}
                                 {#if editingCode === printer.id}
                                     <div class="code-form">
                                         <input
@@ -309,38 +314,27 @@
                                             placeholder="New access code from the printer screen"
                                             autocomplete="off"
                                         />
-                                        <button
-                                            class="save-code-btn"
-                                            on:click={() => saveAccessCode(printer)}
-                                            disabled={savingCode}
-                                        >
-                                            {savingCode ? 'Saving...' : 'Save'}
+                                        <button class="btn primary" on:click={() => saveAccessCode(printer)} disabled={savingCode}>
+                                            {savingCode ? 'Saving…' : 'Save'}
                                         </button>
-                                        <button class="cancel-code-btn" on:click={() => (editingCode = '')}>
-                                            Cancel
-                                        </button>
+                                        <button class="btn" on:click={() => (editingCode = '')}>Cancel</button>
                                     </div>
-                                    <p class="code-hint">
+                                    <p class="small muted">
                                         On the printer: Settings → Network → the code is shown with
                                         the IP address. No restart needed - it reconnects by itself.
                                     </p>
                                 {:else}
-                                    <button class="fix-code-btn" on:click={() => startCodeEdit(printer)}>
-                                        Update access code
-                                    </button>
+                                    <button class="btn" on:click={() => startCodeEdit(printer)}>Update access code</button>
                                 {/if}
                             {:else}
-                                <p class="code-hint">An admin can fix this from this page.</p>
+                                <p class="small muted">An admin can fix this from this page.</p>
                             {/if}
                         </div>
                     {/if}
 
                     <div class="camera">
                         {#if printer.camera_online && $camera[printer.id]}
-                            <img
-                                src={$camera[printer.id]}
-                                alt="Camera view of {printer.name}"
-                            />
+                            <img src={$camera[printer.id]} alt="Camera view of {printer.name}" />
                         {:else}
                             <div class="camera-placeholder">
                                 <img src="/P1S.png" alt="" class="placeholder-icon" />
@@ -351,34 +345,88 @@
 
                     {#if printer.online}
                         {#if isPrinting(printer)}
-                            <div class="progress-row">
-                                <div class="progress-bar">
-                                    <div class="progress-fill" style="width: {printer.progress}%"></div>
-                                </div>
-                                <span class="progress-text">{printer.progress}%</span>
+                            <div class="bar" style="--hue: var(--ctp-green)"><span style="width: {printer.progress}%"></span></div>
+                            <div class="progress-meta mono">
+                                <span>{printer.progress}%</span>
+                                <span class="muted">{formatRemaining(printer.remaining_minutes)}</span>
                             </div>
-                            {#if printer.remaining_minutes > 0}
-                                <p class="remaining">{formatRemaining(printer.remaining_minutes)}</p>
-                            {/if}
                         {/if}
 
                         {#if printer.file_name}
-                            <p class="file" title={printer.file_name}>
-                                📄 {tidyFileName(printer.file_name)}
-                            </p>
+                            <p class="file small muted" title={printer.file_name}>{tidyFileName(printer.file_name)}</p>
                         {/if}
 
+                        {#if (printer.ams && printer.ams.length > 0) || printer.external_spool}
+                            <div class="ams">
+                                {#each printer.ams as unit}
+                                    <div class="ams-head small">
+                                        <span>AMS {unit.id + 1}</span>
+                                        {#if unit.humidity}
+                                            <span class="mono muted" title="The AMS reports humidity on its own 1-5 scale">Humidity {unit.humidity}/5</span>
+                                        {/if}
+                                        {#if unit.temp}
+                                            <span class="mono muted">{unit.temp}°C</span>
+                                        {/if}
+                                    </div>
 
-                        <button class="send-toggle" on:click={() => toggleSend(printer)}>
-                            {sendFor === printer.id ? '✕ Close' : '📤 Send a file to print'}
+                                    <div class="ams-slots">
+                                        {#each unit.slots as slot}
+                                            <div
+                                                class="ams-slot"
+                                                class:empty={slot.empty}
+                                                class:active={slot.active}
+                                                title={slot.empty
+                                                    ? `Slot ${slot.slot}: empty`
+                                                    : `Slot ${slot.slot}: ${slot.material}${slot.remain >= 0 ? ', ' + slot.remain + '% left' : ', amount unknown'}${slot.active ? ' (in use)' : ''}`}
+                                            >
+                                                <span class="ams-top">
+                                                    <span class="swatch" style="background: {slot.color || 'transparent'}"></span>
+                                                    <span class="mono faint">{slot.slot}</span>
+                                                </span>
+                                                <span class="ams-mat">{slot.empty ? 'Empty' : slot.material}</span>
+                                                {#if slot.remain >= 0}
+                                                    <span class="mono muted">{slot.remain}%</span>
+                                                {:else if !slot.empty}
+                                                    <span class="mono faint" title="No RFID tag, so the printer cannot tell">?</span>
+                                                {/if}
+                                            </div>
+                                        {/each}
+                                    </div>
+                                {/each}
+
+                                {#if printer.external_spool && !printer.external_spool.empty}
+                                    <div class="ams-ext small">
+                                        <span class="swatch" style="background: {printer.external_spool.color || 'transparent'}"></span>
+                                        <span class="muted">External spool</span>
+                                        <span class="ams-mat">{printer.external_spool.material}</span>
+                                        {#if printer.external_spool.remain >= 0}
+                                            <span class="mono muted">{printer.external_spool.remain}%</span>
+                                        {/if}
+                                    </div>
+                                {/if}
+                            </div>
+                        {/if}
+
+                        <div class="temps small mono muted">
+                            <span><span class="dot" style="--hue: var(--ctp-peach)"></span>Nozzle {printer.nozzle_temp.toFixed(0)}°C</span>
+                            <span><span class="dot" style="--hue: var(--ctp-maroon)"></span>Bed {printer.bed_temp.toFixed(0)}°C</span>
+                            {#if printer.chamber_temp > 0}
+                                <span><span class="dot" style="--hue: var(--ctp-sky)"></span>Chamber {printer.chamber_temp.toFixed(0)}°C</span>
+                            {/if}
+                        </div>
+                        {#if printer.last_action_by}
+                            <p class="small muted">Last stopped by {printer.last_action_by}</p>
+                        {/if}
+
+                        <button class="btn send-toggle" on:click={() => toggleSend(printer)}>
+                            {sendFor === printer.id ? 'Close' : 'Send a file to print'}
                         </button>
 
                         {#if sendFor === printer.id}
-                            <div class="send-panel">
-                                <p class="send-rule">
-                                    <strong>Name your file with your name first</strong> -
-                                    for example <code>srinath_bracket.3mf</code>. That is how
-                                    everyone knows whose print it is.
+                            <div class="send-panel small">
+                                <p>
+                                    <strong>Start the file name with your name</strong>, for example
+                                    <code>srinath_bracket.3mf</code>, so everyone knows whose print it is.
                                 </p>
 
                                 <div
@@ -399,314 +447,140 @@
                                         on:change={(e) => handlePick(printer, e)}
                                     />
                                     {#if uploading === printer.id}
-                                        <span class="drop-title">Sending... {uploadProgress}%</span>
-                                        <div class="upload-bar">
-                                            <div class="upload-fill" style="width: {uploadProgress}%"></div>
-                                        </div>
+                                        <span class="drop-title">Sending… <span class="mono">{uploadProgress}%</span></span>
+                                        <div class="bar upload"><span style="width: {uploadProgress}%"></span></div>
                                     {:else}
-                                        <span class="drop-icon">📄</span>
                                         <span class="drop-title">Drop a sliced file here</span>
-                                        <span class="drop-sub">or tap to choose - .3mf or .gcode</span>
+                                        <span class="muted">or click to choose · .3mf or .gcode</span>
                                     {/if}
                                 </div>
 
-                                <p class="send-note">
+                                <p class="muted">
                                     Slice in Bambu Studio and export the file. It lands on the
-                                    printer - then go to the machine, check the plate is clear,
+                                    printer; then go to the machine, check the plate is clear,
                                     and start it from the screen.
                                 </p>
 
                                 {#if printerFiles[printer.id]}
                                     {#if printerFiles[printer.id].length === 0}
-                                        <p class="send-empty">No files on this printer yet.</p>
+                                        <p class="muted">No files on this printer yet.</p>
                                     {:else}
-                                        <p class="send-listhead">On this printer:</p>
-                                        <ul class="send-list">
-                                            {#each printerFiles[printer.id].slice(0, 8) as file}
-                                                <li>
-                                                    <span class="send-file" title={file.name}>{file.name}</span>
-                                                    <span class="send-size">{fileSize(file.size)}</span>
-                                                </li>
-                                            {/each}
-                                        </ul>
+                                        <p class="label">On this printer</p>
+                                        {#each printerFiles[printer.id].slice(0, 8) as file}
+                                            <div class="row">
+                                                <span class="send-file" title={file.name}>{file.name}</span>
+                                                <span class="mono muted">{fileSize(file.size)}</span>
+                                            </div>
+                                        {/each}
                                     {/if}
                                 {/if}
                             </div>
                         {/if}
-
-
-                                    {#if (printer.ams && printer.ams.length > 0) || printer.external_spool}
-                                        <div class="ams">
-                                            {#each printer.ams as unit}
-                                                <div class="ams-head">
-                                                    <span class="ams-title">AMS {unit.id + 1}</span>
-                                                    {#if unit.humidity}
-                                                        <span class="ams-meta" title="The AMS reports humidity on its own 1-5 scale">
-                                                            💧 {unit.humidity}/5
-                                                        </span>
-                                                    {/if}
-                                                    {#if unit.temp}
-                                                        <span class="ams-meta">🌡️ {unit.temp}°C</span>
-                                                    {/if}
-                                                </div>
-
-                                                <div class="ams-slots">
-                                                    {#each unit.slots as slot}
-                                                        <div
-                                                            class="ams-slot"
-                                                            class:empty={slot.empty}
-                                                            class:active={slot.active}
-                                                            title={slot.empty
-                                                                ? `Slot ${slot.slot}: empty`
-                                                                : `Slot ${slot.slot}: ${slot.material}${slot.remain >= 0 ? ', ' + slot.remain + '% left' : ', amount unknown'}${slot.active ? ' (in use)' : ''}`}
-                                                        >
-                                                            <span class="ams-top">
-                                                                <span class="ams-swatch" style="background: {slot.color || 'transparent'}"></span>
-                                                                <span class="ams-num">{slot.slot}</span>
-                                                                {#if slot.active}<span class="ams-dot" title="Currently feeding"></span>{/if}
-                                                            </span>
-
-                                                            <span class="ams-mat">{slot.empty ? 'Empty' : slot.material}</span>
-
-                                                            {#if slot.remain >= 0}
-                                                                <span class="ams-bar">
-                                                                    <span class="ams-fill" style="width: {slot.remain}%"></span>
-                                                                </span>
-                                                                <span class="ams-pct">{slot.remain}%</span>
-                                                            {:else if !slot.empty}
-                                                                <span class="ams-pct unknown" title="No RFID tag, so the printer cannot tell">? left</span>
-                                                            {/if}
-                                                        </div>
-                                                    {/each}
-                                                </div>
-                                            {/each}
-
-                                            {#if printer.external_spool && !printer.external_spool.empty}
-                                                <div class="ams-ext">
-                                                    <span class="ams-swatch" style="background: {printer.external_spool.color || 'transparent'}"></span>
-                                                    <span class="ams-ext-label">External spool</span>
-                                                    <span class="ams-ext-mat">{printer.external_spool.material}</span>
-                                                    {#if printer.external_spool.remain >= 0}
-                                                        <span class="ams-pct">{printer.external_spool.remain}%</span>
-                                                    {/if}
-                                                </div>
-                                            {/if}
-                                        </div>
-                                    {/if}
-
-                        <div class="temps">
-                            <span>🔥 Nozzle {printer.nozzle_temp.toFixed(0)}°C</span>
-                            <span>🛏️ Bed {printer.bed_temp.toFixed(0)}°C</span>
-                            {#if printer.chamber_temp > 0}
-                                <span>📦 Chamber {printer.chamber_temp.toFixed(0)}°C</span>
-                            {/if}
-                        </div>
-                        {#if printer.last_action_by}
-                            <p class="last-action">Last stopped by {printer.last_action_by}</p>
-                        {/if}
                     {:else}
-                        <p class="offline-note">
-                            Not responding - it may be switched off or off the network.
-                        </p>
+                        <p class="small muted">Not responding. It may be switched off or off the network.</p>
                     {/if}
                 </div>
             {/each}
         </div>
 
-        <p class="footnote">
+        <p class="small muted footnote">
             Status refreshes automatically. The camera updates about once every two
-            seconds - that is the fastest the P1S allows over the local network.
+            seconds, the fastest the P1S allows over the local network.
         </p>
     {/if}
 </div>
 
 <style>
-    :global(body) {
-        background: var(--ctp-base);
-        color: var(--ctp-text);
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        margin: 0;
-        /* The home page locks the page height with overflow:hidden. That style
-           stays loaded after client-side navigation, so undo it here or this
-           page cannot be scrolled. */
-        height: auto;
-        min-height: 100vh;
-        overflow-y: auto;
+    .printers {
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
     }
 
-    :global(html) {
-        height: auto;
-        overflow-y: auto;
-    }
-
-    .container {
-        max-width: 1200px;
-        margin: 0 auto;
-        padding: 16px;
-    }
-
-    .header {
+    .head {
         display: flex;
         justify-content: space-between;
-        align-items: center;
-        gap: 12px;
-        flex-wrap: wrap;
-        border-bottom: 1px solid var(--ctp-surface0);
-        padding-bottom: 12px;
-        margin-bottom: 16px;
-    }
-
-    .logo-title {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-    }
-
-    .logo {
-        height: 48px;
-        width: auto;
-    }
-
-    h1 {
-        margin: 0;
-        font-size: clamp(1.2rem, 3vw, 1.6rem);
-        color: var(--ctp-peach);
-    }
-
-    .subtitle {
-        margin: 2px 0 0;
-        font-size: 0.85rem;
-        color: var(--ctp-subtext0);
-    }
-
-    .back-link {
-        color: var(--ctp-blue);
-        text-decoration: none;
-        font-size: 0.9rem;
-    }
-
-    .message.error {
-        background: #3b2a2a;
-        color: var(--ctp-red);
-        border: 1px solid var(--ctp-red);
-        padding: 10px 14px;
-        border-radius: 8px;
-        margin-bottom: 14px;
-        font-size: 0.9rem;
-    }
-
-    .note,
-    .footnote {
-        color: var(--ctp-overlay0);
-        font-size: 0.85rem;
-        text-align: center;
-        margin-top: 16px;
-    }
-
-    .printer-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 460px));
-        justify-content: center;
-        gap: 16px;
-    }
-
-    .printer-card {
-        --accent: var(--ctp-overlay0);
-        position: relative;
-        background:
-            linear-gradient(180deg, rgba(205, 214, 244, 0.035), transparent 55%),
-            var(--ctp-mantle);
-        border: 1px solid var(--ctp-surface0);
-        border-left: 4px solid var(--accent);
-        border-radius: var(--radius-lg);
-        padding: 16px;
-        box-shadow: var(--shadow-sm);
-        transition:
-            transform var(--normal) var(--ease),
-            box-shadow var(--normal) var(--ease),
-            border-color var(--normal) var(--ease);
-        animation: rise var(--slow) var(--ease) both;
-        animation-delay: calc(var(--i, 0) * 70ms);
-    }
-
-    .printer-card:hover {
-        transform: translateY(-2px);
-        box-shadow: var(--shadow);
-    }
-
-    .printer-card.running { --accent: var(--ctp-green); }
-    .printer-card.failed { --accent: var(--ctp-red); }
-    .printer-card.paused { --accent: var(--ctp-yellow); }
-    .printer-card.finished { --accent: var(--ctp-blue); }
-    .printer-card.idle { --accent: var(--ctp-sapphire); }
-    .printer-card.offline { opacity: 0.62; }
-
-    /* A quiet heartbeat on the machines that are actually working */
-    .printer-card.running .availability.busy::before {
-        content: '';
-        display: inline-block;
-        width: 7px;
-        height: 7px;
-        margin-right: 6px;
-        border-radius: 50%;
-        background: var(--ctp-green);
-        animation: soft-pulse 1.8s ease-in-out infinite;
-    }
-
-    .card-head {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
+        align-items: flex-start;
         gap: 10px;
-        margin-bottom: 10px;
-    }
-
-    .printer-icon {
-        width: 42px;
-        height: 42px;
-        object-fit: contain;
-        flex-shrink: 0;
+        margin-bottom: 14px;
     }
 
     .head-text {
-        flex: 1;
         min-width: 0;
     }
 
     h2 {
         margin: 0;
         font-size: 1rem;
-    }
-
-    .availability {
-        font-size: 0.8rem;
         font-weight: 600;
     }
 
-    .availability.free { color: var(--ctp-green); }
-    .availability.busy { color: var(--ctp-peach); }
+    .card p {
+        margin: 8px 0 0;
+    }
 
-    .state-badge {
-        font-size: 0.75rem;
-        padding: 3px 9px;
-        border-radius: 999px;
-        background: var(--ctp-surface0);
-        color: var(--ctp-text);
+    .head p {
+        margin-top: 2px;
+    }
+
+    .small {
+        font-size: 0.85rem;
+    }
+
+    .faint {
+        color: var(--faint);
+    }
+
+    .chip {
         white-space: nowrap;
     }
 
-    .state-badge.running { background: var(--ctp-green); color: var(--ctp-crust); }
-    .state-badge.failed { background: var(--ctp-red); color: var(--ctp-crust); }
-    .state-badge.paused { background: var(--ctp-yellow); color: var(--ctp-crust); }
-    .state-badge.finished { background: var(--ctp-blue); color: var(--ctp-crust); }
+    .chip.danger {
+        color: var(--danger);
+        border-color: color-mix(in srgb, var(--danger) 35%, transparent);
+    }
+
+    .title {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .code-warning {
+        border: 1px solid var(--warn);
+        border-radius: var(--radius);
+        padding: 12px 14px;
+        margin-bottom: 12px;
+        font-size: 0.85rem;
+        line-height: 1.4;
+    }
+
+    .code-warning p {
+        color: var(--muted);
+    }
+
+    .code-warning > .btn {
+        margin-top: 10px;
+    }
+
+    .code-form {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 10px;
+    }
+
+    .code-form input {
+        flex: 1;
+        min-width: 150px;
+        padding: 8px 10px;
+    }
 
     .camera {
         aspect-ratio: 16 / 9;
-        background: var(--ctp-crust);
-        border: 1px solid var(--ctp-surface0);
+        background: var(--card-raised);
+        border: 1px solid var(--line);
         border-radius: var(--radius);
         overflow: hidden;
-        margin-bottom: 12px;
+        margin-bottom: 14px;
     }
 
     .camera img {
@@ -714,12 +588,6 @@
         height: 100%;
         object-fit: cover;
         display: block;
-        animation: fade var(--normal) var(--ease);
-        transition: transform var(--slow) var(--ease);
-    }
-
-    .printer-card:hover .camera img {
-        transform: scale(1.03);
     }
 
     .camera-placeholder {
@@ -729,7 +597,7 @@
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        color: var(--ctp-surface1);
+        color: var(--faint);
     }
 
     /* Scoped past the ".camera img" rule above, which would stretch it */
@@ -745,67 +613,14 @@
         font-size: 0.8rem;
     }
 
-    .progress-row {
+    .progress-meta {
         display: flex;
-        align-items: center;
-        gap: 8px;
-    }
-
-    .progress-bar {
-        flex: 1;
-        height: 8px;
-        background: var(--ctp-surface0);
-        border-radius: 999px;
-        overflow: hidden;
-    }
-
-    .progress-fill {
-        position: relative;
-        height: 100%;
-        border-radius: var(--radius-pill);
-        background: linear-gradient(90deg, var(--ctp-green), var(--ctp-teal));
-        transition: width var(--slow) var(--ease);
-        overflow: hidden;
-    }
-
-    /* Light sweeping across the bar, so it reads as live */
-    .progress-fill::after {
-        content: '';
-        position: absolute;
-        inset: 0;
-        background: linear-gradient(
-            90deg,
-            transparent,
-            rgba(205, 214, 244, 0.45),
-            transparent
-        );
-        transform: translateX(-100%);
-        animation: sweep 2.2s var(--ease) infinite;
-    }
-
-    @keyframes sweep {
-        to {
-            transform: translateX(100%);
-        }
-    }
-
-    .progress-text {
-        font-size: 0.8rem;
-        color: var(--ctp-subtext0);
-        min-width: 34px;
-        text-align: right;
-    }
-
-    .remaining {
-        margin: 6px 0 0;
+        justify-content: space-between;
+        margin-top: 6px;
         font-size: 0.85rem;
-        color: var(--ctp-green);
     }
 
     .file {
-        margin: 8px 0 0;
-        font-size: 0.8rem;
-        color: var(--ctp-subtext0);
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
@@ -814,283 +629,106 @@
     .temps {
         display: flex;
         flex-wrap: wrap;
-        gap: 10px;
-        margin-top: 10px;
-        font-size: 0.78rem;
-        color: var(--ctp-subtext0);
-    }
-
-    .code-warning {
-        background: #3b2f1e;
-        border: 1px solid var(--ctp-peach);
-        border-radius: 8px;
-        padding: 10px 12px;
-        margin-bottom: 10px;
-        font-size: 0.82rem;
-        color: var(--ctp-yellow);
-    }
-
-    .code-warning p {
-        margin: 6px 0 0;
-        color: #d7c9a7;
-        line-height: 1.35;
-    }
-
-    .code-form {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-        margin-top: 8px;
-    }
-
-    .code-form input {
-        flex: 1;
-        min-width: 150px;
-        background: var(--ctp-base);
-        border: 1px solid var(--ctp-surface1);
-        border-radius: 6px;
-        padding: 8px;
-        color: var(--ctp-text);
-        font-size: 0.9rem;
-    }
-
-    .fix-code-btn,
-    .save-code-btn {
-        background: var(--ctp-peach);
-        color: var(--ctp-crust);
-        border: none;
-        border-radius: 6px;
-        padding: 8px 14px;
-        font-weight: 600;
-        cursor: pointer;
-        margin-top: 8px;
-        min-height: 40px;
-    }
-
-    .save-code-btn { margin-top: 0; }
-
-    .save-code-btn:disabled {
-        opacity: 0.6;
-        cursor: not-allowed;
-    }
-
-    .cancel-code-btn {
-        background: var(--ctp-surface0);
-        color: var(--ctp-text);
-        border: none;
-        border-radius: 6px;
-        padding: 8px 12px;
-        cursor: pointer;
-        min-height: 40px;
-    }
-
-    .code-hint {
-        font-size: 0.75rem;
-        color: var(--ctp-subtext0);
-        margin-top: 6px;
-    }
-
-    .last-action {
-        margin: 8px 0 0;
-        font-size: 0.75rem;
-        color: var(--ctp-overlay0);
-    }
-
-    .message.success {
-        background: #2a3b2a;
-        color: var(--ctp-green);
-        border: 1px solid var(--ctp-green);
-        padding: 10px 14px;
-        border-radius: 8px;
-        margin-bottom: 14px;
-        font-size: 0.9rem;
-    }
-
-
-
-
-    /* --- AMS ------------------------------------------------------------ */
-    .ams {
+        gap: 12px;
         margin-top: 12px;
-        padding: 10px;
-        border: 1px solid var(--ctp-surface0);
-        border-radius: var(--radius-sm);
-        background: var(--ctp-crust);
+    }
+
+    .temps > span {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .ams {
+        margin-top: 14px;
+        padding-top: 12px;
+        border-top: 1px solid var(--line);
     }
 
     .ams-head {
         display: flex;
-        align-items: center;
-        gap: 10px;
+        gap: 12px;
         flex-wrap: wrap;
         margin-bottom: 8px;
-    }
-
-    .ams-title {
-        font-size: 0.72rem;
-        font-weight: 700;
-        letter-spacing: 0.6px;
-        text-transform: uppercase;
-        color: var(--ctp-teal);
-    }
-
-    .ams-meta {
-        font-size: 0.7rem;
-        color: var(--ctp-subtext0);
+        font-weight: 550;
     }
 
     .ams-slots {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
         gap: 6px;
+        margin-bottom: 8px;
     }
 
     .ams-slot {
         display: flex;
         flex-direction: column;
-        gap: 4px;
-        padding: 7px;
-        border: 1px solid var(--ctp-surface1);
+        gap: 3px;
+        padding: 7px 8px;
+        border: 1px solid var(--line);
         border-radius: var(--radius-sm);
-        background: var(--ctp-mantle);
+        font-size: 0.78rem;
         min-width: 0;
     }
 
     .ams-slot.active {
-        border-color: var(--ctp-green);
-        box-shadow: 0 0 0 1px var(--ctp-green) inset;
+        border-color: var(--accent);
     }
 
-    .ams-slot.empty { opacity: 0.45; }
+    .ams-slot.empty {
+        opacity: 0.5;
+    }
 
     .ams-top {
         display: flex;
         align-items: center;
-        gap: 5px;
+        gap: 6px;
     }
 
-    .ams-swatch {
-        width: 14px;
-        height: 14px;
+    .swatch {
+        width: 12px;
+        height: 12px;
         border-radius: 50%;
-        border: 1px solid var(--ctp-surface2);
+        border: 1px solid var(--line-strong);
         flex-shrink: 0;
     }
 
-    .ams-num {
-        font-size: 0.65rem;
-        color: var(--ctp-overlay0);
-        font-weight: 700;
-    }
-
-    .ams-dot {
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        background: var(--ctp-green);
-        margin-left: auto;
-        animation: soft-pulse 1.8s ease-in-out infinite;
-    }
-
     .ams-mat {
-        font-size: 0.68rem;
-        color: var(--ctp-text);
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
     }
-
-    .ams-bar {
-        display: block;
-        height: 4px;
-        background: var(--ctp-surface0);
-        border-radius: var(--radius-pill);
-        overflow: hidden;
-    }
-
-    .ams-fill {
-        display: block;
-        height: 100%;
-        background: linear-gradient(90deg, var(--ctp-teal), var(--ctp-sky));
-        transition: width var(--slow) var(--ease);
-    }
-
-    .ams-pct {
-        font-size: 0.62rem;
-        color: var(--ctp-subtext0);
-    }
-
-    .ams-pct.unknown { color: var(--ctp-overlay0); }
 
     .ams-ext {
         display: flex;
         align-items: center;
-        gap: 7px;
-        margin-top: 8px;
-        padding-top: 8px;
-        border-top: 1px dashed var(--ctp-surface1);
-        font-size: 0.7rem;
+        gap: 8px;
     }
 
-    .ams-ext-label {
-        color: var(--ctp-overlay0);
-        text-transform: uppercase;
-        letter-spacing: 0.4px;
-        font-size: 0.62rem;
-    }
-
-    .ams-ext-mat {
-        color: var(--ctp-text);
+    .ams-ext .ams-mat {
         flex: 1;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
     }
 
     .send-toggle {
-        margin-top: 12px;
         width: 100%;
-        min-height: 44px;
-        background: var(--ctp-surface0);
-        color: var(--ctp-text);
-        border: 1px solid var(--ctp-surface1);
-        border-radius: var(--radius-sm);
-        font-weight: 600;
-        font-family: inherit;
-        font-size: 0.88rem;
-        cursor: pointer;
-        transition: background-color var(--fast) var(--ease), transform var(--fast) var(--ease);
-    }
-
-    .send-toggle:hover {
-        background: var(--ctp-surface1);
-        transform: translateY(-1px);
+        margin-top: 14px;
     }
 
     .send-panel {
-        margin-top: 10px;
-        padding: 12px;
-        border: 1px solid var(--ctp-surface0);
-        border-radius: var(--radius-sm);
-        background: var(--ctp-crust);
-        animation: rise var(--normal) var(--ease) both;
-    }
-
-    .send-rule {
-        margin: 0 0 10px;
-        font-size: 0.78rem;
+        margin-top: 12px;
         line-height: 1.45;
-        color: var(--ctp-subtext0);
     }
 
-    .send-rule strong { color: var(--ctp-mauve); }
+    .send-panel p {
+        margin: 0 0 10px;
+    }
 
-    .send-rule code {
-        background: var(--ctp-mantle);
-        border: 1px solid var(--ctp-surface0);
+    code {
+        font-family: var(--mono);
+        background: var(--card-raised);
+        border: 1px solid var(--line);
         border-radius: 4px;
         padding: 1px 5px;
-        color: var(--ctp-text);
     }
 
     .dropzone {
@@ -1098,109 +736,49 @@
         flex-direction: column;
         align-items: center;
         gap: 4px;
-        padding: 20px 12px;
-        border: 2px dashed var(--ctp-surface2);
+        margin-bottom: 10px;
+        padding: 22px 12px;
+        border: 1px dashed var(--line-strong);
         border-radius: var(--radius);
         cursor: pointer;
         text-align: center;
-        transition:
-            border-color var(--fast) var(--ease),
-            background-color var(--fast) var(--ease),
-            transform var(--fast) var(--ease);
+        transition: border-color var(--fast) var(--ease), background-color var(--fast) var(--ease);
     }
 
-    .dropzone:hover {
-        border-color: var(--ctp-mauve);
-        background: rgba(203, 166, 247, 0.06);
-    }
-
+    .dropzone:hover,
     .dropzone.over {
-        border-color: var(--ctp-mauve);
-        background: rgba(203, 166, 247, 0.14);
-        transform: scale(1.01);
+        border-color: var(--accent);
+        background: var(--accent-soft);
     }
 
-    .dropzone input { display: none; }
-
-    .drop-icon { font-size: 1.6rem; }
+    .dropzone input {
+        display: none;
+    }
 
     .drop-title {
-        font-size: 0.88rem;
         font-weight: 600;
-        color: var(--ctp-text);
     }
 
-    .drop-sub {
-        font-size: 0.75rem;
-        color: var(--ctp-overlay0);
-    }
-
-    .upload-bar {
+    .upload {
         width: 100%;
-        height: 6px;
-        background: var(--ctp-surface0);
-        border-radius: var(--radius-pill);
-        overflow: hidden;
         margin-top: 8px;
     }
 
-    .upload-fill {
-        height: 100%;
-        background: linear-gradient(90deg, var(--ctp-mauve), var(--ctp-lavender));
-        transition: width var(--fast) linear;
+    .send-panel .label {
+        margin: 12px 0 0;
     }
 
-    .send-note {
-        margin: 10px 0 0;
-        font-size: 0.73rem;
-        line-height: 1.45;
-        color: var(--ctp-overlay0);
-    }
-
-    .send-listhead {
-        margin: 12px 0 4px;
-        font-size: 0.72rem;
-        text-transform: uppercase;
-        letter-spacing: 0.4px;
-        color: var(--ctp-overlay0);
-    }
-
-    .send-empty {
-        margin: 10px 0 0;
-        font-size: 0.75rem;
-        color: var(--ctp-overlay0);
-    }
-
-    .send-list {
-        list-style: none;
-        margin: 0;
-        padding: 0;
-        display: flex;
-        flex-direction: column;
-        gap: 3px;
-    }
-
-    .send-list li {
-        display: flex;
-        gap: 8px;
-        font-size: 0.72rem;
-        background: var(--ctp-mantle);
-        border-radius: 5px;
-        padding: 5px 8px;
+    .row {
+        padding: 6px 0;
     }
 
     .send-file {
-        flex: 1;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
     }
 
-    .send-size { color: var(--ctp-overlay0); }
-
-    .offline-note {
-        margin: 8px 0 0;
-        font-size: 0.82rem;
-        color: var(--ctp-overlay0);
+    .footnote {
+        margin-top: 20px;
     }
 </style>

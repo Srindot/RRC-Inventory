@@ -1,12 +1,12 @@
 <script lang="ts">
-	import favicon from '$lib/assets/favicon.svg';
+	import Shell from '$lib/Shell.svelte';
 	import '$lib/theme.css';
 
 	let { children } = $props();
 </script>
 
 <svelte:head>
-	<link rel="icon" href={favicon} />
+	<link rel="icon" href="/rrc_logo.png" />
 </svelte:head>
 
-{@render children?.()}
+<Shell>{@render children?.()}</Shell>
