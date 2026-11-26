@@ -139,6 +139,45 @@ func userBlock(db *gorm.DB, userID uint, now time.Time) string {
 	return bookingBlock(db, userID, now)
 }
 
+// anonBorrowLimits caps borrows without an account per client IP, so the open
+// form cannot be used to flood the loan list.
+var anonBorrowLimits = newLoginLimiter()
+
+// anonymousBorrower reads and checks the name and phone a borrow without an
+// account is made with. The phone is what they return the item with.
+func anonymousBorrower(values map[string][]string) (name, phone string, err error) {
+	get := func(k string) string {
+		if v := values[k]; len(v) > 0 {
+			return v[0]
+		}
+		return ""
+	}
+	name = strings.TrimSpace(get("borrower_name"))
+	if name == "" || len(name) > 100 {
+		return "", "", errors.New("Enter your name")
+	}
+	if phone = normalizePhone(get("borrower_phone")); len(phone) != 10 {
+		return "", "", errors.New("Enter a 10-digit phone number")
+	}
+	return name, phone, nil
+}
+
+// phoneBlock is userBlock for borrowers without an account: a loan made with
+// this phone number that is long overdue pauses borrowing until it is back.
+func phoneBlock(db *gorm.DB, phone string, now time.Time) string {
+	var loans []Loan
+	db.Where("user_id IS NULL AND status = ?", LoanActive).Find(&loans)
+	for _, l := range loans {
+		if !phonesMatch(l.BorrowerPhone, phone) {
+			continue
+		}
+		if overdue, days := loanOverdue(l, now); overdue && days >= overdueBlockDays {
+			return fmt.Sprintf("%s borrowed with this phone number is %d days overdue. Please return it first.", l.ItemName, days)
+		}
+	}
+	return ""
+}
+
 // itemView is an item as the catalogue shows it: with who has it now.
 type itemView struct {
 	Item
@@ -264,7 +303,23 @@ func registerInventoryRoutes(api *gin.RouterGroup, db *gorm.DB, sessions *sessio
 
 	user := api.Group("", requireLogin)
 
-	user.POST("/borrow", requirePerm(PermBorrowItems), func(c *gin.Context) {
+	// Borrow. Anyone may borrow, as before accounts existed: without an
+	// account the borrower gives a name and phone number, and returns with
+	// that phone number. With an account, those come from the account.
+	api.POST("/borrow", func(c *gin.Context) {
+		me, loggedIn := requestUser(db, sessions, c)
+		if loggedIn && !me.can(PermBorrowItems) {
+			c.JSON(403, gin.H{"error": "Your account is not allowed to borrow equipment"})
+			return
+		}
+		if !loggedIn {
+			ip, now := c.ClientIP(), time.Now()
+			if anonBorrowLimits.blocked(ip, now) {
+				c.JSON(429, gin.H{"error": "Too many borrows from this network. Try again in a few minutes."})
+				return
+			}
+			anonBorrowLimits.fail(ip, now)
+		}
 		form, err := c.MultipartForm()
 		if err != nil {
 			if bodyTooLarge(err) {
@@ -279,10 +334,22 @@ func registerInventoryRoutes(api *gin.RouterGroup, db *gorm.DB, sessions *sessio
 			c.JSON(400, gin.H{"error": err.Error()})
 			return
 		}
-		me := currentUser(c)
-		if reason := userBlock(db, me.ID, time.Now()); reason != "" {
-			c.JSON(403, gin.H{"error": reason})
-			return
+		borrowerName, borrowerPhone := me.Name, me.Phone
+		if loggedIn {
+			if reason := userBlock(db, me.ID, time.Now()); reason != "" {
+				c.JSON(403, gin.H{"error": reason})
+				return
+			}
+		} else {
+			borrowerName, borrowerPhone, err = anonymousBorrower(form.Value)
+			if err != nil {
+				c.JSON(400, gin.H{"error": err.Error()})
+				return
+			}
+			if reason := phoneBlock(db, borrowerPhone, time.Now()); reason != "" {
+				c.JSON(403, gin.H{"error": reason})
+				return
+			}
 		}
 
 		// Borrows of one item take turns (locked on its name), so two people
@@ -340,11 +407,20 @@ func registerInventoryRoutes(api *gin.RouterGroup, db *gorm.DB, sessions *sessio
 			}
 			status := LoanActive
 			if item.NeedsApproval && !me.can(PermAutoApprove) {
+				// A request needs someone to follow up on it, which needs
+				// an account to notify.
+				if !loggedIn {
+					return httpError{403, item.Name + " needs a lab admin's approval. Log in to request it.", nil}
+				}
 				status = LoanPending
 			}
-			uid, iid := me.ID, item.ID
+			iid := item.ID
+			var uid *uint
+			if loggedIn {
+				uid = &me.ID
+			}
 			loan = Loan{
-				ItemID: &iid, UserID: &uid, BorrowerName: me.Name, BorrowerPhone: me.Phone,
+				ItemID: &iid, UserID: uid, BorrowerName: borrowerName, BorrowerPhone: borrowerPhone,
 				ItemName: item.Name, LabLocation: lab, QuantityBorrowed: req.Quantity,
 				ExpectedReturnDate: req.ExpectedReturnDate, Purpose: req.Purpose, PhotoFilename: photo,
 				Status: status, ApprovalStatus: "approved",
@@ -374,7 +450,7 @@ func registerInventoryRoutes(api *gin.RouterGroup, db *gorm.DB, sessions *sessio
 		}
 		status := loan.Status
 		if status == LoanPending {
-			notify(db, usersWithPerm(db, PermApproveLoans), fmt.Sprintf("%s asked to borrow %s", me.Name, item.Name), "/items")
+			notify(db, usersWithPerm(db, PermApproveLoans), fmt.Sprintf("%s asked to borrow %s", borrowerName, item.Name), "/items")
 			c.JSON(200, gin.H{"message": item.Name + " needs approval - you'll get a notification once a lab admin approves it.", "loan_id": loan.ID})
 			return
 		}

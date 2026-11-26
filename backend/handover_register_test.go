@@ -80,3 +80,32 @@ func TestRegisterIsRateLimited(t *testing.T) {
 		t.Fatalf("another address is not limited: want 400, got %d", code)
 	}
 }
+
+func TestAnonymousBorrower(t *testing.T) {
+	form := func(name, phone string) map[string][]string {
+		return map[string][]string{"borrower_name": {name}, "borrower_phone": {phone}}
+	}
+	tests := []struct {
+		name, inName, inPhone string
+		wantPhone             string
+		wantErr               bool
+	}{
+		{"valid", " Asha Rao ", "+91 98765 43210", "9876543210", false},
+		{"dashes", "Asha", "98765-43210", "9876543210", false},
+		{"no name", "  ", "9876543210", "", true},
+		{"long name", strings.Repeat("a", 101), "9876543210", "", true},
+		{"short phone", "Asha", "12345", "", true},
+		{"no phone", "Asha", "", "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			name, phone, err := anonymousBorrower(form(tt.inName, tt.inPhone))
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("err = %v, wantErr %v", err, tt.wantErr)
+			}
+			if !tt.wantErr && (phone != tt.wantPhone || name != strings.TrimSpace(tt.inName)) {
+				t.Errorf("got (%q, %q), want (%q, %q)", name, phone, strings.TrimSpace(tt.inName), tt.wantPhone)
+			}
+		})
+	}
+}
