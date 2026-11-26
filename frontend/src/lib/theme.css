@@ -40,8 +40,10 @@
     --ctp-green: var(--rp-foam);
     --ctp-teal: var(--rp-foam);
     --ctp-sky: var(--rp-foam);
-    --ctp-sapphire: var(--rp-pine);
-    --ctp-blue: var(--rp-pine);
+    /* Old pages put dark text on blue buttons and use blue for links; pine
+       is too dark for either on the dark theme, so blues map to foam. */
+    --ctp-sapphire: var(--rp-foam);
+    --ctp-blue: var(--rp-foam);
     --ctp-text: var(--rp-text);
     --ctp-subtext1: var(--rp-subtle);
     --ctp-subtext0: var(--rp-subtle);
