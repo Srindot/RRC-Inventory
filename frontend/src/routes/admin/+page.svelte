@@ -2733,10 +2733,11 @@
     /* The original admin dashboard's look, in Rosé Pine. The site shell
        (lib/Shell.svelte) paints the page and draws the header and footer. */
 
+    /* Same column as every other page, so the admin lines up with the header */
     .admin-container {
-        max-width: 1400px;
+        max-width: 1200px;
         margin: 0 auto;
-        padding: clamp(12px, 3vw, 30px) clamp(16px, 3vw, 30px);
+        padding: 20px clamp(16px, 3vw, 28px) 48px;
         box-sizing: border-box;
     }
 
@@ -3547,10 +3548,9 @@
     /* --- printer cards --- */
     .printer-admin-grid {
         display: grid;
-        /* min() stops a single column overflowing a narrow phone; the 460px
-           cap stops three cards stretching absurdly wide on a large monitor */
-        grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 460px));
-        justify-content: center;
+        /* Three printers across the 1200px column on a desktop, two on a
+           tablet, one on a phone; min() stops a column overflowing a phone */
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
         align-items: start;
         gap: 14px;
     }
