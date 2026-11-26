@@ -5,6 +5,54 @@
     import { api, can, clearSession as clearAuth, getToken, loginUrl, refreshUser } from '$lib/auth.js';
     import BookingPage from '$lib/BookingPage.svelte';
     import { hueFor } from '$lib/palette.js';
+    import IconDashboard from '@tabler/icons-svelte-runes/icons/layout-dashboard';
+    import IconSearch from '@tabler/icons-svelte-runes/icons/search';
+    import IconBuilding from '@tabler/icons-svelte-runes/icons/building-factory-2';
+    import IconPrinter from '@tabler/icons-svelte-runes/icons/printer';
+    import IconCalendar from '@tabler/icons-svelte-runes/icons/calendar';
+    import IconCircleCheck from '@tabler/icons-svelte-runes/icons/circle-check';
+    import IconHistory from '@tabler/icons-svelte-runes/icons/history';
+    import IconPackage from '@tabler/icons-svelte-runes/icons/package';
+    import IconUsers from '@tabler/icons-svelte-runes/icons/users';
+    import IconKey from '@tabler/icons-svelte-runes/icons/key';
+    import IconLock from '@tabler/icons-svelte-runes/icons/lock';
+    import IconLogout from '@tabler/icons-svelte-runes/icons/logout';
+    import IconDownload from '@tabler/icons-svelte-runes/icons/download';
+    import IconFile from '@tabler/icons-svelte-runes/icons/file';
+    import IconFile3d from '@tabler/icons-svelte-runes/icons/file-3d';
+    import IconFileCode from '@tabler/icons-svelte-runes/icons/file-code';
+    import IconRefresh from '@tabler/icons-svelte-runes/icons/refresh';
+    import IconUpload from '@tabler/icons-svelte-runes/icons/upload';
+    import IconTrash from '@tabler/icons-svelte-runes/icons/trash';
+    import IconPlay from '@tabler/icons-svelte-runes/icons/player-play';
+    import IconPause from '@tabler/icons-svelte-runes/icons/player-pause';
+    import IconStop from '@tabler/icons-svelte-runes/icons/player-stop';
+    import IconBulb from '@tabler/icons-svelte-runes/icons/bulb';
+    import IconBulbOff from '@tabler/icons-svelte-runes/icons/bulb-off';
+    import IconX from '@tabler/icons-svelte-runes/icons/x';
+    import IconExternal from '@tabler/icons-svelte-runes/icons/external-link';
+    import IconAlert from '@tabler/icons-svelte-runes/icons/alert-triangle';
+    import IconDroplet from '@tabler/icons-svelte-runes/icons/droplet';
+    import IconTemperature from '@tabler/icons-svelte-runes/icons/temperature';
+    import IconFlame from '@tabler/icons-svelte-runes/icons/flame';
+    import IconBed from '@tabler/icons-svelte-runes/icons/bed';
+    import IconBox from '@tabler/icons-svelte-runes/icons/box';
+    import IconFolder from '@tabler/icons-svelte-runes/icons/folder';
+    import IconPencil from '@tabler/icons-svelte-runes/icons/pencil';
+    import IconPlus from '@tabler/icons-svelte-runes/icons/plus';
+    import IconMerge from '@tabler/icons-svelte-runes/icons/arrow-merge';
+    import IconArchive from '@tabler/icons-svelte-runes/icons/archive';
+    import IconUser from '@tabler/icons-svelte-runes/icons/user';
+    import IconPhoneOff from '@tabler/icons-svelte-runes/icons/phone-off';
+    import IconPhoto from '@tabler/icons-svelte-runes/icons/photo';
+    import IconShieldLock from '@tabler/icons-svelte-runes/icons/shield-lock';
+    import IconBan from '@tabler/icons-svelte-runes/icons/ban';
+    import IconCheck from '@tabler/icons-svelte-runes/icons/check';
+    import IconRobot from '@tabler/icons-svelte-runes/icons/robot';
+    import IconVideo from '@tabler/icons-svelte-runes/icons/video';
+    import IconFlask from '@tabler/icons-svelte-runes/icons/flask';
+    import IconEraser from '@tabler/icons-svelte-runes/icons/eraser';
+    import IconHourglass from '@tabler/icons-svelte-runes/icons/hourglass';
 
     // Authentication state
     let isLoggedIn = false;
@@ -15,7 +63,6 @@
     // dashboard, lost-missing, lab-view, printers, bookings, approvals, history,
     // items, users, change-password
     let currentView = 'dashboard';
-    let navEl;
     let selectedLab = '';
     let selectedFilter = 'all'; // all, borrowed, returned, not_found, archived
 
@@ -211,9 +258,34 @@
 
     const TAB_PARAM = { dashboard: 'overview', 'lost-missing': 'missing', 'change-password': 'password' };
 
-    // On a phone the tab strip scrolls sideways: keep the open tab in view
-    $: if (navEl && currentView) {
-        tick().then(() => navEl?.querySelector('.tab-btn.active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' }));
+    // The section menu: the side list on wide screens and the drop-down on
+    // phones are both drawn from this, in the same order, with the same gates
+    $: tabs = !adminInfo
+        ? []
+        : [
+              { key: 'dashboard', label: 'Dashboard', icon: IconDashboard, open: goToDashboard },
+              ...(can(adminInfo, 'manage_inventory')
+                  ? [
+                        { key: 'lost-missing', label: 'Missing items', icon: IconSearch, count: lostMissingItems.length, open: showLostMissingItems },
+                        ...labs.map((lab) => ({ key: `lab:${lab}`, label: lab, icon: IconBuilding, open: () => showLabView(lab) }))
+                    ]
+                  : []),
+              ...(can(adminInfo, 'manage_printers') ? [{ key: 'printers', label: 'Printers', icon: IconPrinter, open: showPrinters }] : []),
+              ...(can(adminInfo, 'manage_bookings') ? [{ key: 'bookings', label: 'Bookings', icon: IconCalendar, open: showBookings }] : []),
+              ...(isApprover ? [{ key: 'approvals', label: 'Approvals', icon: IconCircleCheck, count: approvalCount, open: showApprovals }] : []),
+              ...(can(adminInfo, 'manage_inventory')
+                  ? [
+                        { key: 'history', label: 'Item history', icon: IconHistory, open: showItemHistory },
+                        { key: 'items', label: 'Items', icon: IconPackage, open: showItems }
+                    ]
+                  : []),
+              ...(can(adminInfo, 'manage_users') ? [{ key: 'users', label: 'Users & groups', icon: IconUsers, count: pendingUsers.length, open: showUsers }] : []),
+              { key: 'change-password', label: 'Change password', icon: IconKey, open: showChangePasswordView }
+          ];
+    $: currentTabKey = currentView === 'lab-view' ? `lab:${selectedLab}` : currentView;
+
+    function selectTab(key) {
+        tabs.find((t) => t.key === key)?.open();
     }
     // Keep the URL on the open tab so it can be bookmarked and reloaded
     $: if (isLoggedIn) {
@@ -821,7 +893,7 @@
         }
     }
 
-    // The ▶ next to a file: open the start form with that file chosen
+    // The play button next to a file: open the start form with that file chosen
     async function printThisFile(printer, name) {
         if (startFor !== printer.id) toggleStart(printer);
         startFile = name;
@@ -1054,6 +1126,10 @@
             default: return 'idle';
         }
     }
+
+    // Tabler badge colour for a printer state and a print log result
+    const STATE_BADGE = { running: 'blue', failed: 'red', paused: 'yellow', finished: 'green', idle: 'secondary', offline: 'secondary' };
+    const RESULT_BADGE = { finished: 'green', failed: 'red', stopped: 'orange', running: 'blue' };
 
     function formatRemaining(minutes) {
         if (!minutes || minutes <= 0) return '';
@@ -1382,4244 +1458,2040 @@
 </script>
 
 {#if message}
-    <div class="message {messageType}" role="status">{message}</div>
+    <div class="toast-msg {messageType}" role="status">{message}</div>
 {/if}
 
-<div class="admin-container">
-    {#if !isLoggedIn}
-        <p class="no-items">Checking your account…</p>
-    {:else if !hasAdminArea}
-        <!-- Signed in, but nothing here is theirs to manage -->
-        <div class="form-container">
-            <div class="form-card no-access">
-                <h2>🔒 No admin access</h2>
-                <p>
-                    Hi {adminInfo.name}. Your account{adminInfo.group ? ` (${adminInfo.group})` : ''} doesn't have any
-                    admin permissions, so there is nothing to manage here.
-                </p>
-                <p>If you think you should have access, ask a server admin to change your group.</p>
-                <div class="form-actions">
-                    <a class="submit-btn as-link" href="/dashboard">Go to your dashboard</a>
-                    <a class="cancel-btn as-link" href="/account">Your account</a>
-                </div>
+{#snippet acctBadge(loan)}
+    <span
+        class="badge {loan.user_id ? 'bg-green-lt' : 'bg-secondary-lt'} ms-1"
+        title={loan.user_id ? 'Borrowed while signed in' : 'Borrowed without an account: reach them on this phone number'}
+    >
+        {#if loan.user_id}<IconUser size={14} class="icon me-1" />account{:else}<IconPhoneOff size={14} class="icon me-1" />no account{/if}
+    </span>
+{/snippet}
+
+{#snippet phone(number)}
+    {#if number}
+        <button type="button" class="btn btn-link p-0 text-reset text-decoration-underline tabular" on:click={() => copyToClipboard(number)} title="Copy phone number">{number}</button>
+    {:else}
+        <span class="text-secondary">-</span>
+    {/if}
+{/snippet}
+
+{#snippet thumb(filename, name)}
+    {#if filename}
+        <img class="thumb" src="/api/photos/{filename}" alt={name} on:error={(e) => (e.target.style.display = 'none')} />
+    {:else}
+        <span class="avatar avatar-sm bg-secondary-lt" aria-hidden="true"><IconPhoto size={18} /></span>
+    {/if}
+{/snippet}
+
+{#snippet when(b)}
+    <div class="text-nowrap">{new Date(b.start_time).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}</div>
+    <div class="small text-secondary text-nowrap tabular">
+        {new Date(b.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        -
+        {new Date(b.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+    </div>
+{/snippet}
+
+{#snippet bookingWhat(b)}
+    <div class="d-flex align-items-center gap-2">
+        <span class="res-dot" style="background: {hueFor(b.resource_id)}" aria-hidden="true"></span>
+        <span class="fw-medium">{resourceName[b.resource_id] || 'Unknown resource'}</span>
+    </div>
+    {#if b.thread_name}
+        <div class="small text-secondary"><IconFlask size={14} class="icon" /> {b.thread_name}</div>
+    {/if}
+{/snippet}
+
+{#if !isLoggedIn}
+    <div class="empty">
+        <p class="empty-title">Checking your account...</p>
+    </div>
+{:else if !hasAdminArea}
+    <!-- Signed in, but nothing here is theirs to manage -->
+    <div class="page-header d-print-none mb-3">
+        <h2 class="page-title">Admin</h2>
+    </div>
+    <div class="card">
+        <div class="empty">
+            <div class="empty-icon"><IconLock size={48} class="icon" /></div>
+            <p class="empty-title">No admin access</p>
+            <p class="empty-subtitle text-secondary">
+                Hi {adminInfo.name}. Your account{adminInfo.group ? ` (${adminInfo.group})` : ''} doesn't have any admin
+                permissions, so there is nothing to manage here. If you think you should have access, ask a server admin to
+                change your group.
+            </p>
+            <div class="empty-action btn-list justify-content-center">
+                <a class="btn btn-primary" href="/dashboard">Go to your dashboard</a>
+                <a class="btn btn-outline-secondary" href="/account">Your account</a>
             </div>
         </div>
-    {:else}
-        <div class="dashboard">
-            <!-- Header: who is signed in (the site header carries the logo) -->
-            <div class="dashboard-header">
-                <div class="dashboard-title">
-                    <h1>🛡️ Admin Dashboard</h1>
+    </div>
+{:else}
+    <div class="page-header d-print-none mb-3">
+        <div class="row g-2 align-items-center">
+            <div class="col">
+                <div class="page-pretitle">
+                    Signed in as {adminInfo.name}
+                    {#if adminInfo.group}<span class="badge bg-primary-lt ms-1">{adminInfo.group}</span>{/if}
                 </div>
-                <div class="admin-info">
-                    <span>Welcome, <strong>{adminInfo.name}</strong></span>
-                    {#if adminInfo.group}<span class="role-pill">{adminInfo.group}</span>{/if}
-                    <button class="logout-btn" on:click={logout}>Logout</button>
-                </div>
+                <h2 class="page-title">Admin</h2>
             </div>
+            <div class="col-auto">
+                <button type="button" class="btn btn-outline-secondary" on:click={logout}>
+                    <IconLogout size={18} class="icon" />
+                    Log out
+                </button>
+            </div>
+        </div>
+    </div>
 
-            <!-- Navigation: one tab per section this person may use -->
-            <nav class="nav-tabs" aria-label="Admin sections" bind:this={navEl}>
-                <button class="tab-btn" class:active={currentView === 'dashboard'} on:click={goToDashboard}>📊 Dashboard</button>
-                {#if can(adminInfo, 'manage_inventory')}
-                    <button class="tab-btn" class:active={currentView === 'lost-missing'} on:click={showLostMissingItems}>
-                        🔍 Missing Items
-                        {#if lostMissingItems.length > 0}<span class="badge">{lostMissingItems.length}</span>{/if}
-                    </button>
-                    {#each labs as lab}
-                        <button class="tab-btn" class:active={currentView === 'lab-view' && selectedLab === lab} on:click={() => showLabView(lab)}>🏭 {lab}</button>
+    <div class="row g-3">
+        <!-- Section menu: a drop-down on phones, a side list on wide screens -->
+        <div class="col-12 col-lg-3">
+            <div class="d-lg-none">
+                <label class="form-label" for="admin-section">Section</label>
+                <select id="admin-section" class="form-select" value={currentTabKey} on:change={(e) => selectTab(e.target.value)}>
+                    {#each tabs as tab (tab.key)}
+                        <option value={tab.key}>{tab.label}{tab.count ? ` (${tab.count})` : ''}</option>
                     {/each}
-                {/if}
-                {#if can(adminInfo, 'manage_printers')}
-                    <button class="tab-btn" class:active={currentView === 'printers'} on:click={showPrinters}>🖨️ Printers</button>
-                {/if}
-                {#if can(adminInfo, 'manage_bookings')}
-                    <button class="tab-btn" class:active={currentView === 'bookings'} on:click={showBookings}>📅 Bookings</button>
-                {/if}
-                {#if isApprover}
-                    <button class="tab-btn" class:active={currentView === 'approvals'} on:click={showApprovals}>
-                        ✅ Approvals
-                        {#if approvalCount > 0}<span class="badge">{approvalCount}</span>{/if}
-                    </button>
-                {/if}
-                {#if can(adminInfo, 'manage_inventory')}
-                    <button class="tab-btn" class:active={currentView === 'history'} on:click={showItemHistory}>📚 Item History</button>
-                    <button class="tab-btn" class:active={currentView === 'items'} on:click={showItems}>📦 Items</button>
-                {/if}
-                {#if can(adminInfo, 'manage_users')}
-                    <button class="tab-btn" class:active={currentView === 'users'} on:click={showUsers}>
-                        👥 Users &amp; Groups
-                        {#if pendingUsers.length > 0}<span class="badge">{pendingUsers.length}</span>{/if}
-                    </button>
-                {/if}
-                <button class="tab-btn" class:active={currentView === 'change-password'} on:click={showChangePasswordView}>🔑 Change Password</button>
+                </select>
+            </div>
+            <nav class="card d-none d-lg-block admin-nav" aria-label="Admin sections">
+                <div class="list-group list-group-flush">
+                    {#each tabs as tab (tab.key)}
+                        <button
+                            type="button"
+                            class="list-group-item list-group-item-action d-flex align-items-center gap-2"
+                            class:active={currentTabKey === tab.key}
+                            aria-current={currentTabKey === tab.key ? 'page' : undefined}
+                            on:click={tab.open}
+                        >
+                            <svelte:component this={tab.icon} size={18} class="icon text-secondary" />
+                            <span class="flex-fill text-start">{tab.label}</span>
+                            {#if tab.count}<span class="badge bg-red-lt">{tab.count}</span>{/if}
+                        </button>
+                    {/each}
+                </div>
             </nav>
+        </div>
 
-            <!-- Dashboard View -->
+        <div class="col-12 col-lg-9">
+            <!-- Dashboard -->
             {#if currentView === 'dashboard'}
-                <div class="dashboard-content">
-                    <h2>System Overview</h2>
-                    <div class="overview-cards">
-                        {#if can(adminInfo, 'manage_users')}
-                            <div class="card" class:attention={pendingUsers.length > 0}>
-                                <h3>👥 Pending Sign-ups</h3>
-                                <p class="stat-number">{pendingUsers.length}</p>
-                                <button class="card-btn" on:click={showUsers}>Review</button>
-                            </div>
-                        {/if}
-                        {#if isApprover}
-                            <div class="card" class:attention={approvalCount > 0}>
-                                <h3>✅ Approvals</h3>
-                                <p class="stat-number">{approvalCount}</p>
-                                <button class="card-btn" on:click={showApprovals}>Review</button>
-                            </div>
-                        {/if}
-                        {#if can(adminInfo, 'manage_inventory')}
-                            <div class="card">
-                                <h3>🔍 Missing Items</h3>
-                                <p class="stat-number">{lostMissingItems.length}</p>
-                                <button class="card-btn" on:click={showLostMissingItems}>Review</button>
-                            </div>
-                            <div class="card">
-                                <h3>📦 Item Catalogue</h3>
-                                <p class="stat-number">{catalogue.length}</p>
-                                <button class="card-btn" on:click={showItems}>Manage</button>
-                            </div>
-                        {/if}
-                        {#if can(adminInfo, 'manage_printers')}
-                            <div class="card">
-                                <h3>🖨️ 3D Printers</h3>
-                                <p>Live status, files on each printer, start and stop prints</p>
-                                <button class="card-btn" on:click={showPrinters}>Manage</button>
-                            </div>
-                        {/if}
-                        {#if can(adminInfo, 'manage_bookings')}
-                            <div class="card">
-                                <h3>📅 Bookings</h3>
-                                <p>Mocap Lab and Mech Lab robots</p>
-                                <button class="card-btn" on:click={showBookings}>Manage</button>
-                            </div>
-                        {/if}
-                        {#if can(adminInfo, 'manage_inventory')}
-                            {#each labs as lab}
-                                <div class="card">
-                                    <h3>🏭 {lab}</h3>
-                                    <p>Manage borrowed items</p>
-                                    <button class="card-btn" on:click={() => showLabView(lab)}>View</button>
+                <div class="row row-cards g-3">
+                    {#if can(adminInfo, 'manage_users')}
+                        <div class="col-12 col-sm-6 col-xl-4">
+                            <div class="card card-sm h-100">
+                                {#if pendingUsers.length > 0}<div class="card-status-top bg-warning"></div>{/if}
+                                <div class="card-body d-flex flex-column">
+                                    <div class="subheader">Pending sign-ups</div>
+                                    <div class="h1 my-2 tabular">{pendingUsers.length}</div>
+                                    <div class="mt-auto"><button type="button" class="btn btn-outline-primary btn-sm" on:click={showUsers}>Review</button></div>
                                 </div>
-                            {/each}
-                        {/if}
-                    </div>
+                            </div>
+                        </div>
+                    {/if}
+                    {#if isApprover}
+                        <div class="col-12 col-sm-6 col-xl-4">
+                            <div class="card card-sm h-100">
+                                {#if approvalCount > 0}<div class="card-status-top bg-warning"></div>{/if}
+                                <div class="card-body d-flex flex-column">
+                                    <div class="subheader">Approvals</div>
+                                    <div class="h1 my-2 tabular">{approvalCount}</div>
+                                    <div class="mt-auto"><button type="button" class="btn btn-outline-primary btn-sm" on:click={showApprovals}>Review</button></div>
+                                </div>
+                            </div>
+                        </div>
+                    {/if}
+                    {#if can(adminInfo, 'manage_inventory')}
+                        <div class="col-12 col-sm-6 col-xl-4">
+                            <div class="card card-sm h-100">
+                                <div class="card-body d-flex flex-column">
+                                    <div class="subheader">Missing items</div>
+                                    <div class="h1 my-2 tabular">{lostMissingItems.length}</div>
+                                    <div class="mt-auto"><button type="button" class="btn btn-outline-primary btn-sm" on:click={showLostMissingItems}>Review</button></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-12 col-sm-6 col-xl-4">
+                            <div class="card card-sm h-100">
+                                <div class="card-body d-flex flex-column">
+                                    <div class="subheader">Item catalogue</div>
+                                    <div class="h1 my-2 tabular">{catalogue.length}</div>
+                                    <div class="mt-auto"><button type="button" class="btn btn-outline-primary btn-sm" on:click={showItems}>Manage</button></div>
+                                </div>
+                            </div>
+                        </div>
+                    {/if}
+                    {#if can(adminInfo, 'manage_printers')}
+                        <div class="col-12 col-sm-6 col-xl-4">
+                            <div class="card card-sm h-100">
+                                <div class="card-body d-flex flex-column">
+                                    <div class="d-flex align-items-center gap-2 mb-1">
+                                        <span class="avatar avatar-sm bg-blue-lt"><IconPrinter size={18} /></span>
+                                        <h3 class="card-title mb-0">3D printers</h3>
+                                    </div>
+                                    <p class="text-secondary small mb-3">Live status, files on each printer, start and stop prints</p>
+                                    <div class="mt-auto"><button type="button" class="btn btn-outline-primary btn-sm" on:click={showPrinters}>Manage</button></div>
+                                </div>
+                            </div>
+                        </div>
+                    {/if}
+                    {#if can(adminInfo, 'manage_bookings')}
+                        <div class="col-12 col-sm-6 col-xl-4">
+                            <div class="card card-sm h-100">
+                                <div class="card-body d-flex flex-column">
+                                    <div class="d-flex align-items-center gap-2 mb-1">
+                                        <span class="avatar avatar-sm bg-purple-lt"><IconCalendar size={18} /></span>
+                                        <h3 class="card-title mb-0">Bookings</h3>
+                                    </div>
+                                    <p class="text-secondary small mb-3">Mocap Lab and Mech Lab robots</p>
+                                    <div class="mt-auto"><button type="button" class="btn btn-outline-primary btn-sm" on:click={showBookings}>Manage</button></div>
+                                </div>
+                            </div>
+                        </div>
+                    {/if}
+                    {#if can(adminInfo, 'manage_inventory')}
+                        {#each labs as lab}
+                            <div class="col-12 col-sm-6 col-xl-4">
+                                <div class="card card-sm h-100">
+                                    <div class="card-body d-flex flex-column">
+                                        <div class="d-flex align-items-center gap-2 mb-1">
+                                            <span class="avatar avatar-sm bg-azure-lt"><IconBuilding size={18} /></span>
+                                            <h3 class="card-title mb-0">{lab}</h3>
+                                        </div>
+                                        <p class="text-secondary small mb-3">Manage borrowed items</p>
+                                        <div class="mt-auto"><button type="button" class="btn btn-outline-primary btn-sm" on:click={() => showLabView(lab)}>View</button></div>
+                                    </div>
+                                </div>
+                            </div>
+                        {/each}
+                    {/if}
+
                     {#if can(adminInfo, 'manage_inventory') || can(adminInfo, 'manage_bookings') || can(adminInfo, 'manage_printers')}
-                        <div class="export-actions">
-                            {#if can(adminInfo, 'manage_inventory')}
-                                <button class="export-btn" on:click={() => exportCSV()}>📊 Export Loans (CSV)</button>
-                            {/if}
-                            {#if can(adminInfo, 'manage_bookings')}
-                                <button class="export-btn" on:click={() => exportCSV('/api/admin/export-bookings-csv', 'motion_capture_lab_bookings.csv')}>🎥 Export Bookings (CSV)</button>
-                            {/if}
-                            {#if can(adminInfo, 'manage_printers')}
-                                <button class="export-btn" on:click={() => exportCSV('/api/admin/export-print-jobs-csv', 'print_jobs.csv')}>🖨️ Export Print Log (CSV)</button>
-                            {/if}
-                        </div>
-                    {/if}
-                </div>
-            {/if}
-
-            <!-- Missing Items View -->
-            {#if currentView === 'lost-missing'}
-                <div class="loans-content">
-                    <h2>🔍 Missing Items</h2>
-                    <p class="subtitle-text">Items an admin could not find in the lab</p>
-                    {#if loading}
-                        <p>Loading missing items...</p>
-                    {:else if lostMissingItems.length === 0}
-                        <p class="no-items">No missing items.</p>
-                    {:else}
-                        <div class="loans-grid">
-                            {#each lostMissingItems as loan}
-                                <div class="loan-card lost-missing">
-                                    <div class="loan-header">
-                                        <div class="loan-title-section">
-                                            <h3>{loan.item_name}</h3>
-                                            {#if loan.photo_filename}
-                                                <div class="item-image">
-                                                    <img src="/api/photos/{loan.photo_filename}" alt={loan.item_name} on:error={(e) => (e.target.style.display = 'none')} />
-                                                </div>
-                                            {:else}
-                                                <div class="item-image placeholder"><span>📷</span></div>
-                                            {/if}
-                                        </div>
-                                        <div class="status-badges">
-                                            <span class="status-badge not-found">Missing</span>
-                                        </div>
-                                    </div>
-                                    <div class="loan-details">
-                                        <p><strong>Borrower:</strong> {loan.borrower_name} <span class="acct-tag" class:guest={!loan.user_id} title={loan.user_id ? "Borrowed while signed in" : "Borrowed without an account: reach them on this phone number"}>{loan.user_id ? "👤 account" : "📵 no account"}</span></p>
-                                        <p><strong>Phone:</strong> {#if loan.borrower_phone}<button class="clickable-phone" on:click={() => copyToClipboard(loan.borrower_phone)} title="Click to copy phone number">{loan.borrower_phone}</button>{:else}—{/if}</p>
-                                        <p><strong>Lab:</strong> {loan.lab_location}</p>
-                                        <p><strong>Quantity:</strong> {loan.quantity_borrowed}</p>
-                                        <p><strong>Expected Return:</strong> {formatExpectedReturn(loan.expected_return_date)}</p>
-                                        <p><strong>Status:</strong> Marked as missing{#if loan.approved_by} by {loan.approved_by}{/if}</p>
-                                        <p><strong>Borrowed:</strong> {formatDate(loan.CreatedAt)}</p>
-                                    </div>
-                                    {#if loan.status === 'not_found'}
-                                        <div class="found-section">
-                                            <p class="found-notice">🔍 Item marked as missing</p>
-                                            <div class="found-actions">
-                                                <button class="found-btn" on:click={() => markAsFound(loan.ID)} disabled={loading}>✅ Mark as Found</button>
-                                            </div>
-                                        </div>
-                                    {/if}
+                        <div class="col-12">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h3 class="card-title">Exports</h3>
                                 </div>
-                            {/each}
-                        </div>
-                    {/if}
-                </div>
-            {/if}
-
-            <!-- 3D Printers View -->
-            {#if currentView === 'printers'}
-                <div class="loans-content">
-                    <h2>🖨️ 3D Printers</h2>
-                    <p class="subtitle-text">
-                        Live status, refreshing every few seconds. Each printer keeps its own files.
-                        <a class="calendar-link" href="/printers" target="_blank" rel="noopener">Open the full page →</a>
-                    </p>
-
-                    {#if printers.length === 0}
-                        <p class="no-items">{printersLoaded ? 'No printers are configured.' : 'Loading printers...'}</p>
-                    {:else}
-                        <div class="printer-admin-grid">
-                            {#each printers as printer, i (printer.id)}
-                                {@const files = uploadFiles[printer.id]}
-                                <div class="printer-admin-card {printerStateClass(printer)}" style="--i: {i}">
-                                    <div class="pa-head">
-                                        <img src="/P1S.png" alt="" class="pa-image" />
-                                        <div class="pa-title">
-                                            <h3>{printer.name}</h3>
-                                            <span class="pa-avail {printerIsPrinting(printer) ? 'busy' : 'free'}" class:unknown={!printer.online}>
-                                                {printer.online ? (printerIsPrinting(printer) ? 'In use' : 'Free') : 'Unknown'}
-                                            </span>
-                                        </div>
-                                        <span class="pa-state {printerStateClass(printer)}">{printerStateLabel(printer)}</span>
-                                    </div>
-
-                                    <div class="pa-camera">
-                                        {#if printer.camera_online && $camera[printer.id]}
-                                            <img src={$camera[printer.id]} alt="Camera view of {printer.name}" />
-                                        {:else}
-                                            <div class="pa-camera-empty">
-                                                <img src="/P1S.png" alt="" />
-                                                <p>{printer.camera_online ? 'Loading camera…' : 'No camera image'}</p>
-                                            </div>
-                                        {/if}
-                                    </div>
-
-                                    {#if printer.faults && printer.faults.length > 0}
-                                        <div class="pa-faults">
-                                            <strong>⚠️ Printer reported {printer.faults.length} fault{printer.faults.length > 1 ? 's' : ''}</strong>
-                                            {#each printer.faults as fault}
-                                                <a class="pa-fault {fault.severity}" href={fault.url} target="_blank" rel="noopener">
-                                                    <span class="pa-fault-sev">{fault.severity}</span>
-                                                    <span class="pa-fault-code">{fault.code}</span>
-                                                    <span class="pa-fault-link">look up →</span>
-                                                </a>
-                                            {/each}
-                                        </div>
-                                    {/if}
-
-                                    {#if printer.access_code_problem}
-                                        <div class="pa-warning">
-                                            <strong>⚠️ Access code changed</strong>
-                                            <p>{printer.name} is refusing our access code - LAN mode was probably toggled.</p>
-                                            {#if editingCode === printer.id}
-                                                <div class="pa-code-form">
-                                                    <input type="text" bind:value={newCode} placeholder="New access code" autocomplete="off" aria-label="New access code for {printer.name}" />
-                                                    <button class="pa-save" on:click={() => savePrinterCode(printer)} disabled={savingCode}>{savingCode ? 'Saving...' : 'Save'}</button>
-                                                    <button class="pa-cancel" on:click={() => (editingCode = '')}>Cancel</button>
-                                                </div>
-                                            {:else}
-                                                <button class="pa-fix" on:click={() => { editingCode = printer.id; newCode = ''; }}>Update access code</button>
-                                            {/if}
-                                        </div>
-                                    {/if}
-
-                                    {#if printer.online}
-                                        {#if printerIsPrinting(printer)}
-                                            <div class="pa-progress-row">
-                                                <div class="pa-progress-bar">
-                                                    <div class="pa-progress-fill" style="width: {printer.progress}%"></div>
-                                                </div>
-                                                <span class="pa-progress-text">{printer.progress}%</span>
-                                            </div>
-                                            {#if printer.remaining_minutes > 0}
-                                                <p class="pa-remaining">{formatRemaining(printer.remaining_minutes)}</p>
-                                            {/if}
-                                        {/if}
-
-                                        {#if printer.file_name}
-                                            <p class="pa-file" title={printer.file_name}>📄 {printer.file_name}</p>
-                                        {/if}
-
-                                        {#if (printer.ams && printer.ams.length > 0) || printer.external_spool}
-                                            <div class="pa-ams">
-                                                {#each printer.ams || [] as unit}
-                                                    <div class="pa-ams-head">
-                                                        <span class="pa-ams-title">AMS {unit.id + 1}</span>
-                                                        {#if unit.humidity}
-                                                            <span class="pa-ams-meta" title="The AMS reports humidity on its own 1-5 scale">💧 {unit.humidity}/5</span>
-                                                        {/if}
-                                                        {#if unit.temp}
-                                                            <span class="pa-ams-meta">🌡️ {unit.temp}°C</span>
-                                                        {/if}
-                                                    </div>
-
-                                                    <div class="pa-ams-slots">
-                                                        {#each unit.slots || [] as slot}
-                                                            <div
-                                                                class="pa-ams-slot"
-                                                                class:empty={slot.empty}
-                                                                class:active={slot.active}
-                                                                title={slot.empty
-                                                                    ? `Slot ${slot.slot}: empty`
-                                                                    : `Slot ${slot.slot}: ${slot.material}${slot.remain >= 0 ? ', ' + slot.remain + '% left' : ', amount unknown'}${slot.active ? ' (in use)' : ''}`}
-                                                            >
-                                                                <span class="pa-ams-top">
-                                                                    <span class="pa-ams-swatch" style="background: {slot.color || 'transparent'}"></span>
-                                                                    <span class="pa-ams-num">{slot.slot}</span>
-                                                                    {#if slot.active}<span class="pa-ams-dot" title="Currently feeding"></span>{/if}
-                                                                </span>
-                                                                <span class="pa-ams-mat">{slot.empty ? 'Empty' : slot.material}</span>
-                                                                {#if slot.remain >= 0}
-                                                                    <span class="pa-ams-bar"><span class="pa-ams-fill" style="width: {slot.remain}%"></span></span>
-                                                                    <span class="pa-ams-pct">{slot.remain}%</span>
-                                                                {:else if !slot.empty}
-                                                                    <span class="pa-ams-pct unknown" title="No RFID tag, so the printer cannot tell">? left</span>
-                                                                {/if}
-                                                            </div>
-                                                        {/each}
-                                                    </div>
-                                                {/each}
-
-                                                {#if printer.external_spool && !printer.external_spool.empty}
-                                                    <div class="pa-ams-ext">
-                                                        <span class="pa-ams-swatch" style="background: {printer.external_spool.color || 'transparent'}"></span>
-                                                        <span class="pa-ams-ext-label">External spool</span>
-                                                        <span class="pa-ams-ext-mat">{printer.external_spool.material}</span>
-                                                        {#if printer.external_spool.remain >= 0}
-                                                            <span class="pa-ams-pct">{printer.external_spool.remain}%</span>
-                                                        {/if}
-                                                    </div>
-                                                {/if}
-                                            </div>
-                                        {/if}
-
-                                        <div class="pa-temps">
-                                            <span title="Nozzle">🔥 {printer.nozzle_temp.toFixed(0)}°C</span>
-                                            <span title="Bed">🛏️ {printer.bed_temp.toFixed(0)}°C</span>
-                                            {#if printer.chamber_temp > 0}
-                                                <span title="Chamber">📦 {printer.chamber_temp.toFixed(0)}°C</span>
-                                            {/if}
-                                        </div>
-
-                                        <div class="pa-actions">
-                                            <button
-                                                class="pa-light"
-                                                class:on={printer.light_on}
-                                                aria-pressed={printer.light_on}
-                                                on:click={() => toggleLight(printer)}
-                                                disabled={busyPrinter === printer.id + 'light'}
-                                                title="Chamber light - the camera is useless in the dark"
-                                            >{printer.light_on ? '💡 Light on' : '🌑 Light off'}</button>
-
-                                            {#if printerIsPrinting(printer)}
-                                                <button class="pa-pause" on:click={() => pausePrint(printer)} disabled={busyPrinter === printer.id + 'pause'}>⏸ Pause</button>
-                                            {:else if printer.state === 'PAUSE'}
-                                                <button class="pa-resume" on:click={() => resumePrint(printer)} disabled={busyPrinter === printer.id + 'resume'}>▶ Resume</button>
-                                            {/if}
-                                        </div>
-
-                                        {#if printerIsPrinting(printer) || printer.state === 'PAUSE'}
-                                            <button class="pa-stop" on:click={() => stopPrint(printer)} disabled={stoppingPrinter === printer.id}>
-                                                {stoppingPrinter === printer.id ? 'Stopping...' : '⏹ Stop Print'}
+                                <div class="card-body">
+                                    <div class="btn-list">
+                                        {#if can(adminInfo, 'manage_inventory')}
+                                            <button type="button" class="btn btn-outline-secondary" on:click={() => exportCSV()}>
+                                                <IconDownload size={18} class="icon" />Loans (CSV)
                                             </button>
                                         {/if}
-                                    {:else}
-                                        <p class="pa-offline">Not responding - switched off or off the network. Files can only be listed while it is on.</p>
-                                    {/if}
+                                        {#if can(adminInfo, 'manage_bookings')}
+                                            <button type="button" class="btn btn-outline-secondary" on:click={() => exportCSV('/api/admin/export-bookings-csv', 'motion_capture_lab_bookings.csv')}>
+                                                <IconDownload size={18} class="icon" />Bookings (CSV)
+                                            </button>
+                                        {/if}
+                                        {#if can(adminInfo, 'manage_printers')}
+                                            <button type="button" class="btn btn-outline-secondary" on:click={() => exportCSV('/api/admin/export-print-jobs-csv', 'print_jobs.csv')}>
+                                                <IconDownload size={18} class="icon" />Print log (CSV)
+                                            </button>
+                                        {/if}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    {/if}
+                </div>
+            {/if}
 
-                                        <!-- This printer's own files: a separate box per printer -->
-                                        <button class="pa-send-toggle" aria-expanded={filesOpen[printer.id]} on:click={() => toggleUpload(printer)}>
-                                            {#if filesOpen[printer.id]}
-                                                ✕ Close files
+            <!-- Missing items -->
+            {#if currentView === 'lost-missing'}
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <h3 class="card-title">Missing items</h3>
+                            <p class="card-subtitle">Items an admin could not find in the lab</p>
+                        </div>
+                    </div>
+                    {#if loading}
+                        <div class="card-body text-secondary">Loading missing items...</div>
+                    {:else if lostMissingItems.length === 0}
+                        <div class="empty">
+                            <div class="empty-icon"><IconCircleCheck size={40} class="icon" /></div>
+                            <p class="empty-title">No missing items</p>
+                        </div>
+                    {:else}
+                        <div class="table-responsive">
+                            <table class="table table-vcenter card-table">
+                                <thead>
+                                    <tr>
+                                        <th>Item</th>
+                                        <th>Borrower</th>
+                                        <th>Phone</th>
+                                        <th>Lab</th>
+                                        <th>Qty</th>
+                                        <th>Expected return</th>
+                                        <th>Borrowed</th>
+                                        <th class="w-1"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {#each lostMissingItems as loan}
+                                        <tr>
+                                            <td>
+                                                <div class="d-flex align-items-center gap-2">
+                                                    {@render thumb(loan.photo_filename, loan.item_name)}
+                                                    <div>
+                                                        <div class="fw-medium">{loan.item_name}</div>
+                                                        <div class="small text-secondary">
+                                                            <span class="badge bg-red-lt">Missing</span>
+                                                            {#if loan.approved_by}marked by {loan.approved_by}{/if}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td class="text-nowrap">{loan.borrower_name}{@render acctBadge(loan)}</td>
+                                            <td>{@render phone(loan.borrower_phone)}</td>
+                                            <td class="text-nowrap">{loan.lab_location}</td>
+                                            <td class="tabular">{loan.quantity_borrowed}</td>
+                                            <td class="text-nowrap">{formatExpectedReturn(loan.expected_return_date)}</td>
+                                            <td class="text-nowrap">{formatDate(loan.CreatedAt)}</td>
+                                            <td>
+                                                {#if loan.status === 'not_found'}
+                                                    <button type="button" class="btn btn-sm btn-outline-success text-nowrap" on:click={() => markAsFound(loan.ID)} disabled={loading}>
+                                                        <IconCheck size={16} class="icon" />Mark as found
+                                                    </button>
+                                                {/if}
+                                            </td>
+                                        </tr>
+                                    {/each}
+                                </tbody>
+                            </table>
+                        </div>
+                    {/if}
+                </div>
+            {/if}
+
+            <!-- 3D printers -->
+            {#if currentView === 'printers'}
+                <div class="d-flex flex-wrap align-items-end justify-content-between gap-2 mb-3">
+                    <div>
+                        <h3 class="mb-1">3D printers</h3>
+                        <div class="text-secondary small">Live status, refreshing every few seconds. Each printer keeps its own files.</div>
+                    </div>
+                    <a class="btn btn-outline-secondary btn-sm" href="/printers" target="_blank" rel="noopener">
+                        <IconExternal size={16} class="icon" />Open the full page
+                    </a>
+                </div>
+
+                {#if printers.length === 0}
+                    <div class="card">
+                        <div class="empty">
+                            <div class="empty-icon"><IconPrinter size={40} class="icon" /></div>
+                            <p class="empty-title">{printersLoaded ? 'No printers are configured.' : 'Loading printers...'}</p>
+                        </div>
+                    </div>
+                {:else}
+                    <div class="row row-cards g-3">
+                        {#each printers as printer (printer.id)}
+                            {@const files = uploadFiles[printer.id]}
+                            {@const stateKey = printerStateClass(printer)}
+                            <div class="col-12 col-xl-6">
+                                <div class="card h-100">
+                                    <div class="card-status-top bg-{STATE_BADGE[stateKey]}"></div>
+                                    <div class="card-header">
+                                        <div class="d-flex align-items-center gap-2 min-w-0">
+                                            <img src="/P1S.png" alt="" class="printer-img" />
+                                            <div class="min-w-0">
+                                                <h3 class="card-title text-truncate">{printer.name}</h3>
+                                                <span class="badge {printer.online ? (printerIsPrinting(printer) ? 'bg-orange-lt' : 'bg-green-lt') : 'bg-secondary-lt'}">
+                                                    {printer.online ? (printerIsPrinting(printer) ? 'In use' : 'Free') : 'Unknown'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div class="card-actions">
+                                            <span class="badge bg-{STATE_BADGE[stateKey]}-lt">{printerStateLabel(printer)}</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="card-body">
+                                        <div class="camera mb-3">
+                                            {#if printer.camera_online && $camera[printer.id]}
+                                                <img src={$camera[printer.id]} alt="Camera view of {printer.name}" />
                                             {:else}
-                                                📁 Files on this printer{files ? ` (${files.length})` : ''} · 📤 Send a file
+                                                <div class="camera-empty text-secondary">
+                                                    <img src="/P1S.png" alt="" />
+                                                    <span class="small">{printer.camera_online ? 'Loading camera...' : 'No camera image'}</span>
+                                                </div>
                                             {/if}
-                                        </button>
+                                        </div>
+
+                                        {#if printer.faults && printer.faults.length > 0}
+                                            <div class="alert alert-danger" role="alert">
+                                                <div class="d-flex gap-2">
+                                                    <IconAlert size={20} class="icon alert-icon" />
+                                                    <div class="flex-fill">
+                                                        <h4 class="alert-title">Printer reported {printer.faults.length} fault{printer.faults.length > 1 ? 's' : ''}</h4>
+                                                        <div class="list-group list-group-flush">
+                                                            {#each printer.faults as fault}
+                                                                <a class="list-group-item list-group-item-action d-flex align-items-center gap-2 px-0 bg-transparent" href={fault.url} target="_blank" rel="noopener">
+                                                                    <span class="badge {fault.severity === 'fatal' || fault.severity === 'serious' ? 'bg-red-lt' : 'bg-yellow-lt'}">{fault.severity}</span>
+                                                                    <code>{fault.code}</code>
+                                                                    <span class="ms-auto small text-nowrap">Look up <IconExternal size={14} class="icon" /></span>
+                                                                </a>
+                                                            {/each}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        {/if}
+
+                                        {#if printer.access_code_problem}
+                                            <div class="alert alert-warning" role="alert">
+                                                <div class="d-flex gap-2">
+                                                    <IconAlert size={20} class="icon alert-icon" />
+                                                    <div class="flex-fill min-w-0">
+                                                        <h4 class="alert-title">Access code changed</h4>
+                                                        <div class="text-secondary mb-2">{printer.name} is refusing our access code. LAN mode was probably toggled.</div>
+                                                        {#if editingCode === printer.id}
+                                                            <div class="input-group">
+                                                                <input class="form-control" type="text" bind:value={newCode} placeholder="New access code" autocomplete="off" aria-label="New access code for {printer.name}" />
+                                                                <button type="button" class="btn btn-primary" on:click={() => savePrinterCode(printer)} disabled={savingCode}>{savingCode ? 'Saving...' : 'Save'}</button>
+                                                                <button type="button" class="btn btn-outline-secondary" on:click={() => (editingCode = '')}>Cancel</button>
+                                                            </div>
+                                                        {:else}
+                                                            <button type="button" class="btn btn-warning btn-sm" on:click={() => { editingCode = printer.id; newCode = ''; }}>Update access code</button>
+                                                        {/if}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        {/if}
+
+                                        {#if printer.online}
+                                            {#if printerIsPrinting(printer)}
+                                                <div class="d-flex align-items-center gap-2 mb-1">
+                                                    <div class="progress progress-sm flex-fill">
+                                                        <div class="progress-bar" style="width: {printer.progress}%" role="progressbar" aria-valuenow={printer.progress} aria-valuemin="0" aria-valuemax="100" aria-label="Print progress"></div>
+                                                    </div>
+                                                    <span class="fw-medium tabular">{printer.progress}%</span>
+                                                </div>
+                                                {#if printer.remaining_minutes > 0}
+                                                    <div class="small text-secondary mb-2">{formatRemaining(printer.remaining_minutes)}</div>
+                                                {/if}
+                                            {/if}
+
+                                            {#if printer.file_name}
+                                                <div class="d-flex align-items-center gap-1 mb-2 min-w-0" title={printer.file_name}>
+                                                    <IconFile size={16} class="icon text-secondary flex-shrink-0" />
+                                                    <span class="text-truncate">{printer.file_name}</span>
+                                                </div>
+                                            {/if}
+
+                                            {#if (printer.ams && printer.ams.length > 0) || printer.external_spool}
+                                                <div class="mb-3">
+                                                    {#each printer.ams || [] as unit}
+                                                        <div class="d-flex align-items-center gap-3 small mb-1">
+                                                            <span class="fw-medium">AMS {unit.id + 1}</span>
+                                                            {#if unit.humidity}
+                                                                <span class="text-secondary" title="The AMS reports humidity on its own 1-5 scale"><IconDroplet size={14} class="icon" /> {unit.humidity}/5</span>
+                                                            {/if}
+                                                            {#if unit.temp}
+                                                                <span class="text-secondary"><IconTemperature size={14} class="icon" /> {unit.temp}°C</span>
+                                                            {/if}
+                                                        </div>
+                                                        <div class="ams-slots mb-2">
+                                                            {#each unit.slots || [] as slot}
+                                                                <div
+                                                                    class="ams-slot"
+                                                                    class:empty={slot.empty}
+                                                                    class:active={slot.active}
+                                                                    title={slot.empty
+                                                                        ? `Slot ${slot.slot}: empty`
+                                                                        : `Slot ${slot.slot}: ${slot.material}${slot.remain >= 0 ? ', ' + slot.remain + '% left' : ', amount unknown'}${slot.active ? ' (in use)' : ''}`}
+                                                                >
+                                                                    <span class="d-flex align-items-center gap-1">
+                                                                        <span class="swatch" style="background: {slot.color || 'transparent'}"></span>
+                                                                        <span class="small text-secondary">{slot.slot}</span>
+                                                                        {#if slot.active}<span class="status-dot status-dot-animated status-green ms-auto" title="Currently feeding"></span>{/if}
+                                                                    </span>
+                                                                    <span class="small fw-medium text-truncate">{slot.empty ? 'Empty' : slot.material}</span>
+                                                                    {#if slot.remain >= 0}
+                                                                        <div class="progress progress-sm"><div class="progress-bar" style="width: {slot.remain}%"></div></div>
+                                                                        <span class="small text-secondary tabular">{slot.remain}%</span>
+                                                                    {:else if !slot.empty}
+                                                                        <span class="small text-secondary" title="No RFID tag, so the printer cannot tell">? left</span>
+                                                                    {/if}
+                                                                </div>
+                                                            {/each}
+                                                        </div>
+                                                    {/each}
+
+                                                    {#if printer.external_spool && !printer.external_spool.empty}
+                                                        <div class="d-flex align-items-center gap-2 small">
+                                                            <span class="swatch" style="background: {printer.external_spool.color || 'transparent'}"></span>
+                                                            <span class="text-secondary">External spool</span>
+                                                            <span class="fw-medium">{printer.external_spool.material}</span>
+                                                            {#if printer.external_spool.remain >= 0}
+                                                                <span class="text-secondary tabular">{printer.external_spool.remain}%</span>
+                                                            {/if}
+                                                        </div>
+                                                    {/if}
+                                                </div>
+                                            {/if}
+
+                                            <div class="d-flex flex-wrap gap-3 mb-3 tabular">
+                                                <span title="Nozzle"><IconFlame size={16} class="icon text-secondary" /> {printer.nozzle_temp.toFixed(0)}°C</span>
+                                                <span title="Bed"><IconBed size={16} class="icon text-secondary" /> {printer.bed_temp.toFixed(0)}°C</span>
+                                                {#if printer.chamber_temp > 0}
+                                                    <span title="Chamber"><IconBox size={16} class="icon text-secondary" /> {printer.chamber_temp.toFixed(0)}°C</span>
+                                                {/if}
+                                            </div>
+
+                                            <div class="btn-list mb-3">
+                                                <button
+                                                    type="button"
+                                                    class="btn {printer.light_on ? 'btn-warning' : 'btn-outline-secondary'}"
+                                                    aria-pressed={printer.light_on}
+                                                    on:click={() => toggleLight(printer)}
+                                                    disabled={busyPrinter === printer.id + 'light'}
+                                                    title="Chamber light: the camera is useless in the dark"
+                                                >
+                                                    {#if printer.light_on}<IconBulb size={18} class="icon" />Light on{:else}<IconBulbOff size={18} class="icon" />Light off{/if}
+                                                </button>
+
+                                                {#if printerIsPrinting(printer)}
+                                                    <button type="button" class="btn btn-outline-secondary" on:click={() => pausePrint(printer)} disabled={busyPrinter === printer.id + 'pause'}>
+                                                        <IconPause size={18} class="icon" />Pause
+                                                    </button>
+                                                {:else if printer.state === 'PAUSE'}
+                                                    <button type="button" class="btn btn-outline-primary" on:click={() => resumePrint(printer)} disabled={busyPrinter === printer.id + 'resume'}>
+                                                        <IconPlay size={18} class="icon" />Resume
+                                                    </button>
+                                                {/if}
+
+                                                {#if printerIsPrinting(printer) || printer.state === 'PAUSE'}
+                                                    <button type="button" class="btn btn-danger" on:click={() => stopPrint(printer)} disabled={stoppingPrinter === printer.id}>
+                                                        <IconStop size={18} class="icon" />{stoppingPrinter === printer.id ? 'Stopping...' : 'Stop print'}
+                                                    </button>
+                                                {/if}
+                                            </div>
+                                        {:else}
+                                            <p class="text-secondary">Not responding: switched off or off the network. Files can only be listed while it is on.</p>
+                                        {/if}
+
+                                        <!-- This printer's own files -->
+                                        <div class="btn-list">
+                                            <button type="button" class="btn btn-outline-secondary" aria-expanded={!!filesOpen[printer.id]} on:click={() => toggleUpload(printer)}>
+                                                {#if filesOpen[printer.id]}
+                                                    <IconX size={18} class="icon" />Close files
+                                                {:else}
+                                                    <IconFolder size={18} class="icon" />Files{files ? ` (${files.length})` : ''} and upload
+                                                {/if}
+                                            </button>
+                                            {#if printer.online && canStart(printer)}
+                                                <button type="button" class="btn {startFor === printer.id ? 'btn-outline-secondary' : 'btn-primary'}" aria-expanded={startFor === printer.id} on:click={() => toggleStart(printer)}>
+                                                    {#if startFor === printer.id}<IconX size={18} class="icon" />Close{:else}<IconPlay size={18} class="icon" />Start a print{/if}
+                                                </button>
+                                            {/if}
+                                        </div>
 
                                         {#if filesOpen[printer.id]}
-                                            <div class="pa-send">
-                                                <div class="pa-send-head">
-                                                    <span class="pa-send-title">📁 {printer.name} · files</span>
-                                                    <button class="pa-refresh" on:click={() => loadPrinterFiles(printer, true)} disabled={listingFiles === printer.id} title="Reload the list from the printer">
-                                                        {listingFiles === printer.id ? 'Loading…' : '🔄 Refresh'}
+                                            <div class="border rounded p-3 mt-3">
+                                                <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
+                                                    <h4 class="mb-0">{printer.name}: files</h4>
+                                                    <button type="button" class="btn btn-ghost-secondary btn-sm" on:click={() => loadPrinterFiles(printer, true)} disabled={listingFiles === printer.id} title="Reload the list from the printer">
+                                                        <IconRefresh size={16} class="icon" />{listingFiles === printer.id ? 'Loading...' : 'Refresh'}
                                                     </button>
                                                 </div>
-                                                <p class="pa-send-hint">
-                                                    File names should start with the owner's name, e.g.
-                                                    <code>srinath_bracket.3mf</code>. The file lands on
-                                                    <strong>{printer.name}</strong> only - start it below or from the printer's screen once the plate is clear.
+                                                <p class="form-hint mb-2">
+                                                    File names should start with the owner's name, e.g. <code>srinath_bracket.3mf</code>. The file lands on
+                                                    <strong>{printer.name}</strong> only. Start it below or from the printer's screen once the plate is clear.
                                                 </p>
 
-                                                <label class="pa-file-pick">
-                                                    <input type="file" accept=".3mf,.gcode" on:change={(e) => sendFile(printer, e)} disabled={uploading === printer.id} />
-                                                    <span>{uploading === printer.id ? `Sending... ${uploadProgress}%` : '📤 Choose a .3mf or .gcode file'}</span>
+                                                <label class="form-label" for="upload-{printer.id}">
+                                                    <IconUpload size={16} class="icon" />
+                                                    {uploading === printer.id ? `Sending... ${uploadProgress}%` : 'Send a .3mf or .gcode file'}
                                                 </label>
+                                                <input id="upload-{printer.id}" class="form-control mb-2" type="file" accept=".3mf,.gcode" on:change={(e) => sendFile(printer, e)} disabled={uploading === printer.id} />
 
                                                 {#if uploading === printer.id}
-                                                    <div class="pa-upload-bar"><div class="pa-upload-fill" style="width: {uploadProgress}%"></div></div>
+                                                    <div class="progress progress-sm mb-2">
+                                                        <div class="progress-bar" style="width: {uploadProgress}%" role="progressbar" aria-valuenow={uploadProgress} aria-valuemin="0" aria-valuemax="100" aria-label="Upload progress"></div>
+                                                    </div>
                                                 {/if}
 
                                                 {#if fileErrors[printer.id]}
-                                                    <p class="pa-send-error">⚠️ {fileErrors[printer.id]}</p>
+                                                    <div class="alert alert-danger py-2 mb-2" role="alert">{fileErrors[printer.id]}</div>
                                                 {/if}
 
                                                 {#if !files}
-                                                    {#if !fileErrors[printer.id]}<p class="pa-send-empty">Loading the file list…</p>{/if}
+                                                    {#if !fileErrors[printer.id]}<p class="text-secondary mb-0">Loading the file list...</p>{/if}
                                                 {:else if files.length === 0}
-                                                    <p class="pa-send-empty">No printable files on this printer.</p>
+                                                    <p class="text-secondary mb-0">No printable files on this printer.</p>
                                                 {:else}
-                                                    <p class="pa-file-summary">{files.length} file{files.length === 1 ? '' : 's'} · {fileSize(files.reduce((n, f) => n + (f.size || 0), 0))}</p>
-                                                    <ul class="pa-file-list">
+                                                    <div class="small text-secondary mb-1">{files.length} file{files.length === 1 ? '' : 's'}, {fileSize(files.reduce((n, f) => n + (f.size || 0), 0))}</div>
+                                                    <div class="list-group list-group-flush border-top border-bottom mb-2">
                                                         {#each files as file (file.name)}
-                                                            <li>
-                                                                <span class="pa-file-icon" aria-hidden="true">{file.name.toLowerCase().endsWith('.gcode') ? '🧾' : '🧊'}</span>
-                                                                <span class="pa-file-main">
-                                                                    <span class="pa-file-name" title={file.name}>{file.name}</span>
-                                                                    <span class="pa-file-size">{fileSize(file.size)}{#if file.time} · {file.time}{/if}</span>
-                                                                </span>
-                                                                {#if canStart(printer)}
-                                                                    <button class="pa-file-btn print" on:click={() => printThisFile(printer, file.name)} title="Start {file.name} on {printer.name}" aria-label="Print {file.name}">▶</button>
+                                                            <div class="list-group-item d-flex align-items-center gap-2 px-0">
+                                                                {#if file.name.toLowerCase().endsWith('.gcode')}
+                                                                    <IconFileCode size={20} class="icon text-secondary flex-shrink-0" />
+                                                                {:else}
+                                                                    <IconFile3d size={20} class="icon text-secondary flex-shrink-0" />
                                                                 {/if}
-                                                                <button class="pa-file-btn del" on:click={() => deletePrinterFile(printer, file.name)} title="Delete from {printer.name}" aria-label="Delete {file.name}">🗑️</button>
-                                                            </li>
+                                                                <div class="flex-fill min-w-0">
+                                                                    <div class="text-truncate" title={file.name}>{file.name}</div>
+                                                                    <div class="small text-secondary">{fileSize(file.size)}{#if file.time}, {file.time}{/if}</div>
+                                                                </div>
+                                                                {#if canStart(printer)}
+                                                                    <button type="button" class="btn btn-ghost-primary btn-icon" on:click={() => printThisFile(printer, file.name)} title="Start {file.name} on {printer.name}" aria-label="Print {file.name}">
+                                                                        <IconPlay size={18} />
+                                                                    </button>
+                                                                {/if}
+                                                                <button type="button" class="btn btn-ghost-danger btn-icon" on:click={() => deletePrinterFile(printer, file.name)} title="Delete from {printer.name}" aria-label="Delete {file.name}">
+                                                                    <IconTrash size={18} />
+                                                                </button>
+                                                            </div>
                                                         {/each}
-                                                    </ul>
+                                                    </div>
 
-                                                    <button class="pa-clear-all" on:click={() => clearPrinterFiles(printer)} disabled={clearing === printer.id}>
-                                                        {clearing === printer.id ? 'Clearing...' : `🧹 Clear all ${files.length} file(s)`}
+                                                    <button type="button" class="btn btn-outline-danger btn-sm" on:click={() => clearPrinterFiles(printer)} disabled={clearing === printer.id}>
+                                                        <IconEraser size={16} class="icon" />{clearing === printer.id ? 'Clearing...' : `Clear all ${files.length} file(s)`}
                                                     </button>
                                                 {/if}
                                             </div>
                                         {/if}
-                                    {#if printer.online}
 
-                                        {#if canStart(printer)}
-                                            <button class="pa-start-toggle" aria-expanded={startFor === printer.id} on:click={() => toggleStart(printer)}>
-                                                {startFor === printer.id ? '✕ Close' : '▶ Start a print'}
-                                            </button>
-                                        {/if}
-
-                                        {#if startFor === printer.id}
-                                            <div class="pa-start" id="start-{printer.id}">
-                                                <label class="pa-start-row">
-                                                    <span>File</span>
-                                                    <select bind:value={startFile}>
-                                                        <option value="">{files ? (files.length ? 'Choose a file...' : 'No files on this printer') : 'Loading files...'}</option>
-                                                        {#each files || [] as file}
-                                                            <option value={file.name}>{file.name}</option>
-                                                        {/each}
-                                                    </select>
-                                                </label>
-
-                                                <label class="pa-start-row">
-                                                    <span>Plate fitted</span>
-                                                    <select bind:value={startBed}>
-                                                        {#each BED_TYPES as bed}<option value={bed.value}>{bed.label}</option>{/each}
-                                                    </select>
-                                                </label>
-
-                                                <label class="pa-start-row">
-                                                    <span>Filament</span>
-                                                    <select bind:value={startSpool}>
-                                                        {#each amsChoices(printer) as choice}
-                                                            <option value={String(choice.index)}>
-                                                                AMS {choice.unit} slot {choice.slot} — {choice.label}{choice.remain >= 0 ? ` (${choice.remain}%)` : ''}
-                                                            </option>
-                                                        {/each}
-                                                        <option value="external">External spool</option>
-                                                    </select>
-                                                </label>
-
-                                                {#if startSpool !== 'external'}
-                                                    <div class="pa-swatches">
-                                                        {#each amsChoices(printer) as choice}
-                                                            <button
-                                                                class="pa-swatch"
-                                                                class:picked={startSpool === String(choice.index)}
-                                                                style="background: {choice.color || 'var(--faint)'}"
-                                                                title="AMS {choice.unit} slot {choice.slot} — {choice.label}"
-                                                                aria-label="AMS {choice.unit} slot {choice.slot}: {choice.label}"
-                                                                on:click={() => (startSpool = String(choice.index))}
-                                                            >{choice.slot}</button>
-                                                        {/each}
+                                        {#if printer.online}
+                                            {#if startFor === printer.id}
+                                                <div class="border rounded p-3 mt-3" id="start-{printer.id}">
+                                                    <h4 class="mb-3">Start a print</h4>
+                                                    <div class="row g-2">
+                                                        <div class="col-12">
+                                                            <label class="form-label" for="start-file-{printer.id}">File</label>
+                                                            <select id="start-file-{printer.id}" class="form-select" bind:value={startFile}>
+                                                                <option value="">{files ? (files.length ? 'Choose a file...' : 'No files on this printer') : 'Loading files...'}</option>
+                                                                {#each files || [] as file}
+                                                                    <option value={file.name}>{file.name}</option>
+                                                                {/each}
+                                                            </select>
+                                                        </div>
+                                                        <div class="col-12 col-sm-6">
+                                                            <label class="form-label" for="start-bed-{printer.id}">Plate fitted</label>
+                                                            <select id="start-bed-{printer.id}" class="form-select" bind:value={startBed}>
+                                                                {#each BED_TYPES as bed}<option value={bed.value}>{bed.label}</option>{/each}
+                                                            </select>
+                                                        </div>
+                                                        <div class="col-12 col-sm-6">
+                                                            <label class="form-label" for="start-plate-{printer.id}">Plate number</label>
+                                                            <input id="start-plate-{printer.id}" class="form-control" type="number" min="1" max="64" bind:value={startPlate} />
+                                                        </div>
+                                                        <div class="col-12">
+                                                            <label class="form-label" for="start-spool-{printer.id}">Filament</label>
+                                                            <select id="start-spool-{printer.id}" class="form-select" bind:value={startSpool}>
+                                                                {#each amsChoices(printer) as choice}
+                                                                    <option value={String(choice.index)}>
+                                                                        AMS {choice.unit} slot {choice.slot}: {choice.label}{choice.remain >= 0 ? ` (${choice.remain}%)` : ''}
+                                                                    </option>
+                                                                {/each}
+                                                                <option value="external">External spool</option>
+                                                            </select>
+                                                        </div>
                                                     </div>
-                                                {/if}
 
-                                                <label class="pa-start-row">
-                                                    <span>Plate number</span>
-                                                    <input type="number" min="1" max="64" bind:value={startPlate} />
-                                                </label>
+                                                    {#if startSpool !== 'external'}
+                                                        <div class="d-flex flex-wrap gap-2 mt-2">
+                                                            {#each amsChoices(printer) as choice}
+                                                                <button
+                                                                    type="button"
+                                                                    class="pick-swatch"
+                                                                    class:picked={startSpool === String(choice.index)}
+                                                                    style="background: {choice.color || 'var(--tblr-secondary)'}"
+                                                                    title="AMS {choice.unit} slot {choice.slot}: {choice.label}"
+                                                                    aria-label="AMS {choice.unit} slot {choice.slot}: {choice.label}"
+                                                                    on:click={() => (startSpool = String(choice.index))}
+                                                                >{choice.slot}</button>
+                                                            {/each}
+                                                        </div>
+                                                    {/if}
 
-                                                <div class="pa-start-opts">
-                                                    <label><input type="checkbox" bind:checked={startLevel} /> Bed levelling</label>
-                                                    <label><input type="checkbox" bind:checked={startFlow} /> Flow calibration</label>
-                                                    <label><input type="checkbox" bind:checked={startTimelapse} /> Timelapse</label>
+                                                    <div class="mt-3">
+                                                        <label class="form-check form-check-inline">
+                                                            <input class="form-check-input" type="checkbox" bind:checked={startLevel} />
+                                                            <span class="form-check-label">Bed levelling</span>
+                                                        </label>
+                                                        <label class="form-check form-check-inline">
+                                                            <input class="form-check-input" type="checkbox" bind:checked={startFlow} />
+                                                            <span class="form-check-label">Flow calibration</span>
+                                                        </label>
+                                                        <label class="form-check form-check-inline">
+                                                            <input class="form-check-input" type="checkbox" bind:checked={startTimelapse} />
+                                                            <span class="form-check-label">Timelapse</span>
+                                                        </label>
+                                                    </div>
+
+                                                    <div class="alert alert-warning py-2 my-3" role="alert">
+                                                        Check the camera above: the plate must be clear and the plate type must match what you chose.
+                                                    </div>
+
+                                                    <button type="button" class="btn btn-primary w-100" on:click={() => startPrint(printer)} disabled={starting === printer.id || !startFile}>
+                                                        <IconPlay size={18} class="icon" />{starting === printer.id ? 'Starting...' : 'Start print'}
+                                                    </button>
                                                 </div>
+                                            {/if}
 
-                                                <p class="pa-start-warn">Check the camera above: the plate must be clear and the plate type must match what you chose.</p>
-
-                                                <button class="pa-start-go" on:click={() => startPrint(printer)} disabled={starting === printer.id || !startFile}>
-                                                    {starting === printer.id ? 'Starting...' : '▶ Start print'}
-                                                </button>
-                                            </div>
+                                            {#if printer.last_action_by}
+                                                <p class="small text-secondary mt-3 mb-0">Last stopped by {printer.last_action_by}</p>
+                                            {/if}
                                         {/if}
-
-                                        {#if printer.last_action_by}
-                                            <p class="pa-last">Last stopped by {printer.last_action_by}</p>
-                                        {/if}
-                                    {/if}
+                                    </div>
                                 </div>
-                            {/each}
-                        </div>
-                    {/if}
+                            </div>
+                        {/each}
+                    </div>
+                {/if}
 
-                    <div class="joblog-head">
-                        <h3>📝 Print log</h3>
-                        <div class="joblog-tools">
-                            <select bind:value={jobPrinter} aria-label="Show prints from">
+                <div class="card mt-3">
+                    <div class="card-header flex-wrap gap-2">
+                        <div class="me-auto">
+                            <h3 class="card-title">Print log</h3>
+                            <p class="card-subtitle">Recorded automatically from the printers; nobody fills in a form. Whose print it is comes from the file name.</p>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <select class="form-select form-select-sm w-auto" bind:value={jobPrinter} aria-label="Show prints from">
                                 <option value="">All printers</option>
                                 {#each jobPrinters as name}<option value={name}>{name}</option>{/each}
                             </select>
                             <!-- A plain link would go without the session token and get a 401 -->
-                            <button type="button" class="calendar-link link-btn" on:click={() => exportCSV('/api/admin/export-print-jobs-csv', 'print_jobs.csv')}>Export CSV</button>
+                            <button type="button" class="btn btn-outline-secondary btn-sm text-nowrap" on:click={() => exportCSV('/api/admin/export-print-jobs-csv', 'print_jobs.csv')}>
+                                <IconDownload size={16} class="icon" />Export CSV
+                            </button>
                         </div>
                     </div>
-                    <p class="subtitle-text">Recorded automatically from the printers - nobody fills in a form. Whose print it is comes from the file name.</p>
-
                     {#if shownJobs.length === 0}
-                        <p class="no-items">No prints recorded yet.</p>
+                        <div class="empty">
+                            <p class="empty-title">No prints recorded yet.</p>
+                        </div>
                     {:else}
-                        <div class="joblog">
-                            {#each shownJobs.slice(0, showAllJobs ? shownJobs.length : 40) as job}
-                                <div class="joblog-row {job.result}">
-                                    <span class="joblog-when">
-                                        {new Date(job.started_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
-                                        {new Date(job.started_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                    </span>
-                                    <span class="joblog-printer">{job.printer_name}</span>
-                                    <span class="joblog-file" title={job.file_name}>{job.file_name || '(unnamed)'}</span>
-                                    <span class="joblog-dur">{jobDuration(job)}</span>
-                                    <span class="joblog-result {job.result}">
-                                        {jobResult(job)}
-                                    </span>
-                                </div>
-                            {/each}
+                        <div class="table-responsive">
+                            <table class="table table-vcenter card-table">
+                                <thead>
+                                    <tr>
+                                        <th>When</th>
+                                        <th>Printer</th>
+                                        <th>File</th>
+                                        <th>Duration</th>
+                                        <th>Result</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {#each shownJobs.slice(0, showAllJobs ? shownJobs.length : 40) as job}
+                                        <tr>
+                                            <td class="text-nowrap tabular">
+                                                {new Date(job.started_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
+                                                {new Date(job.started_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                            </td>
+                                            <td class="text-nowrap">{job.printer_name}</td>
+                                            <td class="file-cell"><div class="text-truncate" title={job.file_name}>{job.file_name || '(unnamed)'}</div></td>
+                                            <td class="text-nowrap tabular">{jobDuration(job)}</td>
+                                            <td><span class="badge bg-{RESULT_BADGE[job.result] || 'secondary'}-lt">{jobResult(job)}</span></td>
+                                        </tr>
+                                    {/each}
+                                </tbody>
+                            </table>
                         </div>
                         {#if shownJobs.length > 40}
-                            <button class="link-btn more-btn" on:click={() => (showAllJobs = !showAllJobs)}>
-                                {showAllJobs ? 'Show the latest 40' : `Show all ${shownJobs.length} prints`}
-                            </button>
+                            <div class="card-footer text-center">
+                                <button type="button" class="btn btn-ghost-primary btn-sm" on:click={() => (showAllJobs = !showAllJobs)}>
+                                    {showAllJobs ? 'Show the latest 40' : `Show all ${shownJobs.length} prints`}
+                                </button>
+                            </div>
                         {/if}
                     {/if}
                 </div>
             {/if}
 
-            <!-- Bookings View -->
+            <!-- Bookings -->
             {#if currentView === 'bookings'}
-                <div class="loans-content">
-                    <h2>📅 Lab Bookings</h2>
-                    <p class="subtitle-text">
-                        The Motion Capture Lab and the Mech Lab robots.
-                        <a class="calendar-link" href={bookingLab === 'mocap' ? '/mocap' : '/mechlab'} target="_blank" rel="noopener">Open calendar view →</a>
-                    </p>
-                    <div class="status-filters" role="tablist">
-                        <button class="filter-btn" role="tab" aria-selected={bookingLab === 'mocap'} class:active={bookingLab === 'mocap'} on:click={() => (bookingLab = 'mocap')}>🎥 Mocap Lab</button>
-                        <button class="filter-btn" role="tab" aria-selected={bookingLab === 'mech'} class:active={bookingLab === 'mech'} on:click={() => (bookingLab = 'mech')}>🤖 Mech Lab robots</button>
+                <div class="card mb-3">
+                    <div class="card-header flex-wrap gap-2">
+                        <div class="me-auto">
+                            <h3 class="card-title">Lab bookings</h3>
+                            <p class="card-subtitle">The Motion Capture Lab and the Mech Lab robots.</p>
+                        </div>
+                        <a class="btn btn-outline-secondary btn-sm" href={bookingLab === 'mocap' ? '/mocap' : '/mechlab'} target="_blank" rel="noopener">
+                            <IconExternal size={16} class="icon" />Open calendar view
+                        </a>
                     </div>
-                    <div class="embedded-calendar">
+                    <div class="card-body">
+                        <div class="scroll-x mb-3">
+                            <div class="nav nav-segmented" role="tablist">
+                                <button type="button" class="nav-link" role="tab" aria-selected={bookingLab === 'mocap'} class:active={bookingLab === 'mocap'} on:click={() => (bookingLab = 'mocap')}>
+                                    <IconVideo size={18} class="icon me-1" />Mocap Lab
+                                </button>
+                                <button type="button" class="nav-link" role="tab" aria-selected={bookingLab === 'mech'} class:active={bookingLab === 'mech'} on:click={() => (bookingLab = 'mech')}>
+                                    <IconRobot size={18} class="icon me-1" />Mech Lab robots
+                                </button>
+                            </div>
+                        </div>
                         {#key `${bookingLab}-${calendarVersion}`}
                             <BookingPage lab={bookingLab} title={bookingLab === 'mocap' ? 'Motion Capture Lab' : 'Mech Lab robots'} embedded />
                         {/key}
                     </div>
+                </div>
 
-                    <div class="management-section">
-                        <div class="section-header">
-                            <h3>🤖 Robots and labs</h3>
-                            <button class="toggle-btn" on:click={() => editResource(null)}>+ Add robot</button>
+                <div class="card mb-3">
+                    <div class="card-header flex-wrap gap-2">
+                        <div class="me-auto">
+                            <h3 class="card-title">Robots and labs</h3>
+                            <p class="card-subtitle">
+                                Each robot has its own calendar. Research threads get access from a lab admin on the Threads page;
+                                "needs approval" also sends every booking to a lab admin.
+                            </p>
                         </div>
-                        <p class="section-note">Each robot has its own calendar. Research threads get access from a lab admin on the Threads page; "needs approval" also sends every booking to a lab admin.</p>
-
-                        {#if editingResource && !editingResource.ID}
-                            <div class="form-card inline-form">{@render resourceForm()}</div>
-                        {/if}
-
-                        {#if resources.length === 0}
-                            <p class="no-data">No robots yet.</p>
-                        {:else}
-                            <div class="admin-list">
-                                {#each resources as entry (entry.resource.ID)}
-                                    {@const r = entry.resource}
-                                    <div class="admin-card" class:inactive={!r.active}>
-                                        <div class="admin-card-info">
-                                            <h4>{r.lab === 'mocap' ? '🎥' : '🤖'} {r.name}</h4>
-                                            <p class="admin-username">#{r.slug}</p>
-                                            <p class="admin-role">{r.lab === 'mocap' ? 'Mocap Lab' : r.lab === 'mech' ? 'Mech Lab' : r.lab}{r.active ? '' : ' · not bookable'}</p>
-                                            <div class="tag-row">
-                                                {#if r.requires_thread}<span class="tag">threads only</span>{/if}
-                                                {#if r.requires_approval}<span class="tag warn">needs approval</span>{/if}
-                                                {#if r.max_hours}<span class="tag">≤ {r.max_hours} h</span>{/if}
-                                                {#if r.max_future_bookings}<span class="tag">≤ {r.max_future_bookings} upcoming</span>{/if}
-                                            </div>
-                                        </div>
-                                        <div class="admin-card-actions">
-                                            <button class="toggle-btn" on:click={() => editResource(entry)}>✏️ Edit</button>
-                                        </div>
-                                    </div>
-                                    {#if editingResource && editingResource.ID === r.ID}
-                                        <div class="form-card inline-form full-row">{@render resourceForm()}</div>
-                                    {/if}
-                                {/each}
-                            </div>
-                        {/if}
+                        <button type="button" class="btn btn-primary btn-sm" on:click={() => editResource(null)}>
+                            <IconPlus size={16} class="icon" />Add robot
+                        </button>
                     </div>
-
-                    <div class="list-head">
-                        <h3 class="cal-list-title">All bookings</h3>
-                        <div class="status-filters compact">
-                            <button class="filter-btn" class:active={bookingFilter === 'upcoming'} on:click={() => (bookingFilter = 'upcoming')}>Upcoming</button>
-                            <button class="filter-btn" class:active={bookingFilter === 'pending'} on:click={() => (bookingFilter = 'pending')}>Pending</button>
-                            <button class="filter-btn" class:active={bookingFilter === 'no-show'} on:click={() => (bookingFilter = 'no-show')}>No-shows</button>
-                            <button class="filter-btn" class:active={bookingFilter === 'all'} on:click={() => (bookingFilter = 'all')}>All (from a week ago)</button>
+                    {#if resources.length === 0}
+                        <div class="empty">
+                            <p class="empty-title">No robots yet.</p>
                         </div>
-                    </div>
-
-                    {#if loading}
-                        <p>Loading bookings...</p>
-                    {:else if shownBookings.length === 0}
-                        <p class="no-items">No bookings{bookingFilter === 'all' ? '' : ' for this filter'}.</p>
                     {:else}
-                        <div class="bookings-list">
-                            {#each shownBookings as booking (booking.ID)}
-                                <div class="booking-row" class:past={new Date(booking.end_time) < new Date()} class:pending={booking.status === 'pending'} style="--res: {hueFor(booking.resource_id)}">
-                                    <div class="booking-when">
-                                        <span class="booking-date">{new Date(booking.start_time).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}</span>
-                                        <span class="booking-time">
-                                            {new Date(booking.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                            -
-                                            {new Date(booking.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                        </span>
-                                    </div>
-                                    <div class="booking-info">
-                                        <p class="booking-purpose">{booking.purpose}</p>
-                                        <p class="booking-by">
-                                            <span class="booking-res">{resourceName[booking.resource_id] || 'Unknown resource'}</span>
-                                            {#if booking.thread_name} · 🧵 {booking.thread_name}{/if}
-                                        </p>
-                                        <p class="booking-by">
-                                            {booking.booked_by} ·
-                                            {#if booking.phone}<button class="clickable-phone" on:click={() => copyToClipboard(booking.phone)} title="Click to copy phone number">{booking.phone}</button>{:else}—{/if}
-                                        </p>
-                                        <div class="tag-row">
-                                            {#if booking.status === 'pending'}<span class="tag warn">awaiting approval</span>{/if}
-                                            {#if booking.reviewed_by}<span class="tag">reviewed by {booking.reviewed_by}</span>{/if}
-                                            {#if booking.no_show}<span class="tag danger">no-show{#if booking.no_show_reported_by} · reported by {booking.no_show_reported_by}{/if}</span>{/if}
-                                        </div>
-                                    </div>
-                                    <div class="booking-actions">
-                                        {#if booking.no_show}
-                                            <button class="toggle-btn" on:click={() => clearNoShow(booking)}>Clear no-show</button>
-                                        {/if}
-                                        <button class="delete-admin-btn" on:click={() => deleteBooking(booking)}>🗑️ Delete</button>
-                                    </div>
-                                </div>
-                            {/each}
+                        <div class="table-responsive">
+                            <table class="table table-vcenter card-table">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Lab</th>
+                                        <th>Rules</th>
+                                        <th class="w-1"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {#each resources as entry (entry.resource.ID)}
+                                        {@const r = entry.resource}
+                                        <tr class:text-secondary={!r.active}>
+                                            <td>
+                                                <div class="d-flex align-items-center gap-2">
+                                                    <span class="avatar avatar-sm {r.lab === 'mocap' ? 'bg-pink-lt' : 'bg-orange-lt'}">
+                                                        {#if r.lab === 'mocap'}<IconVideo size={18} />{:else}<IconRobot size={18} />{/if}
+                                                    </span>
+                                                    <div>
+                                                        <div class="fw-medium">{r.name}</div>
+                                                        <div class="small text-secondary">#{r.slug}</div>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td class="text-nowrap">
+                                                {r.lab === 'mocap' ? 'Mocap Lab' : r.lab === 'mech' ? 'Mech Lab' : r.lab}
+                                                {#if !r.active}<span class="badge bg-secondary-lt ms-1">not bookable</span>{/if}
+                                            </td>
+                                            <td>
+                                                <div class="d-flex flex-wrap gap-1">
+                                                    {#if r.requires_thread}<span class="badge bg-azure-lt">threads only</span>{/if}
+                                                    {#if r.requires_approval}<span class="badge bg-yellow-lt">needs approval</span>{/if}
+                                                    {#if r.max_hours}<span class="badge bg-secondary-lt">up to {r.max_hours} h</span>{/if}
+                                                    {#if r.max_future_bookings}<span class="badge bg-secondary-lt">up to {r.max_future_bookings} upcoming</span>{/if}
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <button type="button" class="btn btn-outline-secondary btn-sm" on:click={() => editResource(entry)}>
+                                                    <IconPencil size={16} class="icon" />Edit
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    {/each}
+                                </tbody>
+                            </table>
+                        </div>
+                    {/if}
+                </div>
+
+                <div class="card">
+                    <div class="card-header flex-wrap gap-2">
+                        <h3 class="card-title me-auto">All bookings</h3>
+                        <div class="scroll-x">
+                            <div class="nav nav-segmented nav-sm" role="tablist">
+                                <button type="button" class="nav-link" role="tab" aria-selected={bookingFilter === 'upcoming'} class:active={bookingFilter === 'upcoming'} on:click={() => (bookingFilter = 'upcoming')}>Upcoming</button>
+                                <button type="button" class="nav-link" role="tab" aria-selected={bookingFilter === 'pending'} class:active={bookingFilter === 'pending'} on:click={() => (bookingFilter = 'pending')}>Pending</button>
+                                <button type="button" class="nav-link" role="tab" aria-selected={bookingFilter === 'no-show'} class:active={bookingFilter === 'no-show'} on:click={() => (bookingFilter = 'no-show')}>No-shows</button>
+                                <button type="button" class="nav-link" role="tab" aria-selected={bookingFilter === 'all'} class:active={bookingFilter === 'all'} on:click={() => (bookingFilter = 'all')}>All (from a week ago)</button>
+                            </div>
+                        </div>
+                    </div>
+                    {#if loading}
+                        <div class="card-body text-secondary">Loading bookings...</div>
+                    {:else if shownBookings.length === 0}
+                        <div class="empty">
+                            <p class="empty-title">No bookings{bookingFilter === 'all' ? '' : ' for this filter'}.</p>
+                        </div>
+                    {:else}
+                        <div class="table-responsive">
+                            <table class="table table-vcenter card-table">
+                                <thead>
+                                    <tr>
+                                        <th>When</th>
+                                        <th>Resource</th>
+                                        <th>Purpose</th>
+                                        <th>Booked by</th>
+                                        <th>Status</th>
+                                        <th class="w-1"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {#each shownBookings as booking (booking.ID)}
+                                        <tr class:past={new Date(booking.end_time) < new Date()}>
+                                            <td>{@render when(booking)}</td>
+                                            <td>{@render bookingWhat(booking)}</td>
+                                            <td class="purpose-cell">{booking.purpose}</td>
+                                            <td class="text-nowrap">
+                                                <div>{booking.booked_by}</div>
+                                                <div class="small">{@render phone(booking.phone)}</div>
+                                            </td>
+                                            <td>
+                                                <div class="d-flex flex-wrap gap-1">
+                                                    {#if booking.status === 'pending'}<span class="badge bg-yellow-lt">awaiting approval</span>{/if}
+                                                    {#if booking.reviewed_by}<span class="badge bg-secondary-lt">reviewed by {booking.reviewed_by}</span>{/if}
+                                                    {#if booking.no_show}<span class="badge bg-red-lt">no-show{#if booking.no_show_reported_by}, reported by {booking.no_show_reported_by}{/if}</span>{/if}
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <div class="btn-list flex-nowrap">
+                                                    {#if booking.no_show}
+                                                        <button type="button" class="btn btn-outline-secondary btn-sm text-nowrap" on:click={() => clearNoShow(booking)}>Clear no-show</button>
+                                                    {/if}
+                                                    <button type="button" class="btn btn-outline-danger btn-sm" on:click={() => deleteBooking(booking)}>
+                                                        <IconTrash size={16} class="icon" />Delete
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    {/each}
+                                </tbody>
+                            </table>
                         </div>
                     {/if}
                 </div>
             {/if}
 
-            <!-- Approvals View (loan and booking approvers) -->
+            <!-- Approvals (loan and booking approvers) -->
             {#if currentView === 'approvals'}
-                <div class="loans-content">
-                    <h2>✅ Approvals</h2>
-                    <p class="subtitle-text">Requests waiting for a decision. Someone else has to approve your own requests.</p>
+                <p class="text-secondary">Requests waiting for a decision. Someone else has to approve your own requests.</p>
 
-                    {#if can(adminInfo, 'approve_loans')}
-                        <h3 class="approval-title">📦 Loan requests {#if pendingLoans.length}<span class="badge">{pendingLoans.length}</span>{/if}</h3>
+                {#if can(adminInfo, 'approve_loans')}
+                    <div class="card mb-3">
+                        <div class="card-header">
+                            <h3 class="card-title">
+                                Loan requests
+                                {#if pendingLoans.length}<span class="badge bg-red-lt ms-1">{pendingLoans.length}</span>{/if}
+                            </h3>
+                        </div>
                         {#if pendingLoans.length === 0}
-                            <p class="no-items">No loan requests waiting.</p>
+                            <div class="empty">
+                                <p class="empty-title">No loan requests waiting.</p>
+                            </div>
                         {:else}
-                            <div class="loans-grid">
-                                {#each pendingLoans as loan (loan.ID)}
-                                    <div class="loan-card pending">
-                                        <div class="loan-header">
-                                            <div class="loan-title-section">
-                                                <h3>{loan.item_name}</h3>
-                                                {#if loan.photo_filename}
-                                                    <div class="item-image">
-                                                        <img src="/api/photos/{loan.photo_filename}" alt={loan.item_name} on:error={(e) => (e.target.style.display = 'none')} />
+                            <div class="table-responsive">
+                                <table class="table table-vcenter card-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Item</th>
+                                            <th>Borrower</th>
+                                            <th>Lab</th>
+                                            <th>Qty</th>
+                                            <th>Expected return</th>
+                                            <th>Requested</th>
+                                            <th class="w-1"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {#each pendingLoans as loan (loan.ID)}
+                                            <tr>
+                                                <td>
+                                                    <div class="d-flex align-items-center gap-2">
+                                                        {@render thumb(loan.photo_filename, loan.item_name)}
+                                                        <span class="fw-medium">{loan.item_name}</span>
                                                     </div>
-                                                {/if}
-                                            </div>
-                                            <div class="status-badges"><span class="status-badge pending">Pending</span></div>
-                                        </div>
-                                        <div class="loan-details">
-                                            <p><strong>Borrower:</strong> {loan.borrower_name} <span class="acct-tag" class:guest={!loan.user_id} title={loan.user_id ? "Borrowed while signed in" : "Borrowed without an account: reach them on this phone number"}>{loan.user_id ? "👤 account" : "📵 no account"}</span></p>
-                                            <p><strong>Lab:</strong> {loan.lab_location}</p>
-                                            <p><strong>Quantity:</strong> {loan.quantity_borrowed}</p>
-                                            <p><strong>Expected Return:</strong> {formatExpectedReturn(loan.expected_return_date)}</p>
-                                            <p><strong>Requested:</strong> {formatDate(loan.CreatedAt)}</p>
-                                        </div>
-                                        <div class="loan-actions">
-                                            {#if loan.user_id === adminInfo.id}
-                                                <p class="own-note">This is your own request - another approver has to decide it.</p>
-                                            {:else}
-                                                <button class="approve-btn" on:click={() => decideLoan(loan, 'approve')} disabled={deciding === 'loan' + loan.ID}>✅ Approve</button>
-                                            {/if}
-                                            <button class="deny-btn" on:click={() => decideLoan(loan, 'reject')} disabled={deciding === 'loan' + loan.ID}>✕ Decline</button>
-                                        </div>
-                                    </div>
-                                {/each}
+                                                </td>
+                                                <td class="text-nowrap">{loan.borrower_name}{@render acctBadge(loan)}</td>
+                                                <td class="text-nowrap">{loan.lab_location}</td>
+                                                <td class="tabular">{loan.quantity_borrowed}</td>
+                                                <td class="text-nowrap">{formatExpectedReturn(loan.expected_return_date)}</td>
+                                                <td class="text-nowrap">{formatDate(loan.CreatedAt)}</td>
+                                                <td>
+                                                    <div class="btn-list flex-nowrap">
+                                                        {#if loan.user_id === adminInfo.id}
+                                                            <span class="small text-secondary">Your own request: another approver has to decide it.</span>
+                                                        {:else}
+                                                            <button type="button" class="btn btn-success btn-sm" on:click={() => decideLoan(loan, 'approve')} disabled={deciding === 'loan' + loan.ID}>
+                                                                <IconCheck size={16} class="icon" />Approve
+                                                            </button>
+                                                        {/if}
+                                                        <button type="button" class="btn btn-outline-danger btn-sm" on:click={() => decideLoan(loan, 'reject')} disabled={deciding === 'loan' + loan.ID}>
+                                                            <IconX size={16} class="icon" />Decline
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        {/each}
+                                    </tbody>
+                                </table>
                             </div>
                         {/if}
-                    {/if}
+                    </div>
+                {/if}
 
-                    {#if can(adminInfo, 'approve_mech_bookings')}
-                        <h3 class="approval-title">🤖 Booking requests {#if pendingBookings.length}<span class="badge">{pendingBookings.length}</span>{/if}</h3>
+                {#if can(adminInfo, 'approve_mech_bookings')}
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">
+                                Booking requests
+                                {#if pendingBookings.length}<span class="badge bg-red-lt ms-1">{pendingBookings.length}</span>{/if}
+                            </h3>
+                        </div>
                         {#if pendingBookings.length === 0}
-                            <p class="no-items">No booking requests waiting.</p>
+                            <div class="empty">
+                                <p class="empty-title">No booking requests waiting.</p>
+                            </div>
                         {:else}
-                            <div class="bookings-list">
-                                {#each pendingBookings as booking (booking.ID)}
-                                    <div class="booking-row pending" style="--res: {hueFor(booking.resource_id)}">
-                                        <div class="booking-when">
-                                            <span class="booking-date">{new Date(booking.start_time).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}</span>
-                                            <span class="booking-time">
-                                                {new Date(booking.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                                -
-                                                {new Date(booking.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                            </span>
-                                        </div>
-                                        <div class="booking-info">
-                                            <p class="booking-purpose">{booking.purpose}</p>
-                                            <p class="booking-by">
-                                                <span class="booking-res">{resourceName[booking.resource_id] || 'Unknown resource'}</span>
-                                                {#if booking.thread_name} · 🧵 {booking.thread_name}{/if}
-                                            </p>
-                                            <p class="booking-by">Requested by {booking.booked_by}</p>
-                                        </div>
-                                        <div class="booking-actions">
-                                            {#if booking.user_id === adminInfo.id}
-                                                <span class="own-note">Your own request</span>
-                                            {:else}
-                                                <button class="approve-btn" on:click={() => decideBooking(booking, 'approve')} disabled={deciding === 'booking' + booking.ID}>✅ Approve</button>
-                                            {/if}
-                                            <button class="deny-btn" on:click={() => decideBooking(booking, 'reject')} disabled={deciding === 'booking' + booking.ID}>✕ Decline</button>
-                                        </div>
-                                    </div>
-                                {/each}
+                            <div class="table-responsive">
+                                <table class="table table-vcenter card-table">
+                                    <thead>
+                                        <tr>
+                                            <th>When</th>
+                                            <th>Resource</th>
+                                            <th>Purpose</th>
+                                            <th>Requested by</th>
+                                            <th class="w-1"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {#each pendingBookings as booking (booking.ID)}
+                                            <tr>
+                                                <td>{@render when(booking)}</td>
+                                                <td>{@render bookingWhat(booking)}</td>
+                                                <td class="purpose-cell">{booking.purpose}</td>
+                                                <td class="text-nowrap">{booking.booked_by}</td>
+                                                <td>
+                                                    <div class="btn-list flex-nowrap">
+                                                        {#if booking.user_id === adminInfo.id}
+                                                            <span class="small text-secondary text-nowrap">Your own request</span>
+                                                        {:else}
+                                                            <button type="button" class="btn btn-success btn-sm" on:click={() => decideBooking(booking, 'approve')} disabled={deciding === 'booking' + booking.ID}>
+                                                                <IconCheck size={16} class="icon" />Approve
+                                                            </button>
+                                                        {/if}
+                                                        <button type="button" class="btn btn-outline-danger btn-sm" on:click={() => decideBooking(booking, 'reject')} disabled={deciding === 'booking' + booking.ID}>
+                                                            <IconX size={16} class="icon" />Decline
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        {/each}
+                                    </tbody>
+                                </table>
                             </div>
                         {/if}
-                    {/if}
-                </div>
+                    </div>
+                {/if}
             {/if}
 
-            <!-- Item History View -->
+            <!-- Item history -->
             {#if currentView === 'history'}
-                <div class="loans-content">
-                    <h2>📚 Complete Item History</h2>
-                    <p class="subtitle-text">Chronological history of all items - borrowed, returned and missing</p>
-
-                    <div class="history-search-container">
-                        <label for="history-search">Search history by name, item, phone, lab, purpose, status, or admin:</label>
-                        <div class="search-input-group">
-                            <input type="text" id="history-search" bind:value={historySearchQuery} placeholder="Search through all history records..." autocomplete="off" class="history-search-input" />
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <h3 class="card-title">Item history</h3>
+                            <p class="card-subtitle">Every loan in order: borrowed, returned and missing</p>
+                        </div>
+                    </div>
+                    <div class="card-body border-bottom">
+                        <label class="form-label" for="history-search">Search by name, item, phone, lab, purpose, status or admin</label>
+                        <div class="input-group mb-2">
+                            <span class="input-group-text"><IconSearch size={18} /></span>
+                            <input type="text" id="history-search" class="form-control" bind:value={historySearchQuery} placeholder="Search all history records..." autocomplete="off" />
                             {#if historySearchQuery && historySearchQuery.trim()}
-                                <button class="clear-search-btn" on:click={clearHistorySearch} title="Clear search" aria-label="Clear search" type="button">✕</button>
+                                <button class="btn btn-outline-secondary" on:click={clearHistorySearch} title="Clear search" aria-label="Clear search" type="button"><IconX size={18} /></button>
                             {/if}
                         </div>
-                        <div class="status-filters compact history-filters">
-                            <button class="filter-btn" class:active={historyStatus === 'all'} on:click={() => (historyStatus = 'all')}>All</button>
-                            <button class="filter-btn" class:active={historyStatus === 'active'} on:click={() => (historyStatus = 'active')}>Borrowed</button>
-                            <button class="filter-btn" class:active={historyStatus === 'overdue'} on:click={() => (historyStatus = 'overdue')}>Overdue</button>
-                            <button class="filter-btn" class:active={historyStatus === 'returned'} on:click={() => (historyStatus = 'returned')}>Returned</button>
-                            <button class="filter-btn" class:active={historyStatus === 'not_found'} on:click={() => (historyStatus = 'not_found')}>Missing</button>
+                        <div class="scroll-x">
+                            <div class="nav nav-segmented nav-sm" role="tablist">
+                                <button type="button" class="nav-link" role="tab" aria-selected={historyStatus === 'all'} class:active={historyStatus === 'all'} on:click={() => (historyStatus = 'all')}>All</button>
+                                <button type="button" class="nav-link" role="tab" aria-selected={historyStatus === 'active'} class:active={historyStatus === 'active'} on:click={() => (historyStatus = 'active')}>Borrowed</button>
+                                <button type="button" class="nav-link" role="tab" aria-selected={historyStatus === 'overdue'} class:active={historyStatus === 'overdue'} on:click={() => (historyStatus = 'overdue')}>Overdue</button>
+                                <button type="button" class="nav-link" role="tab" aria-selected={historyStatus === 'returned'} class:active={historyStatus === 'returned'} on:click={() => (historyStatus = 'returned')}>Returned</button>
+                                <button type="button" class="nav-link" role="tab" aria-selected={historyStatus === 'not_found'} class:active={historyStatus === 'not_found'} on:click={() => (historyStatus = 'not_found')}>Missing</button>
+                            </div>
                         </div>
                         {#if historySearchQuery.trim() || historyStatus !== 'all'}
-                            <p class="search-results-info">Showing {filteredHistoryItems.length} of {historyItems.length} history records</p>
+                            <div class="small text-secondary mt-2">Showing {filteredHistoryItems.length} of {historyItems.length} history records</div>
                         {/if}
                     </div>
 
                     {#if loading}
-                        <p>Loading item history...</p>
+                        <div class="card-body text-secondary">Loading item history...</div>
                     {:else if historyItems.length === 0}
-                        <p class="no-items">No history found.</p>
+                        <div class="empty">
+                            <p class="empty-title">No history found.</p>
+                        </div>
                     {:else if filteredHistoryItems.length === 0}
-                        <div class="no-search-results">
-                            <p>No history records match{historySearchQuery.trim() ? ` your search for "${historySearchQuery}"` : ' this filter'}</p>
-                            <button class="clear-search-btn-large" on:click={(e) => { historyStatus = 'all'; clearHistorySearch(e); }}>Clear Search</button>
+                        <div class="empty">
+                            <p class="empty-title">No matches</p>
+                            <p class="empty-subtitle text-secondary">
+                                No history records match{historySearchQuery.trim() ? ` your search for "${historySearchQuery}"` : ' this filter'}.
+                            </p>
+                            <div class="empty-action">
+                                <button type="button" class="btn btn-outline-primary" on:click={(e) => { historyStatus = 'all'; clearHistorySearch(e); }}>Clear search</button>
+                            </div>
                         </div>
                     {:else}
-                        <div class="history-list">
-                            {#each filteredHistoryItems as item}
-                                {@const late = isOverdue(item.expected_return_date)}
-                                <div class="history-item {item.status}" data-status={item.status}>
-                                    <div class="history-timeline">
-                                        <div class="timeline-dot {item.status}"></div>
-                                        <div class="timeline-line"></div>
-                                    </div>
-                                    <div class="history-content">
-                                        <div class="history-header">
-                                            <div class="history-title-section">
-                                                <h3>{item.item_name}</h3>
-                                                {#if item.photo_filename}
-                                                    <div class="item-image">
-                                                        <img src="/api/photos/{item.photo_filename}" alt={item.item_name} on:error={(e) => (e.target.style.display = 'none')} />
-                                                    </div>
+                        <div class="table-responsive">
+                            <table class="table table-vcenter card-table">
+                                <thead>
+                                    <tr>
+                                        <th>Item</th>
+                                        <th>Status</th>
+                                        <th>Date</th>
+                                        <th>Borrower</th>
+                                        <th>Phone</th>
+                                        <th>Lab</th>
+                                        <th>Qty</th>
+                                        <th>Purpose</th>
+                                        <th>Last handled by</th>
+                                        <th>Requested</th>
+                                        <th>Expected return</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {#each filteredHistoryItems as item}
+                                        {@const late = isOverdue(item.expected_return_date)}
+                                        <tr>
+                                            <td>
+                                                <div class="d-flex align-items-center gap-2">
+                                                    {@render thumb(item.photo_filename, item.item_name)}
+                                                    <span class="fw-medium">{item.item_name}</span>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <div class="d-flex flex-wrap gap-1">
+                                                    {#if item.status === 'returned'}<span class="badge bg-green-lt">Returned</span>
+                                                    {:else if item.status === 'not_found'}<span class="badge bg-red-lt">Missing</span>
+                                                    {:else if item.status === 'active'}<span class="badge bg-blue-lt">Borrowed</span>
+                                                    {:else}<span class="badge bg-secondary-lt">{item.status.charAt(0).toUpperCase() + item.status.slice(1)}</span>{/if}
+                                                    {#if item.status === 'active' && late}
+                                                        <span class="badge bg-red">Overdue</span>
+                                                    {:else if item.status === 'returned' && late}
+                                                        <span class="badge bg-yellow-lt" title="Returned overdue">Late</span>
+                                                    {/if}
+                                                </div>
+                                            </td>
+                                            <td class="text-nowrap">
+                                                <div class="small text-secondary">
+                                                    {#if item.status === 'returned'}Returned{:else if item.status === 'not_found'}Marked missing{:else}Borrowed{/if}
+                                                </div>
+                                                {#if item.status === 'returned' && item.returned_at}{formatDate(item.returned_at)}
+                                                {:else if item.status === 'not_found' && item.approved_at}{formatDate(item.approved_at)}
+                                                {:else}{formatDate(item.CreatedAt)}{/if}
+                                            </td>
+                                            <td class="text-nowrap">{item.borrower_name}{@render acctBadge(item)}</td>
+                                            <td>{@render phone(item.borrower_phone)}</td>
+                                            <td class="text-nowrap">{item.lab_location}</td>
+                                            <td class="tabular">{item.quantity_borrowed}</td>
+                                            <td class="purpose-cell">{item.purpose || '-'}</td>
+                                            <td class="text-nowrap">{item.approved_by || '-'}</td>
+                                            <td class="text-nowrap">{formatDate(item.CreatedAt)}</td>
+                                            <td class="text-nowrap">
+                                                {#if item.expected_return_date}
+                                                    <span class:text-danger={item.status === 'active' && late}>{formatExpectedReturn(item.expected_return_date)}</span>
                                                 {:else}
-                                                    <div class="item-image placeholder"><span>📷</span></div>
+                                                    <span class="text-secondary">-</span>
                                                 {/if}
-                                            </div>
-                                            <div class="history-status-badges">
-                                                <span class="status-badge {item.status === 'active' ? 'approved' : item.status === 'not_found' ? 'not-found' : item.status}">
-                                                    {#if item.status === 'returned'}✅ Returned
-                                                    {:else if item.status === 'not_found'}❌ Missing
-                                                    {:else if item.status === 'active'}📋 Borrowed
-                                                    {:else}{item.status.charAt(0).toUpperCase() + item.status.slice(1)}{/if}
-                                                </span>
-                                                {#if item.status === 'active' && late}
-                                                    <span class="overdue-badge">OVERDUE</span>
-                                                {:else if item.status === 'returned' && late}
-                                                    <span class="status-badge return-pending">Late</span>
-                                                {/if}
-                                            </div>
-                                            <div class="history-date">
-                                                <span class="date-label">
-                                                    {#if item.status === 'returned'}Returned:{:else if item.status === 'not_found'}Marked Missing:{:else}Borrowed:{/if}
-                                                </span>
-                                                <span class="date-value">
-                                                    {#if item.status === 'returned' && item.returned_at}{formatDate(item.returned_at)}
-                                                    {:else if item.status === 'not_found' && item.approved_at}{formatDate(item.approved_at)}
-                                                    {:else}{formatDate(item.CreatedAt)}{/if}
-                                                </span>
-                                            </div>
-                                        </div>
-                                        <div class="history-details">
-                                            <div class="detail-row">
-                                                <div class="detail-group">
-                                                    <p><strong>Borrower:</strong> {item.borrower_name} <span class="acct-tag" class:guest={!item.user_id} title={item.user_id ? "Borrowed while signed in" : "Borrowed without an account: reach them on this phone number"}>{item.user_id ? "👤 account" : "📵 no account"}</span></p>
-                                                    <p><strong>Phone:</strong> {#if item.borrower_phone}<button class="clickable-phone" on:click={() => copyToClipboard(item.borrower_phone)} title="Click to copy phone number">{item.borrower_phone}</button>{:else}—{/if}</p>
-                                                    <p><strong>Lab:</strong> {item.lab_location}</p>
-                                                </div>
-                                                <div class="detail-group">
-                                                    <p><strong>Quantity:</strong> {item.quantity_borrowed}</p>
-                                                    <p><strong>Purpose:</strong> {item.purpose || '—'}</p>
-                                                    <p><strong>Last handled by:</strong> {item.approved_by || '—'}</p>
-                                                </div>
-                                                <div class="detail-group">
-                                                    <p><strong>Requested:</strong> {formatDate(item.CreatedAt)}</p>
-                                                    {#if item.expected_return_date}
-                                                        <p><strong>Expected Return:</strong> <span class:overdue-text={item.status === 'active' && late}>{formatExpectedReturn(item.expected_return_date)}</span></p>
-                                                    {/if}
-                                                    {#if item.status === 'returned' && item.returned_at}
-                                                        <p><strong>Return Date:</strong> {formatDate(item.returned_at)}</p>
-                                                    {/if}
-                                                    {#if item.status === 'returned' && late}
-                                                        <p><strong>Return Status:</strong> <span class="overdue-mark">⚠️ Returned Overdue</span></p>
-                                                    {/if}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            {/each}
+                                            </td>
+                                        </tr>
+                                    {/each}
+                                </tbody>
+                            </table>
                         </div>
                     {/if}
                 </div>
             {/if}
 
-            <!-- Lab View -->
+            <!-- One lab's loans -->
             {#if currentView === 'lab-view'}
-                <div class="loans-content">
-                    <h2>🏭 {selectedLab} - Borrowed Items</h2>
-                    <p class="subtitle-text">Items returned more than 2 weeks ago are automatically archived - see them under "Archived", or everything in the "📚 Item History" tab.</p>
-
-                    <div class="status-filters">
-                        <button class="filter-btn" class:active={selectedFilter === 'all'} on:click={() => filterLabLoans('all')}>All</button>
-                        <button class="filter-btn" class:active={selectedFilter === 'borrowed'} on:click={() => filterLabLoans('borrowed')}>Borrowed</button>
-                        <button class="filter-btn" class:active={selectedFilter === 'returned'} on:click={() => filterLabLoans('returned')}>Returned</button>
-                        <button class="filter-btn" class:active={selectedFilter === 'not_found'} on:click={() => filterLabLoans('not_found')}>Missing</button>
-                        <button class="filter-btn" class:active={selectedFilter === 'archived'} on:click={() => filterLabLoans('archived')}>🗄️ Archived</button>
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <div>
+                            <h3 class="card-title">{selectedLab}: borrowed items</h3>
+                            <p class="card-subtitle">
+                                Items returned more than 2 weeks ago are archived automatically. See them under "Archived", or everything in Item history.
+                            </p>
+                        </div>
                     </div>
+                    <div class="card-body">
+                        <div class="scroll-x">
+                            <div class="nav nav-segmented" role="tablist">
+                                <button type="button" class="nav-link" role="tab" aria-selected={selectedFilter === 'all'} class:active={selectedFilter === 'all'} on:click={() => filterLabLoans('all')}>All</button>
+                                <button type="button" class="nav-link" role="tab" aria-selected={selectedFilter === 'borrowed'} class:active={selectedFilter === 'borrowed'} on:click={() => filterLabLoans('borrowed')}>Borrowed</button>
+                                <button type="button" class="nav-link" role="tab" aria-selected={selectedFilter === 'returned'} class:active={selectedFilter === 'returned'} on:click={() => filterLabLoans('returned')}>Returned</button>
+                                <button type="button" class="nav-link" role="tab" aria-selected={selectedFilter === 'not_found'} class:active={selectedFilter === 'not_found'} on:click={() => filterLabLoans('not_found')}>Missing</button>
+                                <button type="button" class="nav-link" role="tab" aria-selected={selectedFilter === 'archived'} class:active={selectedFilter === 'archived'} on:click={() => filterLabLoans('archived')}>
+                                    <IconArchive size={16} class="icon me-1" />Archived
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
-                    {#if loading}
-                        <p>Loading lab items...</p>
-                    {:else if labLoans.length === 0}
-                        <p class="no-items">No items found for the selected filter.</p>
-                    {:else}
-                        <div class="loans-grid">
-                            {#each labLoans as loan}
-                                {@const overdue = isOverdue(loan.expected_return_date) && loan.status === 'active'}
-                                <div class="loan-card" class:overdue class:archived={selectedFilter === 'archived'} class:lost-missing={loan.status === 'not_found'}>
-                                    <div class="loan-header">
-                                        <div class="loan-title-section">
-                                            <h3>{loan.item_name}</h3>
-                                            {#if loan.photo_filename}
-                                                <div class="item-image">
-                                                    <img src="/api/photos/{loan.photo_filename}" alt={loan.item_name} on:error={(e) => (e.target.style.display = 'none')} />
+                {#if loading}
+                    <p class="text-secondary">Loading lab items...</p>
+                {:else if labLoans.length === 0}
+                    <div class="card">
+                        <div class="empty">
+                            <p class="empty-title">No items found for the selected filter.</p>
+                        </div>
+                    </div>
+                {:else}
+                    <div class="row row-cards g-3">
+                        {#each labLoans as loan}
+                            {@const overdue = isOverdue(loan.expected_return_date) && loan.status === 'active'}
+                            <div class="col-12 col-md-6 col-xxl-4">
+                                <div class="card h-100">
+                                    {#if overdue}<div class="card-status-top bg-danger"></div>
+                                    {:else if loan.status === 'not_found'}<div class="card-status-top bg-warning"></div>{/if}
+                                    <div class="card-body">
+                                        <div class="d-flex align-items-start gap-2 mb-3">
+                                            {@render thumb(loan.photo_filename, loan.item_name)}
+                                            <h3 class="card-title mb-0 flex-fill">{loan.item_name}</h3>
+                                            <div class="d-flex flex-wrap justify-content-end gap-1">
+                                                {#if selectedFilter === 'archived'}
+                                                    <span class="badge bg-secondary-lt">Archived</span>
+                                                {:else if loan.status === 'not_found'}
+                                                    <span class="badge bg-red-lt">Missing</span>
+                                                {:else if loan.status === 'returned'}
+                                                    <span class="badge bg-green-lt">Returned</span>
+                                                {:else}
+                                                    <span class="badge bg-blue-lt">Borrowed</span>
+                                                {/if}
+                                                {#if overdue}<span class="badge bg-red">Overdue</span>{/if}
+                                            </div>
+                                        </div>
+                                        <div class="datagrid">
+                                            <div class="datagrid-item">
+                                                <div class="datagrid-title">Borrower</div>
+                                                <div class="datagrid-content">{loan.borrower_name}{@render acctBadge(loan)}</div>
+                                            </div>
+                                            <div class="datagrid-item">
+                                                <div class="datagrid-title">Phone</div>
+                                                <div class="datagrid-content">{@render phone(loan.borrower_phone)}</div>
+                                            </div>
+                                            <div class="datagrid-item">
+                                                <div class="datagrid-title">Quantity</div>
+                                                <div class="datagrid-content tabular">{loan.quantity_borrowed}</div>
+                                            </div>
+                                            <div class="datagrid-item">
+                                                <div class="datagrid-title">Purpose</div>
+                                                <div class="datagrid-content">{loan.purpose || '-'}</div>
+                                            </div>
+                                            <div class="datagrid-item">
+                                                <div class="datagrid-title">Expected return</div>
+                                                <div class="datagrid-content" class:text-danger={overdue}>{formatExpectedReturn(loan.expected_return_date)}</div>
+                                            </div>
+                                            <div class="datagrid-item">
+                                                <div class="datagrid-title">Borrowed</div>
+                                                <div class="datagrid-content">{formatDate(loan.CreatedAt)}</div>
+                                            </div>
+                                            {#if loan.approved_by}
+                                                <div class="datagrid-item">
+                                                    <div class="datagrid-title">Last handled by</div>
+                                                    <div class="datagrid-content">{loan.approved_by}</div>
                                                 </div>
-                                            {:else}
-                                                <div class="item-image placeholder"><span>📷</span></div>
                                             {/if}
                                         </div>
-                                        <div class="status-badges">
-                                            {#if selectedFilter === 'archived'}
-                                                <span class="status-badge archived">Archived</span>
-                                            {:else if loan.status === 'not_found'}
-                                                <span class="status-badge not-found">Missing</span>
-                                            {:else if loan.status === 'returned'}
-                                                <span class="status-badge returned">Returned</span>
-                                            {:else}
-                                                <span class="status-badge approved">Borrowed</span>
-                                            {/if}
-                                            {#if overdue}<span class="overdue-badge">OVERDUE</span>{/if}
-                                        </div>
-                                    </div>
-                                    <div class="loan-details">
-                                        <p><strong>Borrower:</strong> {loan.borrower_name} <span class="acct-tag" class:guest={!loan.user_id} title={loan.user_id ? "Borrowed while signed in" : "Borrowed without an account: reach them on this phone number"}>{loan.user_id ? "👤 account" : "📵 no account"}</span></p>
-                                        <p><strong>Phone:</strong> {#if loan.borrower_phone}<button class="clickable-phone" on:click={() => copyToClipboard(loan.borrower_phone)} title="Click to copy phone number">{loan.borrower_phone}</button>{:else}—{/if}</p>
-                                        <p><strong>Quantity:</strong> {loan.quantity_borrowed}</p>
-                                        <p><strong>Purpose:</strong> {loan.purpose || '—'}</p>
-                                        <p><strong>Expected Return:</strong> <span class:overdue-text={overdue}>{formatExpectedReturn(loan.expected_return_date)}</span></p>
-                                        <p><strong>Borrowed:</strong> {formatDate(loan.CreatedAt)}</p>
-                                        {#if loan.approved_by}<p><strong>Last handled by:</strong> {loan.approved_by}</p>{/if}
                                     </div>
                                     {#if loan.status === 'active'}
-                                        <div class="loan-actions">
-                                            <div class="extend-controls">
-                                                <span class="extend-label">Extend by:</span>
-                                                <div class="extend-inputs">
-                                                    <input type="number" id="extend-days-{loan.ID}" aria-label="Extend by days" min="0" max="365" placeholder="Days" value="0" />
-                                                    <span>days</span>
-                                                    <input type="number" id="extend-hours-{loan.ID}" aria-label="Extend by hours" min="0" max="23" placeholder="Hours" value="0" />
-                                                    <span>hours</span>
+                                        <div class="card-footer">
+                                            <div class="form-label">Extend by</div>
+                                            <div class="row g-2 mb-2">
+                                                <div class="col-6">
+                                                    <div class="input-group">
+                                                        <input class="form-control" type="number" id="extend-days-{loan.ID}" aria-label="Extend by days" min="0" max="365" placeholder="Days" value="0" />
+                                                        <span class="input-group-text">days</span>
+                                                    </div>
+                                                </div>
+                                                <div class="col-6">
+                                                    <div class="input-group">
+                                                        <input class="form-control" type="number" id="extend-hours-{loan.ID}" aria-label="Extend by hours" min="0" max="23" placeholder="Hours" value="0" />
+                                                        <span class="input-group-text">hours</span>
+                                                    </div>
                                                 </div>
                                             </div>
-                                            <button
-                                                class="extend-btn"
-                                                on:click={() => {
-                                                    const days = document.getElementById(`extend-days-${loan.ID}`).value;
-                                                    const hours = document.getElementById(`extend-hours-${loan.ID}`).value;
-                                                    extendLoan(loan.ID, days, hours);
-                                                }}
-                                                disabled={loading}
-                                            >📅 Extend</button>
-                                            <button class="not-found-btn" on:click={() => markAsMissing(loan.ID, loan.item_name)} disabled={loading}>❓ Can't Find This Item</button>
+                                            <div class="btn-list">
+                                                <button
+                                                    type="button"
+                                                    class="btn btn-primary"
+                                                    on:click={() => {
+                                                        const days = document.getElementById(`extend-days-${loan.ID}`).value;
+                                                        const hours = document.getElementById(`extend-hours-${loan.ID}`).value;
+                                                        extendLoan(loan.ID, days, hours);
+                                                    }}
+                                                    disabled={loading}
+                                                >
+                                                    <IconCalendar size={18} class="icon" />Extend
+                                                </button>
+                                                <button type="button" class="btn btn-outline-warning" on:click={() => markAsMissing(loan.ID, loan.item_name)} disabled={loading}>
+                                                    <IconSearch size={18} class="icon" />Can't find this item
+                                                </button>
+                                            </div>
                                         </div>
                                     {/if}
                                     {#if loan.status === 'returned'}
-                                        <div class="return-section">
-                                            <p class="return-status">✅ Returned{#if loan.returned_at} on {formatDate(loan.returned_at)}{/if}</p>
-                                            {#if isOverdue(loan.expected_return_date)}
-                                                <p class="overdue-returned"><strong>Status:</strong> <span class="overdue-mark">⚠️ Returned Overdue</span></p>
-                                            {/if}
+                                        <div class="card-footer">
+                                            <div class="d-flex flex-wrap align-items-center gap-2">
+                                                <span class="text-success"><IconCircleCheck size={18} class="icon" /> Returned{#if loan.returned_at} on {formatDate(loan.returned_at)}{/if}</span>
+                                                {#if isOverdue(loan.expected_return_date)}
+                                                    <span class="badge bg-yellow-lt">Returned overdue</span>
+                                                {/if}
+                                            </div>
                                         </div>
                                     {:else if loan.status === 'not_found'}
-                                        <div class="found-section">
-                                            <p class="found-notice">🔍 Item marked as missing</p>
-                                            <div class="found-actions">
-                                                <button class="found-btn" on:click={() => markAsFound(loan.ID)} disabled={loading}>✅ Mark as Found</button>
-                                            </div>
+                                        <div class="card-footer d-flex flex-wrap align-items-center justify-content-between gap-2">
+                                            <span class="text-secondary">Marked as missing</span>
+                                            <button type="button" class="btn btn-outline-success btn-sm" on:click={() => markAsFound(loan.ID)} disabled={loading}>
+                                                <IconCheck size={16} class="icon" />Mark as found
+                                            </button>
                                         </div>
                                     {/if}
                                 </div>
-                            {/each}
-                        </div>
-                    {/if}
-                </div>
+                            </div>
+                        {/each}
+                    </div>
+                {/if}
             {/if}
 
-            <!-- Item Catalogue View -->
+            <!-- Item catalogue -->
             {#if currentView === 'items'}
-                <div class="loans-content">
-                    <h2>📦 Item Catalogue</h2>
-                    <p class="subtitle-text">People add items as they borrow. Here you tidy up: merge duplicates, mark valuable items as tracked (their custodian confirms them monthly), set rules.</p>
-
-                    <div class="history-search-container">
-                        <label for="item-search">Search items by name:</label>
-                        <div class="search-input-group">
-                            <input type="text" id="item-search" bind:value={itemSearch} placeholder="Search the catalogue..." autocomplete="off" class="history-search-input" />
-                            {#if itemSearch.trim()}
-                                <button class="clear-search-btn" on:click={() => (itemSearch = '')} title="Clear search" aria-label="Clear search" type="button">✕</button>
-                            {/if}
-                            <button class="refresh-btn" on:click={loadCatalogue}>🔄 Refresh</button>
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <h3 class="card-title">Item catalogue</h3>
+                            <p class="card-subtitle">
+                                People add items as they borrow. Here you tidy up: merge duplicates, mark valuable items as tracked
+                                (their custodian confirms them monthly), set rules.
+                            </p>
                         </div>
-                        <div class="status-filters compact history-filters">
-                            <button class="filter-btn" class:active={itemFilter === 'all'} on:click={() => (itemFilter = 'all')}>All</button>
-                            <button class="filter-btn" class:active={itemFilter === 'out'} on:click={() => (itemFilter = 'out')}>Out now</button>
-                            <button class="filter-btn" class:active={itemFilter === 'issue'} on:click={() => (itemFilter = 'issue')}>⚠️ With issues</button>
-                            <button class="filter-btn" class:active={itemFilter === 'tracked'} on:click={() => (itemFilter = 'tracked')}>Tracked</button>
-                            <button class="filter-btn" class:active={itemFilter === 'approval'} on:click={() => (itemFilter = 'approval')}>Needs approval</button>
-                            <button class="filter-btn" class:active={itemFilter === 'lab_only'} on:click={() => (itemFilter = 'lab_only')}>Lab only</button>
+                    </div>
+                    <div class="card-body border-bottom">
+                        <label class="form-label" for="item-search">Search items by name</label>
+                        <div class="d-flex gap-2 mb-2">
+                            <div class="input-group">
+                                <span class="input-group-text"><IconSearch size={18} /></span>
+                                <input type="text" id="item-search" class="form-control" bind:value={itemSearch} placeholder="Search the catalogue..." autocomplete="off" />
+                                {#if itemSearch.trim()}
+                                    <button class="btn btn-outline-secondary" on:click={() => (itemSearch = '')} title="Clear search" aria-label="Clear search" type="button"><IconX size={18} /></button>
+                                {/if}
+                            </div>
+                            <button type="button" class="btn btn-outline-secondary text-nowrap" on:click={loadCatalogue}>
+                                <IconRefresh size={18} class="icon" /><span class="d-none d-sm-inline">Refresh</span>
+                            </button>
                         </div>
-                        <p class="search-results-info">Showing {shownItems.length} of {catalogue.length} items</p>
+                        <div class="scroll-x">
+                            <div class="nav nav-segmented nav-sm" role="tablist">
+                                <button type="button" class="nav-link" role="tab" aria-selected={itemFilter === 'all'} class:active={itemFilter === 'all'} on:click={() => (itemFilter = 'all')}>All</button>
+                                <button type="button" class="nav-link" role="tab" aria-selected={itemFilter === 'out'} class:active={itemFilter === 'out'} on:click={() => (itemFilter = 'out')}>Out now</button>
+                                <button type="button" class="nav-link" role="tab" aria-selected={itemFilter === 'issue'} class:active={itemFilter === 'issue'} on:click={() => (itemFilter = 'issue')}>With issues</button>
+                                <button type="button" class="nav-link" role="tab" aria-selected={itemFilter === 'tracked'} class:active={itemFilter === 'tracked'} on:click={() => (itemFilter = 'tracked')}>Tracked</button>
+                                <button type="button" class="nav-link" role="tab" aria-selected={itemFilter === 'approval'} class:active={itemFilter === 'approval'} on:click={() => (itemFilter = 'approval')}>Needs approval</button>
+                                <button type="button" class="nav-link" role="tab" aria-selected={itemFilter === 'lab_only'} class:active={itemFilter === 'lab_only'} on:click={() => (itemFilter = 'lab_only')}>Lab only</button>
+                            </div>
+                        </div>
+                        <div class="small text-secondary mt-2">Showing {shownItems.length} of {catalogue.length} items</div>
                     </div>
 
                     {#if shownItems.length === 0}
-                        <p class="no-items">No items{itemSearch.trim() ? ` match "${itemSearch}"` : ' for this filter'}.</p>
+                        <div class="empty">
+                            <p class="empty-title">No items{itemSearch.trim() ? ` match "${itemSearch}"` : ' for this filter'}.</p>
+                        </div>
                     {:else}
-                        <div class="loans-grid items-grid">
-                            {#each shownItems as item (item.ID)}
-                                {@const out = itemsOut(item)}
-                                <div class="loan-card item-card" class:has-issue={item.issue} class:tracked={item.tracked}>
-                                    <div class="loan-header">
-                                        <div class="loan-title-section">
-                                            <h3>{item.name}</h3>
-                                        </div>
-                                        <div class="status-badges">
-                                            {#if out > 0}<span class="status-badge approved">{out} out</span>{/if}
-                                            {#if item.tracked}<span class="status-badge returned">Tracked</span>{/if}
-                                            {#if item.needs_approval}<span class="status-badge pending">Needs approval</span>{/if}
-                                            {#if item.lab_only}<span class="status-badge archived">Lab only</span>{/if}
-                                        </div>
-                                    </div>
-
-                                    {#if editingItem && editingItem.ID === item.ID}
-                                        <form class="form-card inline-form" on:submit|preventDefault={saveItem}>
-                                            <div class="form-group">
-                                                <label for="item-name-{item.ID}">Name</label>
-                                                <input id="item-name-{item.ID}" type="text" bind:value={editingItem.name} required />
-                                            </div>
-                                            <div class="form-group">
-                                                <label for="item-lab-{item.ID}">Lab</label>
-                                                <select id="item-lab-{item.ID}" bind:value={editingItem.home_lab}>
-                                                    {#each labs as lab}<option value={lab}>{lab}</option>{/each}
-                                                    {#if editingItem.home_lab && !labs.includes(editingItem.home_lab)}
-                                                        <option value={editingItem.home_lab}>{editingItem.home_lab}</option>
-                                                    {/if}
-                                                </select>
-                                            </div>
-                                            <div class="form-group">
-                                                <label for="item-qty-{item.ID}">Total quantity (0 = unknown)</label>
-                                                <input id="item-qty-{item.ID}" type="number" min="0" bind:value={editingItem.total_quantity} />
-                                            </div>
-                                            <div class="form-group">
-                                                <label for="item-notes-{item.ID}">Notes</label>
-                                                <input id="item-notes-{item.ID}" type="text" maxlength="500" bind:value={editingItem.notes} />
-                                            </div>
-                                            <div class="form-group">
-                                                <label class="checkbox-label"><input type="checkbox" bind:checked={editingItem.tracked} /> Tracked (custodian confirms it monthly)</label>
-                                                <label class="checkbox-label"><input type="checkbox" bind:checked={editingItem.lab_only} /> Lab only (can't leave the lab)</label>
-                                                <label class="checkbox-label"><input type="checkbox" bind:checked={editingItem.needs_approval} /> Borrowing needs approval</label>
-                                            </div>
-                                            {#if editingItem.tracked}
-                                                <div class="form-group">
-                                                    <label for="item-cust-{item.ID}">Custodian</label>
-                                                    <select id="item-cust-{item.ID}" bind:value={editingItem.custodian_id}>
-                                                        <option value={null}>None</option>
-                                                        {#each people as person}<option value={person.id}>{person.name}</option>{/each}
-                                                    </select>
+                        <div class="table-responsive">
+                            <table class="table table-vcenter card-table">
+                                <thead>
+                                    <tr>
+                                        <th>Item</th>
+                                        <th>Lab</th>
+                                        <th>Out now</th>
+                                        <th>Custodian</th>
+                                        <th>Issue</th>
+                                        <th class="w-1"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {#each shownItems as item (item.ID)}
+                                        {@const out = itemsOut(item)}
+                                        <tr>
+                                            <td class="item-cell">
+                                                <div class="fw-medium">{item.name}</div>
+                                                <div class="d-flex flex-wrap gap-1 mt-1">
+                                                    {#if out > 0}<span class="badge bg-blue-lt">{out} out</span>{/if}
+                                                    {#if item.tracked}<span class="badge bg-green-lt">Tracked</span>{/if}
+                                                    {#if item.needs_approval}<span class="badge bg-yellow-lt">Needs approval</span>{/if}
+                                                    {#if item.lab_only}<span class="badge bg-secondary-lt">Lab only</span>{/if}
                                                 </div>
-                                            {/if}
-                                            <div class="form-actions">
-                                                <button type="submit" class="submit-btn">Save</button>
-                                                <button type="button" class="cancel-btn" on:click={() => (editingItem = null)}>Cancel</button>
-                                            </div>
-                                        </form>
-                                    {:else}
-                                        <div class="loan-details">
-                                            <p><strong>Lab:</strong> {item.home_lab || '—'}</p>
-                                            <p><strong>Out now:</strong> {out}{#if item.total_quantity} of {item.total_quantity}{/if}</p>
-                                            {#if item.tracked}
-                                                <p><strong>Custodian:</strong> {personName(item.custodian_id)}</p>
-                                                {#if item.last_verified_at}<p><strong>Last confirmed:</strong> {formatDate(item.last_verified_at)}</p>{/if}
-                                            {/if}
-                                            {#if item.notes}<p><strong>Notes:</strong> {item.notes}</p>{/if}
-                                        </div>
-                                        {#if item.issue}
-                                            <div class="return-section issue-section">
-                                                <p class="return-notice">⚠️ {item.issue}</p>
-                                                {#if item.issue_reported_by}<p class="issue-by">Reported by {item.issue_reported_by}</p>{/if}
-                                                <button class="found-btn" on:click={() => clearIssue(item)}>✅ Clear issue</button>
-                                            </div>
-                                        {/if}
-                                        <div class="loan-actions item-actions">
-                                            <button class="extend-btn" on:click={() => (editingItem = { ...item, notes: item.notes || '', custodian_id: item.custodian_id ?? null })}>✏️ Edit</button>
-                                            <div class="merge-group">
-                                                <select bind:value={mergeInto[item.ID]} aria-label="Merge {item.name} into">
-                                                    <option value={undefined}>Merge into…</option>
-                                                    {#each catalogue as other (other.ID)}
-                                                        {#if other.ID !== item.ID}<option value={other.ID}>{other.name}</option>{/if}
-                                                    {/each}
-                                                </select>
-                                                <button class="not-found-btn" disabled={!mergeInto[item.ID]} on:click={() => mergeItem(item)}>🔀 Merge</button>
-                                            </div>
-                                            <button class="deny-btn" on:click={() => deleteItem(item)}>🗑️ Delete</button>
-                                        </div>
-                                    {/if}
-                                </div>
-                            {/each}
+                                                {#if item.notes}<div class="small text-secondary mt-1">{item.notes}</div>{/if}
+                                            </td>
+                                            <td class="text-nowrap">{item.home_lab || '-'}</td>
+                                            <td class="text-nowrap tabular">{out}{#if item.total_quantity} of {item.total_quantity}{/if}</td>
+                                            <td class="text-nowrap">
+                                                {#if item.tracked}
+                                                    <div>{personName(item.custodian_id)}</div>
+                                                    {#if item.last_verified_at}<div class="small text-secondary">Last confirmed {formatDate(item.last_verified_at)}</div>{/if}
+                                                {:else}
+                                                    <span class="text-secondary">-</span>
+                                                {/if}
+                                            </td>
+                                            <td class="issue-cell">
+                                                {#if item.issue}
+                                                    <div class="text-warning"><IconAlert size={16} class="icon" /> {item.issue}</div>
+                                                    {#if item.issue_reported_by}<div class="small text-secondary">Reported by {item.issue_reported_by}</div>{/if}
+                                                    <button type="button" class="btn btn-outline-success btn-sm mt-1" on:click={() => clearIssue(item)}>
+                                                        <IconCheck size={16} class="icon" />Clear issue
+                                                    </button>
+                                                {:else}
+                                                    <span class="text-secondary">-</span>
+                                                {/if}
+                                            </td>
+                                            <td>
+                                                <div class="btn-list flex-nowrap">
+                                                    <button type="button" class="btn btn-outline-secondary btn-sm" on:click={() => (editingItem = { ...item, notes: item.notes || '', custodian_id: item.custodian_id ?? null })}>
+                                                        <IconPencil size={16} class="icon" />Edit
+                                                    </button>
+                                                    <div class="input-group input-group-sm flex-nowrap merge-group">
+                                                        <select class="form-select" bind:value={mergeInto[item.ID]} aria-label="Merge {item.name} into">
+                                                            <option value={undefined}>Merge into...</option>
+                                                            {#each catalogue as other (other.ID)}
+                                                                {#if other.ID !== item.ID}<option value={other.ID}>{other.name}</option>{/if}
+                                                            {/each}
+                                                        </select>
+                                                        <button type="button" class="btn btn-outline-secondary" disabled={!mergeInto[item.ID]} on:click={() => mergeItem(item)}>
+                                                            <IconMerge size={16} class="icon" />Merge
+                                                        </button>
+                                                    </div>
+                                                    <button type="button" class="btn btn-outline-danger btn-sm" on:click={() => deleteItem(item)}>
+                                                        <IconTrash size={16} class="icon" />Delete
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    {/each}
+                                </tbody>
+                            </table>
                         </div>
                     {/if}
                 </div>
             {/if}
 
-            <!-- Change Password View -->
+            <!-- Change password -->
             {#if currentView === 'change-password'}
-                <div class="form-container">
-                    <h2>🔑 Change Password</h2>
-                    <div class="form-card">
-                        <p class="form-note">Changing it signs you out everywhere else; this browser stays signed in.</p>
-                        <form on:submit|preventDefault={changePassword}>
-                            <div class="form-group">
-                                <label for="old_password">Current Password</label>
-                                <input type="password" id="old_password" bind:value={changePasswordForm.old_password} required autocomplete="current-password" placeholder="Enter current password" />
+                <div class="row">
+                    <div class="col-12 col-xl-8">
+                        <form class="card" on:submit|preventDefault={changePassword}>
+                            <div class="card-header">
+                                <div>
+                                    <h3 class="card-title">Change password</h3>
+                                    <p class="card-subtitle">Changing it signs you out everywhere else; this browser stays signed in.</p>
+                                </div>
                             </div>
-                            <div class="form-group">
-                                <label for="new_password">New Password</label>
-                                <input type="password" id="new_password" bind:value={changePasswordForm.new_password} required minlength="8" maxlength="72" autocomplete="new-password" placeholder="Enter new password (min 8 characters)" />
+                            <div class="card-body">
+                                <div class="mb-3">
+                                    <label class="form-label" for="old_password">Current password</label>
+                                    <input class="form-control" type="password" id="old_password" bind:value={changePasswordForm.old_password} required autocomplete="current-password" placeholder="Enter current password" />
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label" for="new_password">New password</label>
+                                    <input class="form-control" type="password" id="new_password" bind:value={changePasswordForm.new_password} required minlength="8" maxlength="72" autocomplete="new-password" placeholder="At least 8 characters" />
+                                </div>
+                                <div>
+                                    <label class="form-label" for="confirm_password">Confirm new password</label>
+                                    <input class="form-control" type="password" id="confirm_password" bind:value={changePasswordForm.confirm_password} required minlength="8" maxlength="72" autocomplete="new-password" placeholder="Confirm new password" />
+                                </div>
                             </div>
-                            <div class="form-group">
-                                <label for="confirm_password">Confirm New Password</label>
-                                <input type="password" id="confirm_password" bind:value={changePasswordForm.confirm_password} required minlength="8" maxlength="72" autocomplete="new-password" placeholder="Confirm new password" />
-                            </div>
-                            <div class="form-actions">
-                                <button type="submit" class="submit-btn" disabled={savingPassword}>{savingPassword ? 'Changing...' : 'Change Password'}</button>
-                                <button type="button" class="cancel-btn" on:click={goToDashboard}>Cancel</button>
+                            <div class="card-footer">
+                                <div class="btn-list justify-content-end">
+                                    <button type="button" class="btn btn-outline-secondary" on:click={goToDashboard}>Cancel</button>
+                                    <button type="submit" class="btn btn-primary" disabled={savingPassword}>{savingPassword ? 'Changing...' : 'Change password'}</button>
+                                </div>
                             </div>
                         </form>
                     </div>
                 </div>
             {/if}
 
-            <!-- Users & Groups View (server admins) -->
+            <!-- Users & groups (server admins) -->
             {#if currentView === 'users' && can(adminInfo, 'manage_users')}
-                <div class="admin-management-container">
-                    <h2>👥 Users &amp; Groups</h2>
-
-                    <!-- Sign-ups waiting -->
-                    <div class="management-section" class:waiting={pendingUsers.length > 0}>
-                        <div class="section-header">
-                            <h3>⏳ Waiting for approval {#if pendingUsers.length}<span class="badge">{pendingUsers.length}</span>{/if}</h3>
-                            <button class="refresh-btn" on:click={loadUsers}>🔄 Refresh</button>
-                        </div>
-                        {#if pendingUsers.length === 0}
-                            <p class="no-data">Nobody is waiting. New sign-ups appear here.</p>
-                        {:else}
-                            <div class="admin-list">
-                                {#each pendingUsers as user (user.id)}
-                                    <div class="admin-card pending-card">
-                                        <div class="admin-card-info">
-                                            <h4>{user.name}</h4>
-                                            <p class="admin-username">{user.email}</p>
-                                            <p class="admin-phone">📞 {user.phone}</p>
-                                            <p class="admin-date">Signed up: {new Date(user.created_at).toLocaleDateString()}</p>
-                                            <label class="group-pick">
-                                                <span>Group</span>
-                                                <select value={user.group_id} on:change={(e) => changeGroup(e, user)} aria-label="Group for {user.name}">
-                                                    {#each groups as g}<option value={g.id}>{g.name}</option>{/each}
-                                                </select>
-                                            </label>
-                                        </div>
-                                        <div class="admin-card-actions">
-                                            <button class="approve-btn" on:click={() => updateUser(user, { status: 'active' }, `${user.name} approved`)}>✅ Approve</button>
-                                            <button class="deny-btn" on:click={() => confirm(`Reject ${user.name}'s sign-up?`) && updateUser(user, { status: 'disabled' }, `${user.name} rejected`)}>✕ Reject</button>
-                                        </div>
-                                    </div>
-                                {/each}
-                            </div>
-                        {/if}
+                <!-- Sign-ups waiting -->
+                <div class="card mb-3">
+                    {#if pendingUsers.length > 0}<div class="card-status-top bg-warning"></div>{/if}
+                    <div class="card-header">
+                        <h3 class="card-title me-auto">
+                            <IconHourglass size={18} class="icon text-secondary" />
+                            Waiting for approval
+                            {#if pendingUsers.length}<span class="badge bg-red-lt ms-1">{pendingUsers.length}</span>{/if}
+                        </h3>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" on:click={loadUsers}>
+                            <IconRefresh size={16} class="icon" />Refresh
+                        </button>
                     </div>
-
-                    <!-- Everyone -->
-                    <div class="management-section">
-                        <div class="section-header">
-                            <h3>Current Users <span class="count-note">{activeUserCount} active · {disabledUserCount} disabled</span></h3>
-                        </div>
-                        <div class="user-tools">
-                            <input type="search" class="history-search-input" bind:value={userSearch} placeholder="Search name, email, phone or group" aria-label="Search users" />
-                            <div class="status-filters compact">
-                                <button class="filter-btn" class:active={userFilter === 'all'} on:click={() => (userFilter = 'all')}>All</button>
-                                <button class="filter-btn" class:active={userFilter === 'active'} on:click={() => (userFilter = 'active')}>Active</button>
-                                <button class="filter-btn" class:active={userFilter === 'disabled'} on:click={() => (userFilter = 'disabled')}>Disabled</button>
-                                <button class="filter-btn" class:active={userFilter === 'extra'} on:click={() => (userFilter = 'extra')}>Extra access</button>
-                            </div>
-                        </div>
-
-                        {#if shownUsers.length === 0}
-                            <p class="no-data">No users match. <button class="link-btn" on:click={() => { userSearch = ''; userFilter = 'all'; }}>Show everyone</button></p>
-                        {:else}
-                            <div class="admin-list">
-                                {#each shownUsers as user (user.id)}
-                                    <div class="admin-card" class:inactive={user.status === 'disabled'} class:editing={editingUser && editingUser.id === user.id}>
-                                        <div class="admin-card-info">
-                                            <h4>
-                                                {user.name}
-                                                {#if user.id === adminInfo.id}<span class="current-user-badge">You</span>{/if}
-                                            </h4>
-                                            <p class="admin-username">{user.email}</p>
-                                            {#if user.phone}<p class="admin-phone">📞 {user.phone}</p>{/if}
-                                            <div class="admin-role">
-                                                {#if user.id === adminInfo.id}
-                                                    <span class="group-chip">{groupName(user.group_id)}</span>
-                                                {:else}
-                                                    <label class="group-pick">
-                                                        <span>Group</span>
-                                                        <select value={user.group_id} on:change={(e) => changeGroup(e, user)} aria-label="Group for {user.name}">
-                                                            {#each groups as g}<option value={g.id}>{g.name}</option>{/each}
-                                                        </select>
-                                                    </label>
-                                                {/if}
-                                                <span class="status-badge {user.status === 'active' ? 'approved' : user.status === 'pending' ? 'pending' : 'denied'}">{user.status}</span>
-                                            </div>
-                                            {#if user.overrides && user.overrides.length > 0}
-                                                <div class="tag-row">
-                                                    {#each user.overrides as o}
-                                                        <span class="tag" class:ok={o.allow} class:danger={!o.allow}>{o.allow ? '+' : '−'} {permLabel(o.perm)}</span>
-                                                    {/each}
-                                                </div>
-                                            {/if}
-                                            {#if user.created_at}<p class="admin-date">Joined: {new Date(user.created_at).toLocaleDateString()}</p>{/if}
-                                        </div>
-                                        {#if user.id !== adminInfo.id}
-                                            <div class="admin-card-actions">
-                                                <button class="toggle-btn" on:click={() => (editingUser && editingUser.id === user.id ? (editingUser = null) : editOverrides(user))}>🔐 Access</button>
-                                                <button class="toggle-btn subtle" on:click={() => resetPassword(user)}>🔑 Reset password</button>
-                                                {#if user.status === 'active'}
-                                                    <button class="delete-admin-btn" on:click={() => confirm(`Disable ${user.name}? They will be logged out.`) && updateUser(user, { status: 'disabled' }, `${user.name} disabled`)}>🚫 Disable</button>
-                                                {:else}
-                                                    <button class="refresh-btn" on:click={() => updateUser(user, { status: 'active' }, `${user.name} enabled`)}>✅ Enable</button>
-                                                {/if}
-                                            </div>
-                                        {:else}
-                                            <div class="admin-card-actions">
-                                                <button class="toggle-btn subtle" on:click={showChangePasswordView}>🔑 Change my password</button>
-                                            </div>
-                                        {/if}
-                                    </div>
-                                    {#if editingUser && editingUser.id === user.id}
-                                        <div class="form-card override-card full-row">
-                                            <h4>🔐 Access for {editingUser.name} <span class="count-note">({groupName(editingUser.group_id)})</span></h4>
-                                            <p class="form-note">"Group default" follows the group's settings below. Grant or revoke to make an exception for this person.</p>
-                                            <div class="override-grid">
-                                                {#each draftPerms as perm}
-                                                    <label class="override-row">
-                                                        <span>{permLabel(perm)}</span>
-                                                        <select bind:value={overrideDraft[perm]} class:grant={overrideDraft[perm] === 'grant'} class:revoke={overrideDraft[perm] === 'revoke'}>
-                                                            <option value={undefined}>Group default{groups.find((g) => g.id === editingUser.group_id)?.permissions.includes(perm) ? ' (yes)' : ' (no)'}</option>
-                                                            <option value="grant">Grant</option>
-                                                            <option value="revoke">Revoke</option>
-                                                        </select>
-                                                    </label>
-                                                {/each}
-                                            </div>
-                                            <div class="form-actions">
-                                                <button class="submit-btn" on:click={saveOverrides}>Save</button>
-                                                <button class="cancel-btn" on:click={() => (editingUser = null)}>Cancel</button>
-                                            </div>
-                                        </div>
-                                    {/if}
-                                {/each}
-                            </div>
-                        {/if}
-                    </div>
-
-                    <!-- What each group may do -->
-                    <div class="management-section">
-                        <div class="section-header">
-                            <h3>🛡️ Group Permissions</h3>
-                        </div>
-                        <p class="section-note">What each group can do by default. Changes apply immediately to everyone in the group.</p>
-                        <div class="table-wrap">
-                            <table class="perm-table">
+                    {#if pendingUsers.length === 0}
+                        <div class="card-body text-secondary">Nobody is waiting. New sign-ups appear here.</div>
+                    {:else}
+                        <div class="table-responsive">
+                            <table class="table table-vcenter card-table">
                                 <thead>
                                     <tr>
-                                        <th scope="col">Permission</th>
-                                        {#each groups as g}
-                                            <th scope="col" class="center">{g.name}<span class="group-count">{users.filter((u) => u.group_id === g.id).length} people</span></th>
-                                        {/each}
+                                        <th>Name</th>
+                                        <th>Phone</th>
+                                        <th>Signed up</th>
+                                        <th>Group</th>
+                                        <th class="w-1"></th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {#each allPermissions as perm}
+                                    {#each pendingUsers as user (user.id)}
                                         <tr>
-                                            <th scope="row">{permLabel(perm)}</th>
-                                            {#each groups as g}
-                                                <td class="center">
-                                                    <input type="checkbox" checked={g.permissions.includes(perm)} on:change={(e) => toggleGroupPerm(e, g, perm)} aria-label="{g.name}: {permLabel(perm)}" />
-                                                </td>
-                                            {/each}
+                                            <td>
+                                                <div class="fw-medium">{user.name}</div>
+                                                <div class="small text-secondary">{user.email}</div>
+                                            </td>
+                                            <td class="text-nowrap tabular">{user.phone}</td>
+                                            <td class="text-nowrap">{new Date(user.created_at).toLocaleDateString()}</td>
+                                            <td>
+                                                <select class="form-select form-select-sm group-select" value={user.group_id} on:change={(e) => changeGroup(e, user)} aria-label="Group for {user.name}">
+                                                    {#each groups as g}<option value={g.id}>{g.name}</option>{/each}
+                                                </select>
+                                            </td>
+                                            <td>
+                                                <div class="btn-list flex-nowrap">
+                                                    <button type="button" class="btn btn-success btn-sm" on:click={() => updateUser(user, { status: 'active' }, `${user.name} approved`)}>
+                                                        <IconCheck size={16} class="icon" />Approve
+                                                    </button>
+                                                    <button type="button" class="btn btn-outline-danger btn-sm" on:click={() => confirm(`Reject ${user.name}'s sign-up?`) && updateUser(user, { status: 'disabled' }, `${user.name} rejected`)}>
+                                                        <IconX size={16} class="icon" />Reject
+                                                    </button>
+                                                </div>
+                                            </td>
                                         </tr>
                                     {/each}
                                 </tbody>
                             </table>
                         </div>
-                    </div>
+                    {/if}
+                </div>
 
-                    <!-- Danger Zone -->
-                    <div class="management-section danger-zone">
-                        <div class="section-header">
-                            <h3>⚠️ Danger Zone</h3>
+                <!-- Everyone -->
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <div>
+                            <h3 class="card-title">Current users</h3>
+                            <p class="card-subtitle">{activeUserCount} active, {disabledUserCount} disabled</p>
                         </div>
-                        <div class="danger-actions">
-                            <div class="danger-item">
-                                <div class="danger-info">
-                                    <h4>Delete All Items Data</h4>
-                                    <p>Permanently delete all inventory items. This action cannot be undone.</p>
+                    </div>
+                    <div class="card-body border-bottom">
+                        <div class="row g-2 align-items-center">
+                            <div class="col-12 col-md">
+                                <div class="input-group">
+                                    <span class="input-group-text"><IconSearch size={18} /></span>
+                                    <input type="search" class="form-control" bind:value={userSearch} placeholder="Search name, email, phone or group" aria-label="Search users" />
                                 </div>
-                                <button class="danger-btn" on:click={deleteAllItems}>🗑️ Delete All Items</button>
+                            </div>
+                            <div class="col-12 col-md-auto scroll-x">
+                                <div class="nav nav-segmented nav-sm" role="tablist">
+                                    <button type="button" class="nav-link" role="tab" aria-selected={userFilter === 'all'} class:active={userFilter === 'all'} on:click={() => (userFilter = 'all')}>All</button>
+                                    <button type="button" class="nav-link" role="tab" aria-selected={userFilter === 'active'} class:active={userFilter === 'active'} on:click={() => (userFilter = 'active')}>Active</button>
+                                    <button type="button" class="nav-link" role="tab" aria-selected={userFilter === 'disabled'} class:active={userFilter === 'disabled'} on:click={() => (userFilter = 'disabled')}>Disabled</button>
+                                    <button type="button" class="nav-link" role="tab" aria-selected={userFilter === 'extra'} class:active={userFilter === 'extra'} on:click={() => (userFilter = 'extra')}>Extra access</button>
+                                </div>
                             </div>
                         </div>
+                    </div>
+
+                    {#if shownUsers.length === 0}
+                        <div class="empty">
+                            <p class="empty-title">No users match.</p>
+                            <div class="empty-action">
+                                <button type="button" class="btn btn-outline-primary" on:click={() => { userSearch = ''; userFilter = 'all'; }}>Show everyone</button>
+                            </div>
+                        </div>
+                    {:else}
+                        <div class="table-responsive">
+                            <table class="table table-vcenter card-table">
+                                <thead>
+                                    <tr>
+                                        <th>User</th>
+                                        <th>Phone</th>
+                                        <th>Group</th>
+                                        <th>Status</th>
+                                        <th>Extra access</th>
+                                        <th>Joined</th>
+                                        <th class="w-1"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {#each shownUsers as user (user.id)}
+                                        <tr class:text-secondary={user.status === 'disabled'}>
+                                            <td>
+                                                <div class="fw-medium">
+                                                    {user.name}
+                                                    {#if user.id === adminInfo.id}<span class="badge bg-primary-lt ms-1">You</span>{/if}
+                                                </div>
+                                                <div class="small text-secondary">{user.email}</div>
+                                            </td>
+                                            <td class="text-nowrap tabular">{user.phone || '-'}</td>
+                                            <td>
+                                                {#if user.id === adminInfo.id}
+                                                    <span class="badge bg-secondary-lt">{groupName(user.group_id)}</span>
+                                                {:else}
+                                                    <select class="form-select form-select-sm group-select" value={user.group_id} on:change={(e) => changeGroup(e, user)} aria-label="Group for {user.name}">
+                                                        {#each groups as g}<option value={g.id}>{g.name}</option>{/each}
+                                                    </select>
+                                                {/if}
+                                            </td>
+                                            <td>
+                                                <span class="badge {user.status === 'active' ? 'bg-green-lt' : user.status === 'pending' ? 'bg-yellow-lt' : 'bg-red-lt'}">{user.status}</span>
+                                            </td>
+                                            <td>
+                                                {#if user.overrides && user.overrides.length > 0}
+                                                    <div class="d-flex flex-wrap gap-1">
+                                                        {#each user.overrides as o}
+                                                            <span class="badge {o.allow ? 'bg-green-lt' : 'bg-red-lt'}">{o.allow ? '+' : '-'} {permLabel(o.perm)}</span>
+                                                        {/each}
+                                                    </div>
+                                                {:else}
+                                                    <span class="text-secondary">-</span>
+                                                {/if}
+                                            </td>
+                                            <td class="text-nowrap">{user.created_at ? new Date(user.created_at).toLocaleDateString() : '-'}</td>
+                                            <td>
+                                                <div class="btn-list flex-nowrap">
+                                                    {#if user.id !== adminInfo.id}
+                                                        <button type="button" class="btn btn-outline-secondary btn-sm" on:click={() => (editingUser && editingUser.id === user.id ? (editingUser = null) : editOverrides(user))}>
+                                                            <IconShieldLock size={16} class="icon" />Access
+                                                        </button>
+                                                        <button type="button" class="btn btn-ghost-secondary btn-sm text-nowrap" on:click={() => resetPassword(user)}>
+                                                            <IconKey size={16} class="icon" />Reset password
+                                                        </button>
+                                                        {#if user.status === 'active'}
+                                                            <button type="button" class="btn btn-outline-danger btn-sm" on:click={() => confirm(`Disable ${user.name}? They will be logged out.`) && updateUser(user, { status: 'disabled' }, `${user.name} disabled`)}>
+                                                                <IconBan size={16} class="icon" />Disable
+                                                            </button>
+                                                        {:else}
+                                                            <button type="button" class="btn btn-outline-success btn-sm" on:click={() => updateUser(user, { status: 'active' }, `${user.name} enabled`)}>
+                                                                <IconCheck size={16} class="icon" />Enable
+                                                            </button>
+                                                        {/if}
+                                                    {:else}
+                                                        <button type="button" class="btn btn-ghost-secondary btn-sm text-nowrap" on:click={showChangePasswordView}>
+                                                            <IconKey size={16} class="icon" />Change my password
+                                                        </button>
+                                                    {/if}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    {/each}
+                                </tbody>
+                            </table>
+                        </div>
+                    {/if}
+                </div>
+
+                <!-- What each group may do -->
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <div>
+                            <h3 class="card-title">Group permissions</h3>
+                            <p class="card-subtitle">What each group can do by default. Changes apply immediately to everyone in the group.</p>
+                        </div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-vcenter card-table">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Permission</th>
+                                    {#each groups as g}
+                                        <th scope="col" class="text-center">
+                                            <div>{g.name}</div>
+                                            <div class="small text-secondary text-lowercase fw-normal">{users.filter((u) => u.group_id === g.id).length} people</div>
+                                        </th>
+                                    {/each}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {#each allPermissions as perm}
+                                    <tr>
+                                        <th scope="row" class="fw-normal">{permLabel(perm)}</th>
+                                        {#each groups as g}
+                                            <td class="text-center">
+                                                <input class="form-check-input m-0" type="checkbox" checked={g.permissions.includes(perm)} on:change={(e) => toggleGroupPerm(e, g, perm)} aria-label="{g.name}: {permLabel(perm)}" />
+                                            </td>
+                                        {/each}
+                                    </tr>
+                                {/each}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Danger zone -->
+                <div class="card border-danger">
+                    <div class="card-header">
+                        <h3 class="card-title text-danger"><IconAlert size={18} class="icon" /> Danger zone</h3>
+                    </div>
+                    <div class="card-body d-flex flex-wrap align-items-center justify-content-between gap-3">
+                        <div>
+                            <div class="fw-medium">Delete all item data</div>
+                            <div class="text-secondary">Permanently delete all inventory items. This cannot be undone.</div>
+                        </div>
+                        <button type="button" class="btn btn-danger" on:click={deleteAllItems}>
+                            <IconTrash size={18} class="icon" />Delete all items
+                        </button>
                     </div>
                 </div>
             {/if}
         </div>
-    {/if}
-</div>
+    </div>
+{/if}
 
-{#snippet resourceForm()}
-    <form on:submit|preventDefault={saveResource}>
-        <h4 class="form-title">{editingResource.ID ? `✏️ Edit ${editingResource.name}` : '➕ New robot'}</h4>
-        <div class="form-group">
-            <label for="res-name">Name</label>
-            <input id="res-name" type="text" bind:value={editingResource.name} required placeholder="UR5 #1" />
+<svelte:window
+    on:keydown={(e) => {
+        if (e.key !== 'Escape') return;
+        editingItem = null;
+        editingResource = null;
+        editingUser = null;
+    }}
+/>
+
+<!-- Edit an item -->
+{#if editingItem}
+    <div class="modal modal-blur d-block" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="item-modal-title">
+        <div class="modal-dialog modal-dialog-centered" role="document">
+            <form class="modal-content" on:submit|preventDefault={saveItem}>
+                <div class="modal-header">
+                    <h5 class="modal-title" id="item-modal-title">Edit item</h5>
+                    <button type="button" class="btn-close" aria-label="Close" on:click={() => (editingItem = null)}></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label" for="item-name-{editingItem.ID}">Name</label>
+                        <input class="form-control" id="item-name-{editingItem.ID}" type="text" bind:value={editingItem.name} required />
+                    </div>
+                    <div class="row g-3 mb-3">
+                        <div class="col-12 col-sm-6">
+                            <label class="form-label" for="item-lab-{editingItem.ID}">Lab</label>
+                            <select class="form-select" id="item-lab-{editingItem.ID}" bind:value={editingItem.home_lab}>
+                                {#each labs as lab}<option value={lab}>{lab}</option>{/each}
+                                {#if editingItem.home_lab && !labs.includes(editingItem.home_lab)}
+                                    <option value={editingItem.home_lab}>{editingItem.home_lab}</option>
+                                {/if}
+                            </select>
+                        </div>
+                        <div class="col-12 col-sm-6">
+                            <label class="form-label" for="item-qty-{editingItem.ID}">Total quantity</label>
+                            <input class="form-control" id="item-qty-{editingItem.ID}" type="number" min="0" bind:value={editingItem.total_quantity} />
+                            <div class="form-hint">0 means unknown</div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="item-notes-{editingItem.ID}">Notes</label>
+                        <input class="form-control" id="item-notes-{editingItem.ID}" type="text" maxlength="500" bind:value={editingItem.notes} />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-check">
+                            <input class="form-check-input" type="checkbox" bind:checked={editingItem.tracked} />
+                            <span class="form-check-label">Tracked (custodian confirms it monthly)</span>
+                        </label>
+                        <label class="form-check">
+                            <input class="form-check-input" type="checkbox" bind:checked={editingItem.lab_only} />
+                            <span class="form-check-label">Lab only (can't leave the lab)</span>
+                        </label>
+                        <label class="form-check mb-0">
+                            <input class="form-check-input" type="checkbox" bind:checked={editingItem.needs_approval} />
+                            <span class="form-check-label">Borrowing needs approval</span>
+                        </label>
+                    </div>
+                    {#if editingItem.tracked}
+                        <div>
+                            <label class="form-label" for="item-cust-{editingItem.ID}">Custodian</label>
+                            <select class="form-select" id="item-cust-{editingItem.ID}" bind:value={editingItem.custodian_id}>
+                                <option value={null}>None</option>
+                                {#each people as person}<option value={person.id}>{person.name}</option>{/each}
+                            </select>
+                        </div>
+                    {/if}
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" on:click={() => (editingItem = null)}>Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save</button>
+                </div>
+            </form>
         </div>
-        {#if !editingResource.ID}
-            <div class="form-group">
-                <label for="res-slug">Id (can't change later)</label>
-                <input id="res-slug" type="text" bind:value={editingResource.slug} required pattern="[a-z0-9][a-z0-9-]*" placeholder="ur5-1" />
+    </div>
+    <div class="modal-backdrop fade show"></div>
+{/if}
+
+<!-- Add or edit a robot -->
+{#if editingResource}
+    <div class="modal modal-blur d-block" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="res-modal-title">
+        <div class="modal-dialog modal-dialog-centered" role="document">
+            <form class="modal-content" on:submit|preventDefault={saveResource}>
+                <div class="modal-header">
+                    <h5 class="modal-title" id="res-modal-title">{editingResource.ID ? 'Edit robot' : 'New robot'}</h5>
+                    <button type="button" class="btn-close" aria-label="Close" on:click={() => (editingResource = null)}></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label" for="res-name">Name</label>
+                        <input class="form-control" id="res-name" type="text" bind:value={editingResource.name} required placeholder="UR5 #1" />
+                    </div>
+                    {#if !editingResource.ID}
+                        <div class="mb-3">
+                            <label class="form-label" for="res-slug">Id</label>
+                            <input class="form-control" id="res-slug" type="text" bind:value={editingResource.slug} required pattern="[a-z0-9][a-z0-9-]*" placeholder="ur5-1" />
+                            <div class="form-hint">Lower-case letters, digits and dashes. It can't be changed later.</div>
+                        </div>
+                    {/if}
+                    <div class="mb-3">
+                        <label class="form-label" for="res-lab">Lab</label>
+                        <select class="form-select" id="res-lab" bind:value={editingResource.lab}>
+                            <option value="mech">Mech Lab</option>
+                            <option value="mocap">Mocap Lab</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-check">
+                            <input class="form-check-input" type="checkbox" bind:checked={editingResource.requires_thread} />
+                            <span class="form-check-label">Only research threads with access can book it</span>
+                        </label>
+                        <label class="form-check">
+                            <input class="form-check-input" type="checkbox" bind:checked={editingResource.requires_approval} />
+                            <span class="form-check-label">Every booking needs a lab admin's approval</span>
+                        </label>
+                        <label class="form-check mb-0">
+                            <input class="form-check-input" type="checkbox" bind:checked={editingResource.active} />
+                            <span class="form-check-label">Bookable</span>
+                        </label>
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-12 col-sm-6">
+                            <label class="form-label" for="res-hours">Longest booking, hours</label>
+                            <input class="form-control" id="res-hours" type="number" min="0" max="168" bind:value={editingResource.max_hours} />
+                            <div class="form-hint">0 means 12</div>
+                        </div>
+                        <div class="col-12 col-sm-6">
+                            <label class="form-label" for="res-future">Upcoming bookings per person</label>
+                            <input class="form-control" id="res-future" type="number" min="0" bind:value={editingResource.max_future_bookings} />
+                            <div class="form-hint">0 means no limit</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" on:click={() => (editingResource = null)}>Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+{/if}
+
+<!-- One person's exceptions to their group's permissions -->
+{#if editingUser}
+    <div class="modal modal-blur d-block" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="access-modal-title">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="access-modal-title">
+                        Access for {editingUser.name}
+                        <span class="text-secondary fw-normal">({groupName(editingUser.group_id)})</span>
+                    </h5>
+                    <button type="button" class="btn-close" aria-label="Close" on:click={() => (editingUser = null)}></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-secondary">"Group default" follows the group's settings. Grant or revoke to make an exception for this person.</p>
+                    <div class="row g-2">
+                        {#each draftPerms as perm}
+                            <div class="col-12 col-md-6">
+                                <label class="d-flex align-items-center justify-content-between gap-2 border rounded p-2 h-100">
+                                    <span>{permLabel(perm)}</span>
+                                    <select
+                                        class="form-select form-select-sm w-auto"
+                                        class:border-success={overrideDraft[perm] === 'grant'}
+                                        class:border-danger={overrideDraft[perm] === 'revoke'}
+                                        bind:value={overrideDraft[perm]}
+                                    >
+                                        <option value={undefined}>Group default{groups.find((g) => g.id === editingUser.group_id)?.permissions.includes(perm) ? ' (yes)' : ' (no)'}</option>
+                                        <option value="grant">Grant</option>
+                                        <option value="revoke">Revoke</option>
+                                    </select>
+                                </label>
+                            </div>
+                        {/each}
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" on:click={() => (editingUser = null)}>Cancel</button>
+                    <button type="button" class="btn btn-primary" on:click={saveOverrides}>Save</button>
+                </div>
             </div>
-        {/if}
-        <div class="form-group">
-            <label for="res-lab">Lab</label>
-            <select id="res-lab" bind:value={editingResource.lab}>
-                <option value="mech">Mech Lab</option>
-                <option value="mocap">Mocap Lab</option>
-            </select>
         </div>
-        <div class="form-group">
-            <label class="checkbox-label"><input type="checkbox" bind:checked={editingResource.requires_thread} /> Only research threads with access can book it</label>
-            <label class="checkbox-label"><input type="checkbox" bind:checked={editingResource.requires_approval} /> Every booking needs a lab admin's approval</label>
-            <label class="checkbox-label"><input type="checkbox" bind:checked={editingResource.active} /> Bookable</label>
-        </div>
-        <div class="form-group">
-            <label for="res-hours">Longest booking, hours (0 = 12)</label>
-            <input id="res-hours" type="number" min="0" max="168" bind:value={editingResource.max_hours} />
-        </div>
-        <div class="form-group">
-            <label for="res-future">Upcoming bookings per person (0 = no limit)</label>
-            <input id="res-future" type="number" min="0" bind:value={editingResource.max_future_bookings} />
-        </div>
-        <div class="form-actions">
-            <button type="submit" class="submit-btn">Save</button>
-            <button type="button" class="cancel-btn" on:click={() => (editingResource = null)}>Cancel</button>
-        </div>
-    </form>
-{/snippet}
+    </div>
+    <div class="modal-backdrop fade show"></div>
+{/if}
 
 <style>
-    /* The original admin dashboard's look, in Rosé Pine. The site shell
-       (lib/Shell.svelte) paints the page and draws the header and footer. */
-
-    /* Same column as every other page, so the admin lines up with the header */
-    .admin-container {
-        max-width: var(--page-max);
-        margin: 0 auto;
-        padding: 20px var(--gutter) 48px;
-        box-sizing: border-box;
-    }
-
-    .admin-container :global(*),
-    .admin-container :global(*::before),
-    .admin-container :global(*::after) {
-        box-sizing: border-box;
-    }
-
-    h2 {
-        color: var(--ctp-text);
-        font-size: clamp(1.3rem, 3vw, 1.6rem);
-        font-weight: 650;
-        margin: 0 0 8px;
-    }
-
-    code {
-        font-family: var(--mono);
-        font-size: 0.9em;
-        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
-        padding: 1px 5px;
-        border-radius: 4px;
-    }
-
-    /* Dashboard header */
-    .dashboard-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: clamp(16px, 3vw, 28px);
-        padding-bottom: 20px;
-        border-bottom: 2px solid var(--ctp-surface0);
-        flex-wrap: wrap;
-        gap: 15px;
-    }
-
-    .dashboard-title {
-        display: flex;
-        align-items: center;
-        gap: clamp(12px, 2.5vw, 18px);
-        flex: 1;
-        min-width: 0;
-    }
-
-    .dashboard-header h1 {
-        margin: 0;
-        color: var(--ctp-text);
-        font-size: clamp(1.4rem, 3.5vw, 2rem);
-        font-weight: 600;
-        line-height: 1.2;
-    }
-
-    .admin-info {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        flex-wrap: wrap;
-        color: var(--ctp-subtext0);
-    }
-
-    .admin-info strong {
-        color: var(--ctp-text);
-    }
-
-    .role-pill {
-        padding: 4px 10px;
-        border-radius: var(--radius-pill);
-        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
-        border: 1px solid var(--ctp-surface1);
-        color: var(--ctp-mauve);
-        font-size: 0.8rem;
-        font-weight: 600;
-    }
-
-    .logout-btn {
-        background: linear-gradient(135deg, var(--ctp-red), var(--ctp-maroon));
-        color: var(--accent-ink);
-        border: none;
-        min-height: 40px;
-        padding: 8px clamp(12px, 3vw, 20px);
-        border-radius: 8px;
-        cursor: pointer;
-        font: inherit;
-        font-size: clamp(0.85rem, 1.8vw, 1rem);
-        font-weight: 600;
-        transition: all 0.3s ease;
-    }
-
-    .logout-btn:hover {
-        filter: brightness(1.08);
-        transform: translateY(-1px);
-        box-shadow: 0 4px 15px color-mix(in srgb, var(--ctp-red) 30%, transparent);
-    }
-
-    /* Navigation tabs: a strip that scrolls sideways on narrow screens */
-    .nav-tabs {
-        display: flex;
-        gap: clamp(4px, 0.8vw, 10px);
-        margin-bottom: clamp(18px, 3vw, 32px);
-        border-bottom: 2px solid var(--ctp-surface0);
-        overflow-x: auto;
-        overflow-y: hidden;
-        scroll-snap-type: x proximity;
-        -webkit-overflow-scrolling: touch;
-        scrollbar-width: thin;
-        /* The tab strip is the primary navigation - keep it in reach */
+    /* Only what Tabler has no class for */
+    .admin-nav {
         position: sticky;
-        top: 0;
-        z-index: 5;
-        background: linear-gradient(color-mix(in srgb, var(--bg) 60%, transparent) 80%, transparent);
-        padding-bottom: 2px;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
+        top: 1rem;
     }
 
-    .nav-tabs::-webkit-scrollbar {
-        height: 4px;
-    }
-
-    /* Wide screens: every tab visible at once, on two rows if needed */
-    @media (min-width: 900px) {
-        .nav-tabs {
-            flex-wrap: wrap;
-            overflow: visible;
-        }
-    }
-
-    .tab-btn {
-        flex: none;
-        background: none;
-        border: none;
-        min-height: 44px;
-        padding: 10px clamp(12px, 2vw, 20px);
-        cursor: pointer;
-        border-bottom: 3px solid transparent;
-        font-size: clamp(0.88rem, 1.7vw, 1rem);
-        position: relative;
-        color: var(--ctp-subtext0);
-        white-space: nowrap;
-        font-weight: 550;
-        font-family: inherit;
-        border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-        scroll-snap-align: start;
-        transition:
-            color var(--fast) var(--ease),
-            background-color var(--fast) var(--ease),
-            transform var(--fast) var(--ease);
-    }
-
-    .tab-btn:hover {
-        color: var(--ctp-text);
-        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
-        transform: translateY(-2px);
-    }
-
-    /* The underline grows out from the middle rather than snapping in */
-    .tab-btn::after {
-        content: '';
-        position: absolute;
-        left: 12%;
-        right: 12%;
-        bottom: -2px;
-        height: 3px;
-        border-radius: var(--radius-pill);
-        background: var(--ctp-mauve);
-        transform: scaleX(0);
-        transition: transform var(--normal) var(--ease);
-    }
-
-    .tab-btn:hover::after {
-        transform: scaleX(0.5);
-    }
-
-    .tab-btn.active::after {
-        transform: scaleX(1);
-    }
-
-    .tab-btn.active {
-        border-bottom-color: var(--ctp-flamingo);
-        color: var(--ctp-flamingo);
-        font-weight: 600;
-    }
-
-    .badge {
-        display: inline-block;
-        background: var(--ctp-red);
-        color: var(--accent-ink);
-        border-radius: 12px;
-        padding: 2px 8px;
-        font-size: 0.72rem;
-        margin-left: 6px;
-        font-weight: 700;
-        vertical-align: middle;
-        line-height: 1.4;
-    }
-
-    /* Dashboard overview */
-    .overview-cards {
-        display: grid;
-        /* min() keeps a single column from overflowing a narrow phone */
-        grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
-        gap: clamp(12px, 2vw, 20px);
-        margin-top: 20px;
-    }
-
-    .card {
-        background:
-            linear-gradient(180deg, color-mix(in srgb, var(--ctp-text) 4%, transparent), transparent 60%),
-            color-mix(in srgb, var(--ctp-mantle) 60%, transparent);
-        padding: clamp(18px, 3.5vw, 30px);
-        border-radius: var(--radius-lg);
-        box-shadow: var(--shadow-sm);
-        text-align: center;
-        border: 1px solid var(--ctp-surface0);
-        transition:
-            transform var(--normal) var(--ease),
-            box-shadow var(--normal) var(--ease),
-            border-color var(--normal) var(--ease);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .card:hover {
-        transform: translateY(-4px) scale(1.015);
-        border-color: color-mix(in srgb, var(--ctp-mauve) 45%, var(--ctp-surface1));
-        box-shadow: var(--shadow);
-    }
-
-    /* Something is waiting: the card says so before anyone reads the number */
-    .card.attention {
-        border-color: color-mix(in srgb, var(--ctp-yellow) 60%, var(--ctp-surface1));
-        background:
-            linear-gradient(180deg, color-mix(in srgb, var(--ctp-yellow) 10%, transparent), transparent 70%),
-            color-mix(in srgb, var(--ctp-mantle) 60%, transparent);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .card.attention .stat-number {
-        color: var(--ctp-yellow);
-    }
-
-    .card p:not(.stat-number) {
-        color: var(--ctp-subtext0);
-    }
-
-    .stat-number {
-        font-size: clamp(2.5rem, 8vw, 4rem);
-        font-weight: 700;
-        color: var(--ctp-flamingo);
-        margin: 15px 0;
-        line-height: 1;
-        font-variant-numeric: tabular-nums;
-    }
-
-    .card h3 {
-        color: var(--ctp-text);
-        margin: 0 0 15px;
-        font-size: clamp(1.1rem, 2.5vw, 1.3rem);
-    }
-
-    .card-btn {
-        background: linear-gradient(135deg, var(--ctp-flamingo), var(--ctp-maroon));
-        color: var(--accent-ink);
-        border: none;
-        min-height: 42px;
-        padding: 8px clamp(16px, 3vw, 24px);
-        border-radius: 8px;
-        cursor: pointer;
-        font: inherit;
-        font-size: clamp(0.88rem, 1.8vw, 1rem);
-        font-weight: 600;
-        transition: all 0.3s ease;
-    }
-
-    .card-btn:hover {
-        filter: brightness(1.06);
-        transform: translateY(-1px);
-        box-shadow: 0 4px 15px color-mix(in srgb, var(--ctp-flamingo) 30%, transparent);
-    }
-
-    .export-actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-        margin-top: 30px;
-        padding: clamp(18px, 4vw, 25px);
-        background: color-mix(in srgb, var(--ctp-crust) 60%, transparent);
-        border-radius: 12px;
-        border: 1px solid var(--ctp-surface0);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .export-btn {
-        border: none;
-        min-height: 44px;
-        padding: 10px clamp(16px, 3vw, 24px);
-        border-radius: 8px;
-        cursor: pointer;
-        font: inherit;
-        font-size: clamp(0.88rem, 1.8vw, 1rem);
-        font-weight: 600;
-        transition: all 0.3s ease;
-        background: linear-gradient(135deg, var(--ctp-teal), var(--ctp-blue));
-        color: var(--rp-base);
-    }
-
-    .export-btn:hover {
-        filter: brightness(1.06);
-        transform: translateY(-1px);
-        box-shadow: 0 4px 15px color-mix(in srgb, var(--ctp-teal) 30%, transparent);
-    }
-
-    /* Status filters */
-    .status-filters {
-        display: flex;
-        gap: clamp(8px, 2vw, 12px);
-        margin-bottom: clamp(15px, 3vw, 25px);
-        flex-wrap: wrap;
-    }
-
-    .status-filters.compact {
-        margin-bottom: 0;
-        gap: 8px;
-    }
-
-    .filter-btn {
-        background: color-mix(in srgb, var(--ctp-crust) 60%, transparent);
-        border: 2px solid var(--ctp-surface0);
-        color: var(--ctp-subtext0);
-        min-height: 40px;
-        padding: 6px clamp(12px, 3vw, 18px);
-        border-radius: 20px;
-        cursor: pointer;
-        font: inherit;
-        font-size: clamp(0.85rem, 1.8vw, 0.95rem);
-        transition: all 0.3s ease;
-        font-weight: 500;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .filter-btn:hover {
-        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
-        border-color: var(--ctp-flamingo);
-        color: var(--ctp-text);
-    }
-
-    .filter-btn.active {
-        background: var(--ctp-flamingo);
-        border-color: var(--ctp-flamingo);
-        color: var(--accent-ink);
-        font-weight: 600;
-    }
-
-    /* Loan cards */
-    .loans-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(min(100%, 450px), 1fr));
-        gap: clamp(15px, 3vw, 25px);
-        margin-top: 20px;
-    }
-
-    .loan-card {
-        background: color-mix(in srgb, var(--ctp-crust) 60%, transparent);
-        border-radius: 12px;
-        padding: clamp(16px, 4vw, 25px);
-        box-shadow: var(--shadow);
-        border: 1px solid var(--ctp-surface0);
-        border-left: 5px solid var(--ctp-flamingo);
-        transition: all 0.3s ease;
-        min-width: 0;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .loan-card:hover {
-        transform: translateY(-2px);
-        box-shadow: var(--shadow-lg);
-        border-color: var(--ctp-flamingo);
-    }
-
-    .loan-card.pending {
-        border-left-color: var(--warn);
-        background: color-mix(in srgb, var(--warn) 6%, color-mix(in srgb, var(--ctp-crust) 60%, transparent));
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .loan-card.overdue {
-        border-left-color: var(--danger);
-        background: color-mix(in srgb, var(--danger) 5%, color-mix(in srgb, var(--ctp-crust) 60%, transparent));
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .loan-card.lost-missing {
-        border-left-color: var(--ctp-peach);
-        background: color-mix(in srgb, var(--ctp-peach) 5%, color-mix(in srgb, var(--ctp-crust) 60%, transparent));
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .loan-card.archived {
-        border-left-color: var(--ctp-overlay0);
-        background: color-mix(in srgb, var(--ctp-overlay0) 5%, color-mix(in srgb, var(--ctp-crust) 60%, transparent));
-        opacity: 0.9;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .loan-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        margin-bottom: 15px;
-        gap: 15px;
-    }
-
-    .loan-title-section {
-        display: flex;
-        align-items: flex-start;
-        gap: 15px;
-        flex: 1;
+    .min-w-0 {
         min-width: 0;
     }
 
-    .loan-title-section h3 {
-        margin: 0;
-        color: var(--ctp-text);
-        font-size: clamp(1.1rem, 2.5vw, 1.3rem);
-        flex: 1;
-        font-weight: 600;
-        overflow-wrap: anywhere;
+    /* Filter strips scroll sideways on a phone rather than wrapping */
+    .scroll-x {
+        overflow-x: auto;
+        max-width: 100%;
+        -webkit-overflow-scrolling: touch;
     }
 
-    .status-badges {
-        display: flex;
-        flex-direction: column;
-        gap: 5px;
-        align-items: flex-end;
-    }
-
-    .status-badge {
-        padding: 4px 10px;
-        border-radius: 12px;
-        font-size: 0.72rem;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
+    .scroll-x :global(.nav-segmented) {
+        flex-wrap: nowrap;
         white-space: nowrap;
-        border: 1px solid transparent;
     }
 
-    .status-badge.pending,
-    .status-badge.return-pending {
-        background: color-mix(in srgb, var(--warn) 18%, transparent);
-        color: var(--warn);
-        border-color: color-mix(in srgb, var(--warn) 30%, transparent);
-    }
-
-    .status-badge.approved {
-        background: color-mix(in srgb, var(--ctp-green) 18%, transparent);
-        color: var(--ctp-green);
-        border-color: color-mix(in srgb, var(--ctp-green) 30%, transparent);
-    }
-
-    .status-badge.returned {
-        background: color-mix(in srgb, var(--ctp-blue) 18%, transparent);
-        color: var(--link);
-        border-color: color-mix(in srgb, var(--ctp-blue) 35%, transparent);
-    }
-
-    .status-badge.denied,
-    .status-badge.archived {
-        background: color-mix(in srgb, var(--ctp-overlay0) 18%, transparent);
-        color: var(--ctp-subtext0);
-        border-color: color-mix(in srgb, var(--ctp-overlay0) 30%, transparent);
-    }
-
-    .status-badge.not-found,
-    .status-badge.not_found {
-        background: color-mix(in srgb, var(--ctp-peach) 18%, transparent);
-        color: var(--ctp-peach);
-        border-color: color-mix(in srgb, var(--ctp-peach) 30%, transparent);
-    }
-
-    .overdue-badge {
-        background: var(--danger);
-        color: var(--accent-ink);
-        padding: 4px 10px;
-        border-radius: 12px;
-        font-size: 0.72rem;
-        font-weight: 700;
-        white-space: nowrap;
-        animation: pulse 2s infinite;
-    }
-
-    @keyframes pulse {
-        0% { opacity: 1; box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger) 70%, transparent); }
-        50% { opacity: 0.8; box-shadow: 0 0 0 8px transparent; }
-        100% { opacity: 1; box-shadow: 0 0 0 0 transparent; }
-    }
-
-    .loan-details p {
-        margin: clamp(6px, 1.5vw, 10px) 0;
-        color: var(--ctp-subtext0);
-        font-size: clamp(0.88rem, 1.8vw, 0.95rem);
-        overflow-wrap: anywhere;
-    }
-
-    .loan-details strong {
-        color: var(--ctp-text);
-        font-weight: 600;
-    }
-
-    /* Whether the borrower had an account: without one, the phone is the
-       only way to reach them, so it is flagged */
-    .acct-tag {
-        display: inline-block;
-        margin-left: 6px;
-        padding: 1px 8px;
-        border-radius: var(--radius-pill);
-        font-size: 0.72rem;
-        font-weight: 600;
-        background: color-mix(in srgb, var(--ctp-blue) 14%, transparent);
-        color: var(--link);
-        white-space: nowrap;
-        vertical-align: middle;
-    }
-
-    .acct-tag.guest {
-        background: color-mix(in srgb, var(--warn) 16%, transparent);
-        color: var(--warn);
-    }
-
-    .clickable-phone {
-        background: none;
-        border: none;
-        font: inherit;
-        color: var(--link);
-        cursor: copy;
-        text-decoration: underline;
-        text-decoration-style: dotted;
-        transition: all 0.2s ease;
-        padding: 2px 4px;
-        border-radius: 3px;
-    }
-
-    .clickable-phone:hover {
-        color: var(--ctp-lavender);
-        background-color: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
-        text-decoration-style: solid;
-    }
-
-    .item-image {
-        width: clamp(64px, 15vw, 90px);
-        height: clamp(64px, 15vw, 90px);
-        border-radius: 8px;
-        overflow: hidden;
-        border: 2px solid var(--ctp-surface0);
+    .thumb {
+        width: 2rem;
+        height: 2rem;
         flex-shrink: 0;
-    }
-
-    .item-image img {
-        width: 100%;
-        height: 100%;
         object-fit: cover;
-        display: block;
+        border-radius: var(--tblr-border-radius);
+        border: 1px solid var(--tblr-border-color);
     }
 
-    .item-image.placeholder {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: color-mix(in srgb, var(--ctp-mantle) 60%, transparent);
-        color: var(--ctp-subtext0);
-        font-size: clamp(1.2rem, 3vw, 1.8rem);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
+    .purpose-cell,
+    .issue-cell {
+        min-width: 12rem;
+        max-width: 22rem;
     }
 
-    .loan-actions {
-        display: flex;
-        gap: clamp(8px, 2vw, 12px);
-        margin-top: 15px;
-        align-items: center;
-        flex-wrap: wrap;
+    .item-cell {
+        min-width: 12rem;
     }
 
-    .approve-btn,
-    .deny-btn,
-    .extend-btn,
-    .not-found-btn {
-        border: none;
-        min-height: 42px;
-        padding: 8px clamp(12px, 3vw, 18px);
-        border-radius: 8px;
-        cursor: pointer;
-        font: inherit;
-        font-size: clamp(0.85rem, 1.8vw, 0.92rem);
-        font-weight: 600;
-        transition: all 0.3s ease;
-    }
-
-    .approve-btn {
-        background: linear-gradient(135deg, var(--ctp-green), var(--ctp-teal));
-        color: var(--rp-base);
-    }
-
-    .deny-btn {
-        background: linear-gradient(135deg, var(--ctp-red), var(--ctp-maroon));
-        color: var(--accent-ink);
-    }
-
-    .extend-btn {
-        background: linear-gradient(135deg, var(--ctp-flamingo), var(--ctp-maroon));
-        color: var(--accent-ink);
-    }
-
-    .not-found-btn {
-        background: linear-gradient(135deg, var(--ctp-peach), var(--ctp-yellow));
-        color: var(--rp-base);
-    }
-
-    .approve-btn:hover,
-    .deny-btn:hover,
-    .extend-btn:hover,
-    .not-found-btn:hover {
-        filter: brightness(1.07);
-        transform: translateY(-1px);
-        box-shadow: var(--shadow-sm);
-    }
-
-    .approve-btn:disabled,
-    .deny-btn:disabled,
-    .extend-btn:disabled,
-    .not-found-btn:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-        transform: none;
-        filter: none;
-    }
-
-    .extend-controls {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-        width: 100%;
-    }
-
-    .extend-label {
-        font-weight: 600;
-        color: var(--ctp-text);
-    }
-
-    .extend-inputs {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        flex-wrap: wrap;
-    }
-
-    .extend-inputs input {
-        width: 72px;
-        min-height: 40px;
-        padding: 6px;
-        border: 2px solid var(--ctp-surface0);
-        border-radius: 6px;
-        text-align: center;
-        background: color-mix(in srgb, var(--ctp-base) 60%, transparent);
-        color: var(--ctp-text);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .extend-inputs input:focus {
-        border-color: var(--ctp-flamingo);
-        outline: none;
-    }
-
-    .extend-inputs span {
-        font-size: 0.9rem;
-        color: var(--ctp-subtext0);
-    }
-
-    .return-section {
-        background: color-mix(in srgb, var(--ctp-blue) 8%, transparent);
-        border: 1px solid color-mix(in srgb, var(--ctp-blue) 30%, transparent);
-        border-radius: 8px;
-        padding: 12px 15px;
-        margin-top: 15px;
-    }
-
-    .return-section p {
-        margin: 4px 0;
-    }
-
-    .return-status {
-        color: var(--link);
-        font-weight: 600;
-    }
-
-    .return-notice {
-        color: var(--warn);
-        font-weight: 600;
-        font-size: 0.95rem;
-    }
-
-    .issue-section {
-        background: color-mix(in srgb, var(--warn) 8%, transparent);
-        border-color: color-mix(in srgb, var(--warn) 35%, transparent);
-    }
-
-    .issue-by {
-        font-size: 0.85rem;
-        color: var(--ctp-subtext0);
-        margin-bottom: 10px !important;
-    }
-
-    .found-section {
-        background: color-mix(in srgb, var(--ctp-green) 8%, transparent);
-        border: 1px solid color-mix(in srgb, var(--ctp-green) 30%, transparent);
-        border-radius: 8px;
-        padding: 15px;
-        margin-top: 15px;
-    }
-
-    .found-notice {
-        color: var(--ctp-green);
-        font-weight: 600;
-        margin: 0 0 10px;
-        font-size: 0.95rem;
-    }
-
-    .found-actions {
-        display: flex;
-        gap: 10px;
-        flex-wrap: wrap;
-    }
-
-    .found-btn {
-        background: var(--ctp-green);
-        color: var(--rp-base);
-        border: none;
-        min-height: 42px;
-        padding: 8px clamp(14px, 2.5vw, 20px);
-        border-radius: 6px;
-        cursor: pointer;
-        font: inherit;
-        font-size: 0.9rem;
-        font-weight: 600;
-        transition: all 0.3s ease;
-        box-shadow: var(--shadow-sm);
-    }
-
-    .found-btn:hover {
-        filter: brightness(1.08);
-        transform: translateY(-2px);
-    }
-
-    .found-btn:disabled {
-        opacity: 0.6;
-        cursor: not-allowed;
-        transform: none;
-    }
-
-    .overdue-text {
-        color: var(--danger);
-        font-weight: 600;
-    }
-
-    .overdue-returned {
-        margin: 8px 0;
-    }
-
-    .overdue-mark {
-        color: var(--warn);
-        font-weight: 600;
-        background: color-mix(in srgb, var(--warn) 14%, transparent);
-        padding: 2px 6px;
-        border-radius: 4px;
-        border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent);
-    }
-
-    .subtitle-text {
-        color: var(--ctp-subtext0);
-        font-style: italic;
-        margin: 0 0 20px;
-        font-size: clamp(0.85rem, 1.8vw, 0.92rem);
-    }
-
-    .no-items {
-        text-align: center;
-        color: var(--ctp-subtext0);
-        font-style: italic;
-        padding: clamp(24px, 6vw, 50px);
-        font-size: clamp(1rem, 2vw, 1.1rem);
-    }
-
-    .calendar-link {
-        color: var(--link);
-        text-decoration: none;
-        margin-left: 6px;
-    }
-
-    .calendar-link:hover {
-        text-decoration: underline;
-    }
-
-    .link-btn {
-        background: none;
-        border: none;
-        padding: 0;
-        font: inherit;
-        color: var(--link);
-        cursor: pointer;
-    }
-
-    .link-btn:hover {
-        text-decoration: underline;
-    }
-
-    .more-btn {
-        display: block;
-        margin: 12px auto 0;
-        min-height: 40px;
-        padding: 0 12px;
-    }
-
-    /* --- printer cards --- */
-    .printer-admin-grid {
-        display: grid;
-        /* Three printers across the 1200px column on a desktop, two on a
-           tablet, one on a phone; min() stops a column overflowing a phone */
-        grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
-        align-items: start;
-        gap: 14px;
-    }
-
-    .printer-admin-card {
-        --state: var(--ctp-overlay0);
-        background:
-            linear-gradient(180deg, color-mix(in srgb, var(--ctp-text) 3.5%, transparent), transparent 55%),
-            color-mix(in srgb, var(--ctp-mantle) 60%, transparent);
-        border: 1px solid var(--ctp-surface0);
-        border-left: 4px solid var(--state);
-        border-radius: var(--radius-lg);
-        padding: 16px;
-        box-shadow: var(--shadow-sm);
-        min-width: 0;
-        transition:
-            transform var(--normal) var(--ease),
-            box-shadow var(--normal) var(--ease);
-        animation: rise var(--slow) var(--ease) both;
-        animation-delay: calc(var(--i, 0) * 70ms);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .printer-admin-card:hover {
-        box-shadow: var(--shadow);
-    }
-
-    .printer-admin-card.running { --state: var(--ctp-green); }
-    .printer-admin-card.failed { --state: var(--ctp-red); }
-    .printer-admin-card.paused { --state: var(--ctp-yellow); }
-    .printer-admin-card.finished { --state: var(--ctp-blue); }
-    .printer-admin-card.idle { --state: var(--ctp-sapphire); }
-    .printer-admin-card.offline .pa-head,
-    .printer-admin-card.offline .pa-camera { opacity: 0.62; }
-
-    .pa-head {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        margin-bottom: 12px;
-    }
-
-    .pa-image {
-        width: 40px;
-        height: 40px;
-        object-fit: contain;
-        flex-shrink: 0;
-        transition: transform var(--normal) var(--ease);
-    }
-
-    .printer-admin-card:hover .pa-image {
-        transform: scale(1.1) rotate(-3deg);
-    }
-
-    .pa-title {
-        flex: 1;
-        min-width: 0;
-    }
-
-    .pa-title h3 {
-        margin: 0;
-        font-size: 1rem;
-        color: var(--ctp-text);
-    }
-
-    .pa-avail {
-        font-size: 0.8rem;
-        font-weight: 650;
-    }
-
-    .pa-avail.free { color: var(--ctp-green); }
-    .pa-avail.busy { color: var(--ctp-peach); }
-    .pa-avail.unknown { color: var(--ctp-overlay0); }
-
-    .printer-admin-card.running .pa-avail.busy::before {
-        content: '';
-        display: inline-block;
-        width: 7px;
-        height: 7px;
-        margin-right: 6px;
-        border-radius: 50%;
-        background: var(--ctp-peach);
-        animation: soft-pulse 1.8s ease-in-out infinite;
-    }
-
-    .pa-state {
-        font-size: 0.72rem;
-        padding: 4px 10px;
-        border-radius: var(--radius-pill);
-        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
-        color: var(--ctp-text);
-        white-space: nowrap;
-    }
-
-    .pa-state.running { background: var(--ctp-green); color: var(--rp-base); }
-    .pa-state.failed,
-    .pa-state.offline { background: var(--ctp-red); color: var(--accent-ink); }
-    .pa-state.paused { background: var(--ctp-yellow); color: var(--rp-base); }
-    .pa-state.finished { background: var(--ctp-blue); color: var(--accent-ink); }
-
-    .pa-camera {
-        aspect-ratio: 16 / 9;
-        background: color-mix(in srgb, var(--ctp-crust) 60%, transparent);
-        border: 1px solid var(--ctp-surface0);
-        border-radius: var(--radius);
-        overflow: hidden;
-        margin-bottom: 12px;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .pa-camera img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        display: block;
-        animation: fade var(--normal) var(--ease);
-    }
-
-    .pa-camera-empty {
-        width: 100%;
-        height: 100%;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        color: var(--ctp-overlay0);
-    }
-
-    /* Beat the ".pa-camera img" rule above, which would stretch the icon */
-    .pa-camera-empty img {
-        width: 60px;
-        height: 60px;
-        object-fit: contain;
-        opacity: 0.35;
-    }
-
-    .pa-camera-empty p {
-        margin: 4px 0 0;
-        font-size: 0.78rem;
-    }
-
-    .pa-progress-row {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }
-
-    .pa-progress-bar {
-        flex: 1;
-        height: 8px;
-        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
-        border-radius: var(--radius-pill);
-        overflow: hidden;
-    }
-
-    .pa-progress-fill {
-        height: 100%;
-        border-radius: var(--radius-pill);
-        background: linear-gradient(90deg, var(--ctp-green), var(--ctp-teal));
-        transition: width var(--slow) var(--ease);
-    }
-
-    .pa-progress-text {
-        font-size: 0.8rem;
-        color: var(--ctp-subtext0);
-        min-width: 36px;
-        text-align: right;
-    }
-
-    .pa-remaining {
-        margin: 6px 0 0;
-        font-size: 0.85rem;
-        color: var(--ctp-green);
-    }
-
-    .pa-file {
-        margin: 8px 0 0;
-        font-size: 0.8rem;
-        color: var(--ctp-subtext0);
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .pa-temps {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-        margin-top: 10px;
-        font-size: 0.78rem;
-        color: var(--ctp-subtext0);
-    }
-
-    /* --- AMS --- */
-    .pa-ams {
-        margin-top: 12px;
-        padding: 10px;
-        border: 1px solid var(--ctp-surface0);
-        border-radius: var(--radius-sm);
-        background: color-mix(in srgb, var(--ctp-crust) 60%, transparent);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .pa-ams-head {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        flex-wrap: wrap;
-        margin-bottom: 8px;
-    }
-
-    .pa-ams-title {
-        font-size: 0.72rem;
-        font-weight: 700;
-        letter-spacing: 0.6px;
-        text-transform: uppercase;
-        color: var(--ctp-teal);
-    }
-
-    .pa-ams-meta {
-        font-size: 0.7rem;
-        color: var(--ctp-subtext0);
-    }
-
-    .pa-ams-slots {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(68px, 1fr));
-        gap: 6px;
-    }
-
-    .pa-ams-slot {
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-        padding: 7px;
-        border: 1px solid var(--ctp-surface1);
-        border-radius: var(--radius-sm);
-        background: color-mix(in srgb, var(--ctp-mantle) 60%, transparent);
-        min-width: 0;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .pa-ams-slot.active {
-        border-color: var(--ctp-green);
-        box-shadow: 0 0 0 1px var(--ctp-green) inset;
-    }
-
-    .pa-ams-slot.empty { opacity: 0.45; }
-
-    .pa-ams-top {
-        display: flex;
-        align-items: center;
-        gap: 5px;
-    }
-
-    .pa-ams-swatch {
-        width: 14px;
-        height: 14px;
-        border-radius: 50%;
-        border: 1px solid var(--ctp-surface2);
-        flex-shrink: 0;
-    }
-
-    .pa-ams-num {
-        font-size: 0.65rem;
-        color: var(--ctp-overlay0);
-        font-weight: 700;
-    }
-
-    .pa-ams-dot {
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        background: var(--ctp-green);
-        margin-left: auto;
-        animation: soft-pulse 1.8s ease-in-out infinite;
-    }
-
-    .pa-ams-mat {
-        font-size: 0.68rem;
-        color: var(--ctp-text);
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .pa-ams-bar {
-        display: block;
-        height: 4px;
-        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
-        border-radius: var(--radius-pill);
-        overflow: hidden;
-    }
-
-    .pa-ams-fill {
-        display: block;
-        height: 100%;
-        background: linear-gradient(90deg, var(--ctp-teal), var(--ctp-sky));
-        transition: width var(--slow) var(--ease);
-    }
-
-    .pa-ams-pct {
-        font-size: 0.62rem;
-        color: var(--ctp-subtext0);
-    }
-
-    .pa-ams-pct.unknown { color: var(--ctp-overlay0); }
-
-    .pa-ams-ext {
-        display: flex;
-        align-items: center;
-        gap: 7px;
-        margin-top: 8px;
-        padding-top: 8px;
-        border-top: 1px dashed var(--ctp-surface1);
-        font-size: 0.7rem;
-    }
-
-    .pa-ams-ext-label {
-        color: var(--ctp-overlay0);
-        text-transform: uppercase;
-        letter-spacing: 0.4px;
-        font-size: 0.62rem;
-    }
-
-    .pa-ams-ext-mat {
-        color: var(--ctp-text);
-        flex: 1;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    /* --- printer controls --- */
-    .pa-stop {
-        margin-top: 12px;
-        width: 100%;
-        min-height: 44px;
-        background: var(--ctp-red);
-        color: var(--accent-ink);
-        border: none;
-        border-radius: var(--radius-sm);
-        font: inherit;
-        font-weight: 650;
-        font-size: 0.9rem;
-        cursor: pointer;
-        transition:
-            filter var(--fast) var(--ease),
-            transform var(--fast) var(--ease);
-    }
-
-    .pa-stop:hover { filter: brightness(1.08); transform: translateY(-1px); }
-    .pa-stop:disabled { opacity: 0.6; cursor: not-allowed; }
-
-    .pa-actions {
-        display: flex;
-        gap: 8px;
-        flex-wrap: wrap;
-        margin-top: 12px;
-    }
-
-    .pa-light,
-    .pa-pause,
-    .pa-resume {
-        flex: 1;
-        min-width: 110px;
-        min-height: 44px;
-        border: 1px solid var(--ctp-surface1);
-        border-radius: var(--radius-sm);
-        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
-        color: var(--ctp-text);
-        font-weight: 600;
-        font-family: inherit;
-        font-size: 0.85rem;
-        cursor: pointer;
-        transition:
-            background-color var(--fast) var(--ease),
-            border-color var(--fast) var(--ease),
-            transform var(--fast) var(--ease);
-    }
-
-    .pa-light:hover,
-    .pa-pause:hover,
-    .pa-resume:hover { transform: translateY(-1px); background: color-mix(in srgb, var(--ctp-surface1) 60%, transparent); }
-
-    .pa-light.on {
-        background: color-mix(in srgb, var(--ctp-yellow) 22%, color-mix(in srgb, var(--ctp-surface0) 60%, transparent));
-        border-color: var(--ctp-yellow);
-        color: var(--ctp-yellow);
-    }
-
-    .pa-pause { border-color: var(--ctp-yellow); color: var(--ctp-yellow); }
-    .pa-resume { border-color: var(--ctp-green); color: var(--ctp-green); }
-
-    .pa-light:disabled,
-    .pa-pause:disabled,
-    .pa-resume:disabled { opacity: 0.6; cursor: not-allowed; }
-
-    /* --- HMS faults --- */
-    .pa-faults {
-        background: color-mix(in srgb, var(--ctp-red) 12%, transparent);
-        border: 1px solid var(--ctp-red);
-        border-radius: var(--radius-sm);
-        padding: 10px 12px;
-        margin-bottom: 12px;
-        font-size: 0.82rem;
-        color: var(--ctp-red);
-    }
-
-    .pa-fault {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        margin-top: 6px;
-        min-height: 40px;
-        padding: 6px 8px;
-        border-radius: 6px;
-        background: color-mix(in srgb, var(--ctp-crust) 60%, transparent);
-        text-decoration: none;
-        color: var(--ctp-subtext0);
-        font-size: 0.75rem;
-        transition: background-color var(--fast) var(--ease);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .pa-fault:hover { background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent); }
-
-    .pa-fault-sev {
-        text-transform: uppercase;
-        font-weight: 700;
-        letter-spacing: 0.4px;
-        padding: 2px 6px;
-        border-radius: var(--radius-pill);
-        background: color-mix(in srgb, var(--ctp-surface1) 60%, transparent);
-        color: var(--ctp-text);
-        font-size: 0.65rem;
-    }
-
-    .pa-fault.fatal .pa-fault-sev { background: var(--ctp-red); color: var(--accent-ink); }
-    .pa-fault.serious .pa-fault-sev { background: var(--ctp-peach); color: var(--rp-base); }
-    .pa-fault.common .pa-fault-sev { background: var(--ctp-yellow); color: var(--rp-base); }
-    .pa-fault.info .pa-fault-sev { background: var(--ctp-sapphire); color: var(--accent-ink); }
-
-    .pa-fault-code {
-        flex: 1;
-        font-family: var(--mono);
-        color: var(--ctp-text);
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-
-    .pa-fault-link { color: var(--link); white-space: nowrap; }
-
-    .pa-warning {
-        background: color-mix(in srgb, var(--ctp-peach) 12%, transparent);
-        border: 1px solid var(--ctp-peach);
-        border-radius: var(--radius-sm);
-        padding: 10px 12px;
-        margin-bottom: 12px;
-        font-size: 0.82rem;
-        color: var(--ctp-yellow);
-    }
-
-    .pa-warning p {
-        margin: 6px 0 0;
-        color: var(--ctp-subtext0);
-    }
-
-    .pa-code-form {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-        margin-top: 8px;
-    }
-
-    .pa-code-form input {
-        flex: 1;
-        min-width: 140px;
-        min-height: 40px;
-        background: color-mix(in srgb, var(--ctp-base) 60%, transparent);
-        border: 1px solid var(--ctp-surface1);
-        border-radius: 6px;
-        padding: 8px;
-        color: var(--ctp-text);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .pa-fix,
-    .pa-save {
-        background: var(--ctp-peach);
-        color: var(--rp-base);
-        border: none;
-        border-radius: 6px;
-        padding: 8px 14px;
-        font: inherit;
-        font-weight: 650;
-        cursor: pointer;
-        min-height: 40px;
-        margin-top: 8px;
-        transition: filter var(--fast) var(--ease), transform var(--fast) var(--ease);
-    }
-
-    .pa-save { margin-top: 0; }
-    .pa-fix:hover, .pa-save:hover { filter: brightness(1.08); transform: translateY(-1px); }
-    .pa-save:disabled { opacity: 0.6; cursor: not-allowed; }
-
-    .pa-cancel {
-        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
-        color: var(--ctp-text);
-        border: none;
-        border-radius: 6px;
-        padding: 8px 12px;
-        font: inherit;
-        cursor: pointer;
-        min-height: 40px;
-    }
-
-    /* --- each printer's own files --- */
-    .pa-send-toggle {
-        margin-top: 10px;
-        width: 100%;
-        min-height: 44px;
-        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
-        color: var(--ctp-text);
-        border: 1px solid var(--ctp-surface1);
-        border-radius: var(--radius-sm);
-        font-weight: 600;
-        font-family: inherit;
-        font-size: 0.85rem;
-        cursor: pointer;
-        transition: background-color var(--fast) var(--ease);
-    }
-
-    .pa-send-toggle:hover { background: color-mix(in srgb, var(--ctp-surface1) 60%, transparent); }
-
-    .pa-send {
-        margin-top: 10px;
-        padding: 12px;
-        border: 1px solid color-mix(in srgb, var(--state) 45%, var(--ctp-surface0));
-        border-radius: var(--radius-sm);
-        background: color-mix(in srgb, var(--ctp-crust) 60%, transparent);
-        animation: rise var(--normal) var(--ease) both;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .pa-send-head {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 8px;
-        margin-bottom: 8px;
-        padding-bottom: 8px;
-        border-bottom: 1px solid var(--ctp-surface0);
-    }
-
-    .pa-send-title {
-        font-weight: 700;
-        font-size: 0.85rem;
-        color: var(--ctp-text);
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .pa-refresh {
-        flex: none;
-        min-height: 40px;
-        padding: 0 12px;
-        border-radius: 6px;
-        border: 1px solid var(--ctp-surface1);
-        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
-        color: var(--ctp-text);
-        font: inherit;
-        font-size: 0.78rem;
-        cursor: pointer;
-    }
-
-    .pa-refresh:hover { background: color-mix(in srgb, var(--ctp-surface1) 60%, transparent); }
-    .pa-refresh:disabled { opacity: 0.6; cursor: progress; }
-
-    .pa-send-hint {
-        margin: 0 0 10px;
-        font-size: 0.75rem;
-        color: var(--ctp-subtext0);
-        line-height: 1.4;
-    }
-
-    .pa-file-pick {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        min-height: 48px;
-        border: 1px dashed var(--ctp-surface2);
-        border-radius: var(--radius-sm);
-        padding: 12px;
-        text-align: center;
-        font-size: 0.82rem;
-        color: var(--ctp-subtext0);
-        cursor: pointer;
-        transition: border-color var(--fast) var(--ease), color var(--fast) var(--ease);
-    }
-
-    .pa-file-pick:hover,
-    .pa-file-pick:focus-within {
-        border-color: var(--ctp-mauve);
-        color: var(--ctp-text);
-    }
-
-    /* Hidden but still focusable from the keyboard */
-    .pa-file-pick input {
-        position: absolute;
-        width: 1px;
-        height: 1px;
-        opacity: 0;
-    }
-
-    .pa-upload-bar {
-        height: 6px;
-        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
-        border-radius: var(--radius-pill);
-        overflow: hidden;
-        margin-top: 8px;
-    }
-
-    .pa-upload-fill {
-        height: 100%;
-        background: linear-gradient(90deg, var(--ctp-mauve), var(--ctp-lavender));
-        transition: width var(--fast) linear;
-    }
-
-    .pa-send-empty,
-    .pa-file-summary {
-        margin: 10px 0 0;
-        font-size: 0.75rem;
-        color: var(--ctp-overlay0);
-    }
-
-    .pa-send-error {
-        margin: 10px 0 0;
-        padding: 8px 10px;
-        border-radius: 6px;
-        background: color-mix(in srgb, var(--danger) 12%, transparent);
-        color: var(--danger);
-        font-size: 0.78rem;
-    }
-
-    .pa-file-list {
-        list-style: none;
-        margin: 6px 0 0;
-        padding: 0;
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-    }
-
-    .pa-file-list li {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        font-size: 0.78rem;
-        background: color-mix(in srgb, var(--ctp-mantle) 60%, transparent);
-        border: 1px solid var(--ctp-surface0);
-        border-radius: 6px;
-        padding: 4px 4px 4px 8px;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .pa-file-icon {
-        flex: none;
-    }
-
-    .pa-file-main {
-        flex: 1;
-        min-width: 0;
-        display: flex;
-        flex-direction: column;
-    }
-
-    .pa-file-name {
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        color: var(--ctp-text);
-    }
-
-    .pa-file-size {
-        color: var(--ctp-overlay0);
-        font-size: 0.7rem;
-    }
-
-    .pa-file-btn {
-        flex: none;
-        width: 40px;
-        height: 40px;
-        display: grid;
-        place-items: center;
-        background: none;
-        border: 1px solid transparent;
-        cursor: pointer;
-        font-size: 0.9rem;
-        border-radius: 6px;
-        color: var(--ctp-text);
-        transition: background-color var(--fast) var(--ease), border-color var(--fast) var(--ease);
-    }
-
-    .pa-file-btn.print { color: var(--ctp-green); }
-    .pa-file-btn.print:hover { background: color-mix(in srgb, var(--ctp-green) 14%, transparent); border-color: var(--ctp-green); }
-    .pa-file-btn.del:hover { background: color-mix(in srgb, var(--danger) 14%, transparent); border-color: var(--danger); }
-
-    .pa-clear-all {
-        width: 100%;
-        margin-top: 10px;
-        padding: 9px;
-        border-radius: 8px;
-        border: 1px solid var(--ctp-red);
-        background: transparent;
-        color: var(--ctp-red);
-        font: inherit;
-        font-size: 0.8rem;
-        font-weight: 600;
-        cursor: pointer;
-        min-height: 42px;
-    }
-
-    .pa-clear-all:hover { background: var(--ctp-red); color: var(--accent-ink); }
-    .pa-clear-all:disabled { opacity: 0.5; cursor: not-allowed; }
-
-    /* --- starting a print --- */
-    .pa-start-toggle {
-        width: 100%;
-        margin-top: 8px;
-        padding: 9px;
-        border-radius: 8px;
-        border: 1px solid var(--ctp-green);
-        background: transparent;
-        color: var(--ctp-green);
-        font: inherit;
-        font-weight: 600;
-        cursor: pointer;
-        min-height: 44px;
-    }
-
-    .pa-start-toggle:hover { background: color-mix(in srgb, var(--ctp-green) 12%, transparent); }
-
-    .pa-start {
-        margin-top: 10px;
-        padding: 12px;
-        border-radius: 10px;
-        background: color-mix(in srgb, var(--ctp-crust) 60%, transparent);
-        border: 1px solid var(--ctp-surface0);
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-        animation: rise var(--normal) var(--ease) both;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .pa-start-row {
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-        font-size: 0.78rem;
-        color: var(--ctp-subtext0);
-    }
-
-    .pa-start-row select,
-    .pa-start-row input {
-        padding: 8px;
-        border-radius: 8px;
-        border: 1px solid var(--ctp-surface1);
-        background: color-mix(in srgb, var(--ctp-base) 60%, transparent);
-        color: var(--ctp-text);
-        font-size: 0.88rem;
-        min-height: 42px;
-        width: 100%;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .pa-swatches {
-        display: flex;
-        gap: 8px;
-        flex-wrap: wrap;
-    }
-
-    .pa-swatch {
-        width: 40px;
-        height: 40px;
-        border-radius: 8px;
-        border: 2px solid var(--ctp-surface1);
-        color: var(--rp-base);
-        font-weight: 700;
-        font-size: 0.75rem;
-        cursor: pointer;
-        text-shadow: 0 0 3px rgba(255, 255, 255, 0.7);
-    }
-
-    .pa-swatch.picked {
-        border-color: var(--ctp-green);
-        transform: scale(1.06);
-        box-shadow: 0 0 0 2px color-mix(in srgb, var(--ctp-green) 40%, transparent);
-    }
-
-    .pa-start-opts {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 4px 14px;
-        font-size: 0.8rem;
-        color: var(--ctp-subtext0);
-    }
-
-    .pa-start-opts label {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        min-height: 40px;
-    }
-
-    .pa-start-warn {
-        margin: 0;
-        font-size: 0.75rem;
-        color: var(--ctp-yellow);
-    }
-
-    .pa-start-go {
-        padding: 11px;
-        border-radius: 8px;
-        border: none;
-        background: var(--ctp-green);
-        color: var(--rp-base);
-        font: inherit;
-        font-weight: 700;
-        cursor: pointer;
-        min-height: 44px;
-    }
-
-    .pa-start-go:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-    }
-
-    .pa-last,
-    .pa-offline {
-        margin: 8px 0 0;
-        font-size: 0.75rem;
-        color: var(--ctp-overlay0);
-    }
-
-    input[type='checkbox'] {
-        accent-color: var(--accent);
-        width: 18px;
-        height: 18px;
-    }
-
-    /* --- print log --- */
-    .joblog-head {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 10px;
-        margin-top: 30px;
-        flex-wrap: wrap;
-    }
-
-    .joblog-head h3 {
-        margin: 0;
-        font-size: 1.05rem;
-    }
-
-    .joblog-tools {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        flex-wrap: wrap;
-    }
-
-    .joblog-tools select {
-        min-height: 40px;
-        padding: 6px 10px;
-    }
-
-    .joblog-head + .subtitle-text {
-        margin-top: 6px;
-    }
-
-    .joblog {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-        margin-top: 10px;
-    }
-
-    .joblog-row {
-        display: grid;
-        grid-template-columns: 110px 90px minmax(0, 1fr) 70px 150px;
-        gap: 10px;
-        align-items: center;
-        background: color-mix(in srgb, var(--ctp-mantle) 60%, transparent);
-        border: 1px solid var(--ctp-surface0);
-        border-left: 3px solid var(--ctp-overlay0);
-        border-radius: var(--radius-sm);
-        padding: 8px 12px;
-        font-size: 0.8rem;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .joblog-row.finished { border-left-color: var(--ctp-green); }
-    .joblog-row.failed { border-left-color: var(--ctp-red); }
-    .joblog-row.stopped { border-left-color: var(--ctp-peach); }
-    .joblog-row.running { border-left-color: var(--ctp-blue); }
-
-    .joblog-when { color: var(--ctp-subtext0); }
-    .joblog-printer { color: var(--ctp-mauve); font-weight: 600; }
-
-    .joblog-file {
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .joblog-dur { color: var(--ctp-subtext0); }
-
-    .joblog-result {
-        font-weight: 600;
-        text-align: right;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .joblog-result.finished { color: var(--ctp-green); }
-    .joblog-result.failed { color: var(--ctp-red); }
-    .joblog-result.stopped { color: var(--ctp-peach); }
-    .joblog-result.running { color: var(--link); }
-
-    /* --- bookings --- */
-    .embedded-calendar {
-        margin-bottom: 24px;
-    }
-
-    .list-head {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        flex-wrap: wrap;
-        gap: 10px;
-        margin: 24px 0 12px;
-    }
-
-    .cal-list-title {
-        font-size: 1.05rem;
-        color: var(--ctp-subtext0);
-        margin: 0;
-    }
-
-    .bookings-list {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-    }
-
-    .booking-row {
-        display: flex;
-        align-items: center;
-        gap: 14px;
-        background: color-mix(in srgb, var(--ctp-crust) 60%, transparent);
-        border: 1px solid var(--ctp-surface0);
-        border-left: 4px solid var(--res, var(--ctp-mauve));
-        border-radius: 8px;
-        padding: 12px 14px;
-        flex-wrap: wrap;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .booking-row.pending {
-        background: color-mix(in srgb, var(--warn) 6%, color-mix(in srgb, var(--ctp-crust) 60%, transparent));
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .booking-row.past {
-        opacity: 0.55;
-        border-left-color: var(--ctp-overlay0);
-    }
-
-    .booking-when {
-        display: flex;
-        flex-direction: column;
-        min-width: 150px;
-    }
-
-    .booking-date {
-        font-weight: 600;
-        color: var(--ctp-mauve);
-    }
-
-    .booking-time {
-        font-size: 0.85rem;
-        color: var(--ctp-subtext0);
-    }
-
-    .booking-info {
-        flex: 1;
-        min-width: 180px;
-    }
-
-    .booking-purpose {
-        margin: 0;
-        font-weight: 500;
-    }
-
-    .booking-by {
-        margin: 2px 0 0;
-        font-size: 0.85rem;
-        color: var(--ctp-subtext0);
-    }
-
-    .booking-res {
-        color: var(--ctp-text);
-        font-weight: 600;
-    }
-
-    .booking-actions {
-        display: flex;
-        gap: 8px;
-        flex-wrap: wrap;
-        align-items: center;
-    }
-
-    .tag-row {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-        margin-top: 6px;
-    }
-
-    .tag {
-        padding: 2px 8px;
-        border-radius: var(--radius-pill);
-        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
-        color: var(--ctp-subtext0);
-        font-size: 0.72rem;
-        font-weight: 600;
-    }
-
-    .tag.warn { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
-    .tag.danger { background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--danger); }
-    .tag.ok { background: color-mix(in srgb, var(--ctp-green) 16%, transparent); color: var(--ctp-green); }
-
-    /* --- approvals --- */
-    .approval-title {
-        margin: 26px 0 0;
-        font-size: 1.1rem;
-        color: var(--ctp-text);
-    }
-
-    .approval-title:first-of-type {
-        margin-top: 8px;
-    }
-
-    .approval-title + .no-items {
-        padding: 18px;
-    }
-
-    .approval-title + .bookings-list {
-        margin-top: 14px;
-    }
-
-    .own-note {
-        margin: 0;
-        font-size: 0.85rem;
-        font-style: italic;
-        color: var(--ctp-subtext0);
-    }
-
-    /* --- history --- */
-    .history-search-container {
-        background: color-mix(in srgb, var(--ctp-crust) 60%, transparent);
-        padding: 20px;
-        border-radius: 12px;
-        margin-bottom: 20px;
-        border: 1px solid var(--ctp-surface0);
-        box-shadow: var(--shadow-sm);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .history-search-container label {
-        display: block;
-        margin-bottom: 10px;
-        font-weight: 600;
-        color: var(--ctp-text);
-        font-size: 1rem;
-    }
-
-    .search-input-group {
-        display: flex;
-        gap: 8px;
-        align-items: center;
-    }
-
-    .history-search-input {
-        flex: 1;
-        width: 100%;
-        min-width: 0;
-        min-height: 44px;
-        padding: 10px 16px;
-        border: 2px solid var(--ctp-surface0);
-        border-radius: 8px;
-        font-size: 1rem;
-        background: color-mix(in srgb, var(--ctp-base) 60%, transparent);
-        color: var(--ctp-text);
-        transition: all 0.3s ease;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .history-search-input:focus {
-        border-color: var(--ctp-flamingo);
-        outline: none;
-        box-shadow: 0 0 0 3px color-mix(in srgb, var(--ctp-flamingo) 25%, transparent);
-    }
-
-    .clear-search-btn {
-        flex: none;
-        width: 44px;
-        height: 44px;
-        border-radius: 8px;
-        border: 1px solid var(--ctp-surface1);
-        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
-        color: var(--ctp-text);
-        cursor: pointer;
-        font-size: 1rem;
-    }
-
-    .clear-search-btn:hover { background: color-mix(in srgb, var(--ctp-surface1) 60%, transparent); }
-
-    .history-filters {
-        margin-top: 12px;
-    }
-
-    .search-results-info {
-        margin: 10px 0 0;
-        color: var(--ctp-subtext0);
-        font-size: 0.9rem;
-        font-style: italic;
-    }
-
-    .no-search-results {
-        text-align: center;
-        padding: 40px 20px;
-        background: color-mix(in srgb, var(--ctp-crust) 60%, transparent);
-        border-radius: 12px;
-        border: 1px solid var(--ctp-surface0);
-        margin-top: 20px;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .no-search-results p {
-        color: var(--ctp-text);
-        font-size: 1.1rem;
-        margin: 0 0 15px;
-    }
-
-    .clear-search-btn-large {
-        background: linear-gradient(135deg, var(--ctp-sapphire), var(--ctp-teal));
-        color: var(--accent-ink);
-        border: none;
-        min-height: 44px;
-        padding: 10px 20px;
-        border-radius: 8px;
-        font: inherit;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.3s ease;
-    }
-
-    .clear-search-btn-large:hover {
-        filter: brightness(1.06);
-        transform: translateY(-1px);
-    }
-
-    .history-list {
-        display: flex;
-        flex-direction: column;
-        gap: 20px;
-        margin-top: 20px;
-        position: relative;
-    }
-
-    .history-item {
-        display: flex;
-        background: color-mix(in srgb, var(--ctp-crust) 60%, transparent);
-        border-radius: 12px;
-        box-shadow: var(--shadow);
-        border: 1px solid var(--ctp-surface0);
-        transition: all 0.3s ease;
-        position: relative;
-        min-width: 0;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .history-item:hover {
-        transform: translateY(-2px);
-        box-shadow: var(--shadow-lg);
-        border-color: var(--ctp-flamingo);
-    }
-
-    .history-item.active { border-left: 5px solid var(--ctp-green); }
-    .history-item.returned { border-left: 5px solid var(--ctp-teal); }
-    .history-item.not_found { border-left: 5px solid var(--ctp-red); }
-    .history-item.denied { border-left: 5px solid var(--ctp-overlay0); }
-    .history-item.pending { border-left: 5px solid var(--warn); }
-
-    .history-timeline {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        width: 52px;
-        flex: none;
-        padding: 20px 0;
-    }
-
-    .timeline-dot {
-        width: 16px;
-        height: 16px;
-        border-radius: 50%;
-        border: 3px solid var(--ctp-surface0);
-        margin-top: 5px;
-    }
-
-    .timeline-dot.active { background: var(--ctp-green); border-color: var(--ctp-green); }
-    .timeline-dot.returned { background: var(--ctp-teal); border-color: var(--ctp-teal); }
-    .timeline-dot.not_found { background: var(--ctp-red); border-color: var(--ctp-red); }
-    .timeline-dot.denied { background: var(--ctp-overlay0); border-color: var(--ctp-overlay0); }
-    .timeline-dot.pending { background: var(--warn); border-color: var(--warn); }
-
-    .timeline-line {
-        width: 2px;
-        flex: 1;
-        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
-        margin-top: 10px;
-    }
-
-    .history-item:last-child .timeline-line {
-        display: none;
-    }
-
-    .history-content {
-        flex: 1;
-        min-width: 0;
-        padding: 20px 25px 20px 0;
-    }
-
-    .history-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        margin-bottom: 16px;
-        gap: 15px;
-        flex-wrap: wrap;
-    }
-
-    /* Grows to fill the row, but wraps the badges and date underneath
-       rather than shrinking below a readable width (it squeezed the item
-       name to a letter per line on phones) */
-    .history-title-section {
-        display: flex;
-        align-items: flex-start;
-        gap: 15px;
-        flex: 1 1 220px;
-        min-width: 0;
-    }
-
-    .history-title-section h3 {
-        color: var(--ctp-text);
-        margin: 0;
-        font-size: clamp(1.1rem, 2.5vw, 1.3rem);
-        font-weight: 600;
-        line-height: 1.2;
-        overflow-wrap: anywhere;
-    }
-
-    .history-status-badges {
-        display: flex;
-        gap: 8px;
-        flex-wrap: wrap;
-    }
-
-    .history-date {
-        display: flex;
-        flex-direction: column;
-        align-items: flex-end;
-        text-align: right;
-        min-width: 120px;
-    }
-
-    .date-label {
-        font-size: 0.8rem;
-        color: var(--ctp-subtext0);
-        font-weight: 500;
-    }
-
-    .date-value {
-        font-size: 0.9rem;
-        color: var(--ctp-text);
-        font-weight: 600;
-        margin-top: 2px;
-    }
-
-    .detail-row {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
-        gap: 16px;
-    }
-
-    .detail-group {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-        min-width: 0;
-    }
-
-    .detail-group p {
-        margin: 0;
-        color: var(--ctp-subtext0);
-        font-size: clamp(0.88rem, 1.8vw, 0.95rem);
-        overflow-wrap: anywhere;
-    }
-
-    .detail-group strong {
-        color: var(--ctp-text);
-        font-weight: 600;
-    }
-
-    /* --- item catalogue --- */
-    .item-card.has-issue {
-        border-left-color: var(--warn);
-    }
-
-    .item-card.tracked:not(.has-issue) {
-        border-left-color: var(--ctp-teal);
-    }
-
-    .item-actions {
-        align-items: stretch;
+    .file-cell {
+        max-width: 18rem;
     }
 
     .merge-group {
-        display: flex;
-        gap: 6px;
-        flex: 1;
-        min-width: 200px;
+        width: 15rem;
     }
 
-    .merge-group select {
-        flex: 1;
-        min-width: 0;
-        min-height: 42px;
-        padding: 6px 8px;
+    .group-select {
+        min-width: 8rem;
     }
 
-    .inline-form {
-        margin-top: 4px;
-        animation: rise var(--normal) var(--ease) both;
-    }
-
-    .full-row {
-        grid-column: 1 / -1;
-    }
-
-    /* --- forms (change password, edits) --- */
-    .form-container {
-        padding: 20px 0;
-        max-width: 600px;
-        margin: 0 auto;
-    }
-
-    .form-card {
-        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
-        border-radius: 12px;
-        padding: clamp(16px, 4vw, 24px);
-        border: 1px solid var(--ctp-surface1);
-        box-shadow: var(--shadow-sm);
-    }
-
-    .form-card h4,
-    .form-title {
-        margin: 0 0 12px;
-        color: var(--ctp-text);
-        font-size: 1.05rem;
-    }
-
-    .form-note,
-    .section-note {
-        margin: 0 0 16px;
-        color: var(--ctp-subtext0);
-        font-size: 0.9rem;
-    }
-
-    .form-group {
-        margin-bottom: 16px;
-        text-align: left;
-    }
-
-    .form-group label {
-        display: block;
-        margin-bottom: 8px;
-        font-weight: 500;
-        color: var(--ctp-text);
-    }
-
-    .form-group input:not([type='checkbox']),
-    .form-group select {
-        width: 100%;
-        min-height: 44px;
-        padding: 10px 14px;
-        background: color-mix(in srgb, var(--ctp-base) 60%, transparent);
-        border: 2px solid var(--ctp-surface1);
-        border-radius: 8px;
-        color: var(--ctp-text);
-        font-size: 1rem;
-        transition: all 0.2s ease;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .form-group input:not([type='checkbox']):focus,
-    .form-group select:focus {
-        outline: none;
-        border-color: var(--ctp-blue);
-        box-shadow: 0 0 0 3px color-mix(in srgb, var(--ctp-blue) 15%, transparent);
-    }
-
-    .checkbox-label {
-        display: flex !important;
-        align-items: center;
-        gap: 12px;
-        min-height: 40px;
-        margin-bottom: 0 !important;
-        cursor: pointer;
-    }
-
-    .form-actions {
-        display: flex;
-        gap: 12px;
-        margin-top: 20px;
-        flex-wrap: wrap;
-    }
-
-    .submit-btn {
-        background: linear-gradient(135deg, var(--ctp-blue), var(--ctp-sapphire));
-        color: var(--accent-ink);
-        border: none;
-        min-height: 44px;
-        padding: 10px 24px;
-        border-radius: 8px;
-        font: inherit;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        flex: 1;
-    }
-
-    .submit-btn:hover:not(:disabled) {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px color-mix(in srgb, var(--ctp-blue) 30%, transparent);
-    }
-
-    .submit-btn:disabled {
+    tr.past {
         opacity: 0.6;
-        cursor: not-allowed;
-        transform: none;
     }
 
-    .cancel-btn {
-        background: var(--ctp-overlay0);
-        color: var(--accent-ink);
-        border: none;
-        min-height: 44px;
-        padding: 10px 24px;
-        border-radius: 8px;
-        font: inherit;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.2s ease;
+    .res-dot {
+        width: 0.625rem;
+        height: 0.625rem;
+        border-radius: 50%;
+        flex-shrink: 0;
     }
 
-    .cancel-btn:hover {
-        filter: brightness(1.1);
-        transform: translateY(-1px);
+    /* Printers */
+    .printer-img {
+        width: 2.5rem;
+        height: 2.5rem;
+        object-fit: contain;
+        flex-shrink: 0;
     }
 
-    .as-link {
-        display: inline-flex;
+    .camera {
+        aspect-ratio: 16 / 9;
+        overflow: hidden;
+        border: 1px solid var(--tblr-border-color);
+        border-radius: var(--tblr-border-radius-lg);
+        background: var(--tblr-bg-surface-secondary);
+    }
+
+    .camera > img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    .camera-empty {
+        display: flex;
+        flex-direction: column;
         align-items: center;
         justify-content: center;
-        text-decoration: none;
+        gap: 0.5rem;
+        height: 100%;
     }
 
-    .no-access h2 {
-        margin-bottom: 12px;
+    .camera-empty img {
+        width: 4rem;
+        opacity: 0.5;
     }
 
-    .no-access p {
-        color: var(--ctp-subtext0);
-        line-height: 1.5;
-    }
-
-    /* --- users & groups --- */
-    .admin-management-container {
-        padding: 0;
-        margin: 0 auto;
-    }
-
-    .admin-management-container > h2 {
-        margin-bottom: 18px;
-    }
-
-    .management-section {
-        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
-        border-radius: 12px;
-        padding: clamp(16px, 3vw, 24px);
-        margin: 0 0 24px;
-        border: 1px solid var(--ctp-surface1);
-        min-width: 0;
-    }
-
-    .loans-content .management-section {
-        margin-top: 8px;
-    }
-
-    .management-section.waiting {
-        border-color: var(--warn);
-        background: color-mix(in srgb, var(--warn) 7%, color-mix(in srgb, var(--ctp-surface0) 60%, transparent));
-    }
-
-    .section-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 12px;
-        flex-wrap: wrap;
-        margin-bottom: 16px;
-    }
-
-    .section-header h3 {
-        margin: 0;
-        color: var(--ctp-text);
-        font-size: 1.2rem;
-    }
-
-    .count-note {
-        font-size: 0.8rem;
-        font-weight: 500;
-        color: var(--ctp-subtext0);
-        margin-left: 6px;
-    }
-
-    .toggle-btn,
-    .refresh-btn {
-        border: none;
-        min-height: 40px;
-        padding: 8px 16px;
-        border-radius: 6px;
-        font: inherit;
-        font-size: 0.9rem;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.2s ease;
-    }
-
-    .toggle-btn {
-        background: var(--ctp-blue);
-        color: var(--accent-ink);
-    }
-
-    .toggle-btn.subtle {
-        background: color-mix(in srgb, var(--ctp-base) 60%, transparent);
-        color: var(--ctp-text);
-        border: 1px solid var(--ctp-surface1);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .refresh-btn {
-        background: var(--ctp-green);
-        color: var(--rp-base);
-        flex: none;
-    }
-
-    .toggle-btn:hover,
-    .refresh-btn:hover {
-        filter: brightness(1.08);
-        transform: translateY(-1px);
-    }
-
-    .user-tools {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 12px;
-        align-items: center;
-        margin-bottom: 16px;
-    }
-
-    .user-tools .history-search-input {
-        flex: 1 1 260px;
-    }
-
-    .admin-list {
+    .ams-slots {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
-        gap: 16px;
+        grid-template-columns: repeat(auto-fit, minmax(4.25rem, 1fr));
+        gap: 0.375rem;
     }
 
-    .admin-card {
-        background: color-mix(in srgb, var(--ctp-base) 60%, transparent);
-        border-radius: 8px;
-        padding: 18px;
-        border: 1px solid var(--ctp-surface1);
-        transition: all 0.2s ease;
+    .ams-slot {
         display: flex;
         flex-direction: column;
-        justify-content: space-between;
+        gap: 0.25rem;
         min-width: 0;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
+        padding: 0.4rem;
+        border: 1px solid var(--tblr-border-color);
+        border-radius: var(--tblr-border-radius);
     }
 
-    .admin-card:hover,
-    .admin-card.editing {
-        border-color: var(--ctp-blue);
-        box-shadow: 0 4px 12px color-mix(in srgb, var(--ctp-blue) 12%, transparent);
+    .ams-slot.active {
+        border-color: var(--tblr-success);
     }
 
-    .admin-card.inactive {
-        opacity: 0.65;
+    .ams-slot.empty {
+        opacity: 0.55;
     }
 
-    .admin-card.pending-card {
-        border-color: color-mix(in srgb, var(--warn) 55%, var(--ctp-surface1));
+    .swatch {
+        display: inline-block;
+        width: 0.875rem;
+        height: 0.875rem;
+        flex-shrink: 0;
+        border-radius: 50%;
+        border: 1px solid var(--tblr-border-color);
     }
 
-    .admin-card-info {
-        min-width: 0;
-    }
-
-    .admin-card-info h4 {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        flex-wrap: wrap;
-        margin: 0 0 8px 0;
-        color: var(--ctp-text);
-        font-size: 1.1rem;
-    }
-
-    .admin-username {
-        margin: 4px 0;
-        color: var(--link);
-        font-weight: 500;
-        overflow-wrap: anywhere;
-    }
-
-    .admin-phone {
-        margin: 4px 0;
-        color: var(--ctp-subtext0);
-        font-size: 0.9rem;
-    }
-
-    .admin-role {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        flex-wrap: wrap;
-        margin: 10px 0;
-        font-weight: 600;
-    }
-
-    .admin-date {
-        margin: 8px 0 0 0;
-        color: var(--ctp-overlay0);
-        font-size: 0.88rem;
-    }
-
-    .group-pick {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        font-size: 0.85rem;
-        font-weight: 500;
-        color: var(--ctp-subtext0);
-        margin-top: 8px;
-    }
-
-    .admin-role .group-pick {
-        margin-top: 0;
-    }
-
-    .group-pick select {
-        min-height: 40px;
-        padding: 6px 10px;
-    }
-
-    .group-chip {
-        padding: 4px 10px;
-        border-radius: var(--radius-pill);
-        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
-        color: var(--ctp-mauve);
-        font-size: 0.85rem;
-    }
-
-    .admin-card-actions {
-        display: flex;
-        justify-content: flex-end;
-        align-items: center;
-        gap: 8px;
-        flex-wrap: wrap;
-        margin-top: 16px;
-        padding-top: 12px;
-        border-top: 1px solid var(--ctp-surface1);
-    }
-
-    .delete-admin-btn {
-        background: var(--ctp-red);
-        color: var(--accent-ink);
-        border: none;
-        min-height: 40px;
-        padding: 6px 14px;
-        border-radius: 6px;
-        font: inherit;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        font-size: 0.9rem;
-    }
-
-    .delete-admin-btn:hover {
-        filter: brightness(1.08);
-        transform: translateY(-1px);
-    }
-
-    .current-user-badge {
-        background: var(--ctp-green);
-        color: var(--rp-base);
-        padding: 2px 8px;
-        border-radius: 4px;
-        font-size: 0.75rem;
+    .pick-swatch {
+        width: 2.5rem;
+        height: 2.5rem;
+        border-radius: var(--tblr-border-radius);
+        border: 2px solid var(--tblr-border-color);
+        color: #000;
         font-weight: 700;
-    }
-
-    .override-card {
-        background: color-mix(in srgb, var(--ctp-mantle) 60%, transparent);
-        border-color: var(--ctp-blue);
-        animation: rise var(--normal) var(--ease) both;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .override-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
-        gap: 8px 20px;
-    }
-
-    .override-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 10px;
-        padding: 6px 0;
-        border-bottom: 1px solid var(--ctp-surface0);
-        font-size: 0.92rem;
-    }
-
-    .override-row select {
-        flex: none;
-        min-height: 40px;
-        padding: 6px 8px;
-        max-width: 55%;
-    }
-
-    .override-row select.grant { border-color: var(--ctp-green); color: var(--ctp-green); }
-    .override-row select.revoke { border-color: var(--danger); color: var(--danger); }
-
-    .table-wrap {
-        overflow-x: auto;
-        background: color-mix(in srgb, var(--ctp-base) 60%, transparent);
-        border: 1px solid var(--ctp-surface1);
-        border-radius: 8px;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .perm-table {
-        width: 100%;
-        border-collapse: collapse;
-        font-size: 0.9rem;
-    }
-
-    .perm-table th,
-    .perm-table td {
-        padding: 10px 14px;
-        border-bottom: 1px solid var(--ctp-surface0);
-        text-align: left;
-    }
-
-    .perm-table thead th {
-        color: var(--ctp-subtext0);
-        font-weight: 600;
-        white-space: nowrap;
-        background: color-mix(in srgb, var(--ctp-mantle) 60%, transparent);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .perm-table tbody th {
-        font-weight: 500;
-        color: var(--ctp-text);
-        min-width: 180px;
-    }
-
-    .perm-table tbody tr:hover {
-        background: color-mix(in srgb, color-mix(in srgb, var(--ctp-surface0) 60%, transparent) 50%, transparent);
-    }
-
-    .perm-table .center {
-        text-align: center;
-    }
-
-    .group-count {
-        display: block;
-        font-size: 0.72rem;
-        font-weight: 500;
-        color: var(--ctp-overlay0);
-    }
-
-    .danger-zone {
-        border-color: var(--ctp-red) !important;
-        background: color-mix(in srgb, var(--ctp-red) 8%, color-mix(in srgb, var(--ctp-surface0) 60%, transparent));
-    }
-
-    .danger-zone .section-header h3 {
-        color: var(--ctp-red);
-    }
-
-    .danger-actions {
-        display: flex;
-        flex-direction: column;
-        gap: 16px;
-    }
-
-    .danger-item {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 16px;
-        padding: 16px;
-        background: color-mix(in srgb, var(--ctp-base) 60%, transparent);
-        border-radius: 8px;
-        border: 1px solid var(--ctp-surface1);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .danger-info h4 {
-        margin: 0 0 4px 0;
-        color: var(--ctp-red);
-    }
-
-    .danger-info p {
-        margin: 0;
-        color: var(--ctp-text);
-        font-size: 0.9rem;
-    }
-
-    .danger-btn {
-        background: var(--ctp-red);
-        color: var(--accent-ink);
-        border: none;
-        min-height: 44px;
-        padding: 10px 20px;
-        border-radius: 6px;
-        font: inherit;
-        font-weight: 600;
+        font-size: 0.75rem;
+        text-shadow: 0 0 3px rgba(255, 255, 255, 0.8);
         cursor: pointer;
-        transition: all 0.2s ease;
-        white-space: nowrap;
     }
 
-    .danger-btn:hover {
-        filter: brightness(1.08);
-        transform: translateY(-1px);
-    }
-
-    .no-data {
-        text-align: center;
-        color: var(--ctp-overlay0);
-        padding: 16px;
-        margin: 0;
-    }
-
-    /* --- responsive --- */
-    @media (min-width: 1200px) {
-        .loans-grid {
-            grid-template-columns: repeat(auto-fill, minmax(500px, 1fr));
-        }
-
-        .items-grid {
-            grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
-        }
-
-        .overview-cards {
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-        }
-    }
-
-    @media (max-width: 768px) {
-        .dashboard-header {
-            gap: 10px;
-            padding-bottom: 14px;
-        }
-
-        /* Full-bleed strip on phones, so tabs scroll from the screen edge */
-        .nav-tabs {
-            margin-left: -16px;
-            margin-right: -16px;
-            padding-left: 8px;
-            padding-right: 8px;
-        }
-
-        .loan-title-section {
-            flex-direction: column;
-            gap: 10px;
-        }
-
-        .loan-actions {
-            flex-direction: column;
-            align-items: stretch;
-        }
-
-        .loan-actions > * {
-            width: 100%;
-        }
-
-        .merge-group {
-            min-width: 0;
-        }
-
-        .extend-inputs input {
-            flex: 1;
-            width: auto;
-            min-width: 60px;
-        }
-
-        .export-btn {
-            width: 100%;
-        }
-
-        .history-timeline {
-            width: 32px;
-        }
-
-        .history-content {
-            padding: 16px 16px 16px 0;
-        }
-
-        .history-date {
-            align-items: flex-start;
-            text-align: left;
-        }
-
-        .booking-actions {
-            width: 100%;
-        }
-
-        .booking-actions > button {
-            flex: 1;
-        }
-
-        .form-actions {
-            flex-direction: column;
-        }
-
-        .danger-item {
-            flex-direction: column;
-            align-items: stretch;
-        }
-
-        .admin-card-actions {
-            justify-content: stretch;
-        }
-
-        .admin-card-actions > button {
-            flex: 1 1 auto;
-        }
-
-        .override-row {
-            flex-direction: column;
-            align-items: stretch;
-        }
-
-        .override-row select {
-            max-width: none;
-        }
-    }
-
-    @media (max-width: 700px) {
-        .joblog-row {
-            grid-template-columns: 1fr 1fr;
-            row-gap: 4px;
-        }
-
-        .joblog-file { grid-column: 1 / -1; }
-        .joblog-result { text-align: left; }
-    }
-
-    @media (max-width: 480px) {
-        .loan-card {
-            padding: 15px;
-        }
-
-        .status-filters {
-            gap: 6px;
-        }
-
-        .filter-btn {
-            padding: 6px 12px;
-        }
-
-        .history-search-container {
-            padding: 14px;
-        }
+    .pick-swatch.picked {
+        border-color: var(--tblr-primary);
+        box-shadow: 0 0 0 2px var(--tblr-primary);
     }
 </style>
