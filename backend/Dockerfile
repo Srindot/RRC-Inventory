@@ -15,7 +15,7 @@ RUN mkdir -p uploads
 EXPOSE 8080
 
 # Run the application directly without hot reload
-CMD ["go", "run", "main.go"]
+CMD ["go", "run", "."]
 
 # --- Production Builder Stage ---
 FROM golang:1.24-alpine AS builder

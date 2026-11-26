@@ -1,9 +1,10 @@
-/* Catppuccin Mocha - the single source of truth for colour across the site.
-   Imported once in +layout.svelte, so every page can use var(--ctp-*) instead
-   of repeating hex codes. */
+/* The design system: Catppuccin colours (Mocha dark, Latte light), a few
+   semantic tokens on top, and the shared pieces every page builds from.
+   Imported once in +layout.svelte. The theme is <html data-theme="light|dark">,
+   set before first paint by app.html (saved choice, else the system's). */
 
 :root {
-    /* Accents */
+    /* Catppuccin Mocha */
     --ctp-rosewater: #f5e0dc;
     --ctp-flamingo: #f2cdcd;
     --ctp-pink: #f5c2e7;
@@ -18,18 +19,12 @@
     --ctp-sapphire: #74c7ec;
     --ctp-blue: #89b4fa;
     --ctp-lavender: #b4befe;
-
-    /* Text */
     --ctp-text: #cdd6f4;
     --ctp-subtext1: #bac2de;
     --ctp-subtext0: #a6adc8;
-
-    /* Overlays */
     --ctp-overlay2: #9399b2;
     --ctp-overlay1: #7f849c;
     --ctp-overlay0: #6c7086;
-
-    /* Surfaces */
     --ctp-surface2: #585b70;
     --ctp-surface1: #45475a;
     --ctp-surface0: #313244;
@@ -37,24 +32,83 @@
     --ctp-mantle: #181825;
     --ctp-crust: #11111b;
 
-    /* Spacing and shape, so everything lines up on the same rhythm */
+    /* Semantic tokens: use these in new code */
+    --bg: #0e0e15;                  /* page canvas, a touch below crust */
+    --card: var(--ctp-crust);       /* cards and panels */
+    --card-raised: var(--ctp-mantle);
+    --line: rgba(205, 214, 244, 0.08);
+    --line-strong: rgba(205, 214, 244, 0.14);
+    --muted: var(--ctp-subtext0);
+    --faint: var(--ctp-overlay1);
+    --accent: var(--ctp-mauve);     /* Catppuccin's own signature colour */
+    --accent-ink: #11111b;          /* text on a filled accent */
+    --accent-soft: rgba(203, 166, 247, 0.1);
+    --danger: var(--ctp-red);
+    --warn: var(--ctp-yellow);
+
+    color-scheme: dark;
+
     --radius-sm: 8px;
     --radius: 12px;
-    --radius-lg: 18px;
+    --radius-lg: 16px;
     --radius-pill: 999px;
 
-    --shadow-sm: 0 2px 8px rgba(17, 17, 27, 0.35);
-    --shadow: 0 8px 24px rgba(17, 17, 27, 0.45);
-    --shadow-lg: 0 18px 48px rgba(17, 17, 27, 0.55);
+    --shadow-sm: none;
+    --shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    --shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.45);
 
-    /* One easing curve everywhere - motion feels like one system */
     --ease: cubic-bezier(0.22, 1, 0.36, 1);
     --fast: 140ms;
     --normal: 260ms;
     --slow: 420ms;
 
-    --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-        'Helvetica Neue', sans-serif;
+    --font: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+    --mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+
+    --sidebar: 236px;
+}
+
+/* Catppuccin Latte */
+:root[data-theme='light'] {
+    --ctp-rosewater: #dc8a78;
+    --ctp-flamingo: #dd7878;
+    --ctp-pink: #ea76cb;
+    --ctp-mauve: #8839ef;
+    --ctp-red: #d20f39;
+    --ctp-maroon: #e64553;
+    --ctp-peach: #fe640b;
+    --ctp-yellow: #df8e1d;
+    --ctp-green: #40a02b;
+    --ctp-teal: #179299;
+    --ctp-sky: #04a5e5;
+    --ctp-sapphire: #209fb5;
+    --ctp-blue: #1e66f5;
+    --ctp-lavender: #7287fd;
+    --ctp-text: #4c4f69;
+    --ctp-subtext1: #5c5f77;
+    --ctp-subtext0: #6c6f85;
+    --ctp-overlay2: #7c7f93;
+    --ctp-overlay1: #8c8fa1;
+    --ctp-overlay0: #9ca0b0;
+    --ctp-surface2: #acb0be;
+    --ctp-surface1: #bcc0cc;
+    --ctp-surface0: #ccd0da;
+    --ctp-base: #eff1f5;
+    --ctp-mantle: #e6e9ef;
+    --ctp-crust: #dce0e8;
+
+    --bg: #e6e9ef;
+    --card: #f7f8fb;
+    --card-raised: #ffffff;
+    --line: rgba(76, 79, 105, 0.12);
+    --line-strong: rgba(76, 79, 105, 0.2);
+    --accent-ink: #ffffff;          /* Latte mauve is dark enough for white */
+    --accent-soft: rgba(136, 57, 239, 0.08);
+
+    color-scheme: light;
+
+    --shadow: 0 8px 24px rgba(76, 79, 105, 0.12);
+    --shadow-lg: 0 18px 48px rgba(76, 79, 105, 0.18);
 }
 
 html {
@@ -62,15 +116,280 @@ html {
 }
 
 body {
-    background:
-        radial-gradient(1100px 600px at 12% -8%, rgba(203, 166, 247, 0.10), transparent 60%),
-        radial-gradient(900px 520px at 92% 4%, rgba(137, 180, 250, 0.09), transparent 60%),
-        var(--ctp-base);
-    background-attachment: fixed;
+    background: var(--bg);
     color: var(--ctp-text);
     font-family: var(--font);
     margin: 0;
     -webkit-font-smoothing: antialiased;
+}
+
+/* --- shared building blocks ---------------------------------------------
+   Deck-like: quiet cards with hairline borders, small muted labels, big
+   numbers, monospace digits, one accent used sparingly. */
+
+.page {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 28px 28px 96px;
+}
+
+.page-head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 24px;
+}
+
+.page-head h1 {
+    margin: 0;
+    font-size: 1.75rem;
+    font-weight: 650;
+    letter-spacing: -0.02em;
+}
+
+.page-head p {
+    margin: 4px 0 0;
+    color: var(--muted);
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 14px;
+}
+
+.card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    padding: 20px;
+    min-width: 0;
+}
+
+.card.accent {
+    background: var(--accent);
+    border-color: transparent;
+    color: var(--accent-ink);
+}
+
+.card.accent .label {
+    color: color-mix(in srgb, var(--accent-ink) 70%, transparent);
+}
+
+.card.tint {
+    background: var(--accent-soft);
+    border-color: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.label {
+    margin: 0 0 10px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--muted);
+}
+
+.stat {
+    margin: 0;
+    font-size: 2.6rem;
+    font-weight: 600;
+    letter-spacing: -0.03em;
+    line-height: 1.05;
+}
+
+.mono {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+}
+
+.muted {
+    color: var(--muted);
+}
+
+.row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 0;
+    border-top: 1px solid var(--line);
+}
+
+.row:first-of-type {
+    border-top: none;
+}
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 40px;
+    padding: 0 16px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--line-strong);
+    background: var(--card-raised);
+    color: var(--ctp-text);
+    font: inherit;
+    font-weight: 550;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background var(--fast) var(--ease), border-color var(--fast) var(--ease);
+}
+
+.btn:hover {
+    border-color: var(--faint);
+}
+
+.btn.primary {
+    background: var(--accent);
+    border-color: transparent;
+    color: var(--accent-ink);
+}
+
+.btn.primary:hover {
+    filter: brightness(1.05);
+}
+
+.btn.danger {
+    color: var(--danger);
+}
+
+.btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px;
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--line-strong);
+    font-size: 0.8rem;
+    color: var(--muted);
+}
+
+.chip.ok {
+    color: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.chip.warn {
+    color: var(--warn);
+    border-color: color-mix(in srgb, var(--warn) 35%, transparent);
+}
+
+.bar {
+    height: 6px;
+    border-radius: var(--radius-pill);
+    background: var(--line-strong);
+    overflow: hidden;
+}
+
+.bar > span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--accent);
+}
+
+/* --- colour with meaning ------------------------------------------------
+   Each area of the site, and each research thread, owns a Catppuccin hue.
+   Set it with style="--hue: var(--ctp-peach)" (or hueFor() in lib/palette.js)
+   on any element; these pieces then pick it up. */
+
+.icon-badge {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--hue, var(--accent)) 16%, transparent);
+    color: var(--hue, var(--accent));
+}
+
+.dot {
+    display: inline-block;
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--hue, var(--accent));
+}
+
+.card.hued {
+    background: color-mix(in srgb, var(--hue) 7%, var(--card));
+    border-color: color-mix(in srgb, var(--hue) 28%, var(--line));
+}
+
+.card.hued .label,
+.hue-text {
+    color: var(--hue);
+}
+
+.card.filled {
+    background: var(--hue);
+    border-color: transparent;
+    color: var(--accent-ink);
+}
+
+.card.filled .label,
+.card.filled .muted {
+    color: color-mix(in srgb, var(--accent-ink) 72%, transparent);
+}
+
+.chip.hue {
+    color: var(--hue);
+    border-color: color-mix(in srgb, var(--hue) 40%, transparent);
+    background: color-mix(in srgb, var(--hue) 10%, transparent);
+}
+
+.bar > span {
+    background: var(--hue, var(--accent));
+}
+
+/* Latte's pastel hues are too light to read as text on a light page, so
+   coloured text is darkened there; fills and dots keep the true colour. */
+:root[data-theme='light'] .card.hued .label,
+:root[data-theme='light'] .hue-text,
+:root[data-theme='light'] .chip.hue {
+    color: color-mix(in srgb, var(--hue) 62%, #1e1e2e);
+}
+
+:root[data-theme='light'] .chip.ok {
+    color: color-mix(in srgb, var(--accent) 70%, #1e1e2e);
+}
+
+:root[data-theme='light'] .chip.warn {
+    color: color-mix(in srgb, var(--warn) 62%, #1e1e2e);
+}
+
+input,
+select,
+textarea {
+    font: inherit;
+    color: var(--ctp-text);
+    background: var(--card-raised);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-sm);
+}
+
+@media (max-width: 700px) {
+    .page {
+        padding: 18px 16px 120px;
+    }
+
+    .page-head h1 {
+        font-size: 1.45rem;
+    }
+
+    .stat {
+        font-size: 2.1rem;
+    }
 }
 
 /* Visible keyboard focus everywhere, without a ring on mouse clicks */
@@ -81,7 +400,7 @@ body {
 }
 
 ::selection {
-    background: rgba(203, 166, 247, 0.35);
+    background: color-mix(in srgb, var(--accent) 35%, transparent);
 }
 
 /* Slim scrollbars that match the palette */
@@ -153,4 +472,134 @@ body {
         transition-duration: 0.01ms !important;
         scroll-behavior: auto !important;
     }
+}
+
+/* --- toast ------------------------------------------------------------- */
+
+/* Feedback floats at the bottom of the screen, so it is seen wherever the
+   person has scrolled to. Pages use class="message success|error". */
+.message {
+    position: fixed;
+    left: 16px;
+    right: 16px;
+    bottom: 16px;
+    max-width: 520px;
+    margin: 0 auto;
+    z-index: 100;
+    box-sizing: border-box;
+    padding: 12px 16px;
+    border-radius: var(--radius);
+    border: 1px solid var(--ctp-surface1);
+    background: var(--ctp-mantle);
+    color: var(--ctp-text);
+    box-shadow: var(--shadow-lg);
+    background: var(--card-raised);
+    border-color: var(--line-strong);
+    text-align: center;
+    font-weight: 500;
+    animation: rise var(--normal) var(--ease) both;
+}
+
+@media (max-width: 899px) {
+    .message {
+        bottom: 84px; /* above the tab bar */
+    }
+}
+
+.message.success {
+    border-color: var(--ctp-green);
+    color: var(--ctp-green);
+}
+
+.message.error {
+    border-color: var(--ctp-red);
+    color: var(--ctp-red);
+}
+
+/* --- account pages (login, sign up, account) --------------------------- */
+
+.account-page {
+    max-width: 440px;
+    margin: 0 auto;
+    padding: 48px 16px;
+}
+
+.account-page h1 {
+    margin: 0 0 6px;
+    font-size: 1.6rem;
+}
+
+.account-page .lead {
+    margin: 0 0 24px;
+    color: var(--ctp-subtext0);
+}
+
+.account-card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    margin-bottom: 20px;
+}
+
+.account-card h2 {
+    margin: 0 0 16px;
+    font-size: 1.1rem;
+}
+
+.account-card label {
+    display: block;
+    margin-bottom: 14px;
+    font-size: 0.9rem;
+    color: var(--ctp-subtext1);
+}
+
+.account-card input,
+.account-card select {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    margin-top: 6px;
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--line-strong);
+    background: var(--card-raised);
+    color: var(--ctp-text);
+    font: inherit;
+}
+
+.account-card button[type='submit'],
+.account-card .primary {
+    width: 100%;
+    min-height: 44px;
+    padding: 11px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: var(--accent);
+    color: var(--accent-ink);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.account-card button:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}
+
+.account-page .note {
+    font-size: 0.9rem;
+    color: var(--ctp-subtext0);
+}
+
+.account-page .note a {
+    color: var(--ctp-blue);
+}
+
+.account-page .error {
+    color: var(--ctp-red);
+}
+
+.account-page .success {
+    color: var(--ctp-green);
 }

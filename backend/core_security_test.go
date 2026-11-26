@@ -247,10 +247,10 @@ func TestCheckReturn(t *testing.T) {
 }
 
 func TestParseBorrowForm(t *testing.T) {
+	// Who is borrowing comes from the account, so the form only describes
+	// the loan: an existing item by id, or a new one by name and lab.
 	valid := func() map[string][]string {
 		return map[string][]string{
-			"borrower_name":        {"Asha"},
-			"borrower_phone":       {"9876543210"},
 			"item_name":            {"Multimeter"},
 			"lab_location":         {"Main Lab"},
 			"quantity_borrowed":    {"2"},
@@ -262,17 +262,26 @@ func TestParseBorrowForm(t *testing.T) {
 		v[key] = []string{value}
 		return v
 	}
+	byID := func() map[string][]string {
+		v := valid()
+		delete(v, "item_name")
+		delete(v, "lab_location")
+		v["item_id"] = []string{"7"}
+		return v
+	}
 
 	cases := []struct {
 		name    string
 		values  map[string][]string
 		wantErr bool
 	}{
-		{name: "valid", values: valid()},
-		{name: "blank name", values: with("borrower_name", "   "), wantErr: true},
-		{name: "blank phone", values: with("borrower_phone", ""), wantErr: true},
-		{name: "phone without digits", values: with("borrower_phone", "call me"), wantErr: true},
+		{name: "new item by name", values: valid()},
+		{name: "existing item by id", values: byID()},
 		{name: "blank item", values: with("item_name", " "), wantErr: true},
+		{name: "punctuation is not a name", values: with("item_name", "--"), wantErr: true},
+		{name: "new item needs a lab", values: with("lab_location", ""), wantErr: true},
+		{name: "bad item id", values: with("item_id", "abc"), wantErr: true},
+		{name: "zero item id", values: with("item_id", "0"), wantErr: true},
 		{name: "unparseable date", values: with("expected_return_date", "next tuesday"), wantErr: true},
 		{name: "timestamp date is accepted", values: with("expected_return_date", "2026-10-05T00:00:00Z")},
 		{name: "zero quantity", values: with("quantity_borrowed", "0"), wantErr: true},
@@ -297,6 +306,15 @@ func TestParseBorrowForm(t *testing.T) {
 				t.Errorf("purpose = %q, want the default", req.Purpose)
 			}
 		})
+	}
+
+	req, _ := parseBorrowForm(byID())
+	if req.ItemID != 7 {
+		t.Errorf("item id = %d, want 7", req.ItemID)
+	}
+	req, _ = parseBorrowForm(with("accept", "true"))
+	if !req.Accept {
+		t.Error("accept flag lost")
 	}
 }
 

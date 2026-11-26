@@ -51,12 +51,41 @@
 4. **Access the system:**
   - **Local Access**: http://localhost
   - **Network Access** (via IP): http://[SERVER-IP]
-   - **Admin Login**: the credentials you set in `.env` (see below)
+   - **Log in**: the first server admin uses the credentials you set in `.env` (see below)
 
-> **🔐 Admin credentials:** Copy `.env.example` to `.env` and set `POSTGRES_PASSWORD`,
-> `ADMIN_USERNAME` and `ADMIN_PASSWORD` before the first start. The first admin account is
-> created only once, on an empty database. If `ADMIN_PASSWORD` is left empty, a random
-> password is generated and printed in the backend logs (`./logs.sh`). Never commit `.env`.
+> **🔐 First server admin:** Copy `.env.example` to `.env` and set `POSTGRES_PASSWORD`,
+> `ADMIN_USERNAME` and `ADMIN_PASSWORD` before the first start. The first account is
+> created only once, on an empty database, and logs in with `ADMIN_USERNAME` in the email
+> field. If `ADMIN_PASSWORD` is left empty, a random password is generated and printed in
+> the backend logs (`./logs.sh`). Never commit `.env`.
+
+### 👥 Accounts and access
+
+Everyone signs up at `/register` (name, email, phone, and whether they are a student,
+intern or prof). New accounts wait until a server admin approves them in **Admin → Users**.
+
+Each account is in one group - **Student, Intern, Prof, Lab Admin** or **Server Admin** -
+and the group decides what it can do by default:
+
+| Group | Can by default |
+|---|---|
+| Student, Intern | Borrow, book the mocap lab and mech lab robots, send prints |
+| Prof | The same, plus: own bookings and loans need no sign-off, and create research threads. Profs don't sign off for others. |
+| Lab Admin | Everything a Prof can, plus sign off robot bookings, thread robot access and loans, and manage inventory, printers and bookings |
+| Server Admin | Everything, including managing users |
+
+Nobody can pick Lab Admin or
+Server Admin when signing up - a server admin moves people into those groups. Someone who
+signs up as Prof is checked when their account is approved. Server admins edit
+those defaults in the **Groups** grid, and can grant or revoke anything for one person
+under **Access**. Server admins also reset
+forgotten passwords from the Users list; there is no email.
+
+Admin accounts from before accounts existed are carried over on first start and keep
+their username and password (type the username in the email field). Former super admins
+become Server Admins; other former admins go into a **Lab Admin** group that runs
+inventory, printers and bookings but cannot manage users.
+Keep at least two Server Admins so the lab is never locked out.
 
 ### 🖨️ 3D printer status
 
@@ -65,7 +94,7 @@ whether each one is free or printing, progress, time remaining, temperatures and
 camera view (about one frame every two seconds, which is the fastest the P1S allows
 over the local network). Anyone can view it.
 
-**Stopping a print is admin-only.** Logged-in admins get a Stop button on a
+**Stopping a print needs Control printers access.** Those users get a Stop button on a
 running printer, with a confirmation naming the job; the action is recorded and
 shown on the card ("Last stopped by ..."). Everyone else sees status only - if
 they need a print stopped, they ask an admin. That is the one command the system
@@ -103,7 +132,7 @@ with the amount as "? left".
 
 ### 📤 Sending files to a printer
 
-Anyone can send a sliced `.3mf` or `.gcode` from the **3D Printers** page - drag
+Anyone logged in with **Send files to printers** access (all groups by default) can send a sliced `.3mf` or `.gcode` from the **3D Printers** page - drag
 it onto the printer's card or tap to choose one. The file lands on the printer's
 storage, and the print is started from the printer's own screen once somebody
 has checked the plate is clear. That removes the need to switch onto the printer
@@ -113,18 +142,95 @@ File names should start with the owner's name (`srinath_bracket.3mf`) - the
 printer reports the file name, so that is how the site shows whose print is
 running. Admins can delete files from the printer to stop the storage filling up.
 
-> Uploading is open to anyone who can reach the site, on the reasoning that it
-> only writes a file. Starting a print, stopping one, and deleting files are all
-> admin-only. To make uploading admin-only too, move the two
-> `api.POST/GET("/printers/:id/files"...)` routes into the `admin` group in
-> `backend/main.go`.
+> Starting a print, stopping one, and deleting files need **Control printers** access
+> (Server Admins by default).
 
-### 🎥 Motion Capture Lab booking
+### 🎥 Booking the Motion Capture Lab and Mech Lab robots
 
-Open **Motion Capture Lab** from the home page (or go to `/mocap`) for a week calendar of
-who has the lab. Click any empty slot to book it - no approval, the slot just has to be
-free. Bookings are cancelled by whoever made them using the phone number they booked with,
-and admins can delete any booking from the **Mocap Bookings** tab.
+**Motion Capture Lab** (`/mocap`) and **Mech Lab** (`/mechlab`) each show a week calendar.
+Anyone can look; booking needs an account. Each robot (and the mocap lab itself) has its
+own calendar. Click an empty slot to book it, and cancel your own booking from the
+calendar. People who manage bookings can also book on someone else's behalf.
+
+Some robots have extra rules, set per robot:
+
+- **Only research threads with access can book it** - you book it for one of your research
+  threads (picked in the booking form), and only if that thread has access (below).
+- **Needs approval** - your booking shows as pending (hatched) until a lab admin (anyone with
+  *approve robot bookings*) approves it. Approving one request declines the others for the
+  same slot. A request nobody approved before its start time just lapses.
+- **Limits** - the longest single booking (12 hours if not set) and how many upcoming
+  bookings one person may hold.
+
+**No-shows.** From 15 minutes after a booking starts, someone with their own booking on that
+robot that day, or a lab admin or booking manager, can report "They didn't turn up" (their
+name is kept with the report). Two no-shows in 30 days pauses that person's booking until
+the older one is 30 days old. A no-show reported by mistake can be cleared by anyone who
+manages bookings.
+
+Robots are added and edited in **Admin → Bookings → Robots and labs**.
+
+### 🧪 Research threads
+
+Research threads (`/threads`) decide who books which robot. A thread is a project:
+
+- A prof (anyone with *create research threads*) creates it and becomes its **lead**, and
+  adds or removes members.
+- The lead asks for access to a robot. A lab admin (*approve robot bookings*) signs it off,
+  optionally with a **weekly allowance** in hours, and can change the allowance or withdraw
+  access at any time. A lab admin's own request is approved straight away. Declined
+  requests just disappear.
+- Members then book that robot for the thread; the booking is tagged with the thread's name.
+  The allowance counts the thread's pending and approved hours on that robot in the
+  Monday-Sunday week the booking starts. Lab admins can go over it.
+- Withdrawing access stops new bookings; bookings already made stay.
+
+Lab admins can also edit or deactivate any thread.
+
+### 📊 Dashboard
+
+**Dashboard** (`/dashboard`) is for everyone logged in. There is nothing to configure.
+
+- **Needs you** - only things to act on, each shown to people who can act on it: your overdue
+  loans, tracked items you look after to confirm, bookings, loans and thread robot access to
+  sign off, overdue loans across the lab, items with a reported problem, tracked items not
+  confirmed in a month, sign-ups waiting, and a warning if there are fewer than two Server
+  Admins.
+- **My research threads** - members, robot hours used against the allowance this week,
+  upcoming bookings, and the gear members hold.
+- **Lab usage** (Lab and Server Admins) - robot hours and thread hours over the last 4 weeks,
+  the most borrowed items over 90 days, and no-shows.
+
+### 🧰 Borrowing equipment
+
+Borrowing needs an account. Pick the item, or type its name - a name the system has not
+seen adds it to the catalogue, so the catalogue builds itself as people borrow. Names match
+ignoring case, spaces and punctuation ("RealSense D435i" = "realsense-d435i"). The form is
+item, quantity and a return day (Today / Tomorrow / 3 days / 1 week / pick a date) - no photo.
+What you have shows at the top of the home page with an **I've returned it** button.
+
+**What's in the lab** (`/items`) lists every item and who has it right now. If someone hands
+you something directly, click **I have this now** - their loan closes and one opens for you.
+Anyone can report a problem with an item (or clear it once fixed).
+
+**Overdue loans.** The system reminds you the day before an item is due and again once it
+is overdue. Answer on your **Account** page: *Still using it* (+7 days from today),
+*I returned it*, or lost. A loan 7 or more days overdue pauses your borrowing and booking until you answer.
+
+**Per-item rules**, set by inventory managers:
+
+- **Lab only** - a warning that the item should stay in the lab.
+- **Needs approval** - the loan waits for a lab admin (anyone with *approve loans*).
+- **Tracked** - for valuable gear. Borrowers tick that they take responsibility, and the
+  item's custodian gets a monthly "is it where the system says?" check.
+
+Loans made before accounts existed are still returned with the phone number they were
+made with.
+
+### 🔔 Notifications
+
+There is no email. Thread access requests, approvals, overdue reminders, no-show reports and
+monthly checks all arrive under the 🔔 bell at the top of the site once you are logged in.
 
 ### 🔒 HTTPS
 
@@ -169,7 +275,7 @@ reboots and rebuilds:
 
 | Volume | Holds |
 |---|---|
-| `postgres_data` | Loans, bookings and admin accounts |
+| `postgres_data` | Loans, bookings and user accounts |
 | `uploads_data` | Item photos |
 
 > ⚠️ `docker compose down -v` deletes those volumes and everything in them. Plain
@@ -224,7 +330,7 @@ crontab -e
 night succeeded. Copy archives off the machine now and then - a backup on the
 same disk does not survive that disk.
 
-Admins can also export **Loans** and **Mocap Bookings** as CSV from the dashboard
+Admins can also export **Loans** and **Mocap Bookings** as CSV from the Admin page
 for a human-readable copy (spreadsheets, reports) - though CSV does not include
 photos, so it is not a substitute for `./backup.sh`.
 
@@ -251,28 +357,51 @@ photos, so it is not a substitute for `./backup.sh`.
 
 ## ✨ Features
 
-### 👥 For Students & Staff
-- **Borrow Equipment**: Submit requests with photos and details
-- **Return Items**: Mark items as returned when done
-- **Track Status**: View all your borrowed items and their status
+### 👥 For lab members
+- **Borrow and return equipment**, and see who has what in **What's in the lab**
+- **Book** the Motion Capture Lab and Mech Lab robots, for your research threads
+- **Research threads**: profs create them, add members and ask for robot access
+- **Dashboard**: what needs you, and how your threads are doing
+- **Send prints** to the 3D printers and watch their status
+- **Account page**: your loans, bookings, overdue answers and change password
 
-### 🛡️ For Administrators
-- **Approve Requests**: Review and approve/deny borrow requests
-- **Manage Returns**: Process return requests and mark items as found/missing
+### 🛡️ For lab admins and server admins
+- **Approve** robot bookings, threads' robot access (with weekly hours) and loans of items that need approval
+- **Manage robots**: rules and limits for each robot
+- **Lab usage** on the Dashboard: robot and thread hours, most borrowed items, no-shows
+- **Tidy the catalogue**: merge duplicates, mark items tracked, set a custodian
 - **View History**: Complete searchable history of all equipment
-- **Admin Management**: Add/remove administrators (Super Admin only)
+- **User Management**: Approve sign-ups, set groups and per-person access (Server Admins)
+
+Handing the server over to someone new? See [docs/RUNBOOK.md](docs/RUNBOOK.md).
 
 ---
 
 ## 📖 Usage
 
 1. **Visit** http://[SERVER-IP] in your web browser (replace [SERVER-IP] with your server's LAN IP)
-2. **Students**: Use the main interface to borrow and return equipment
-3. **Admins**: Click the admin button and login to manage the system
+2. **Sign up** at `/register` and wait for a server admin to approve you, then log in
+3. **Borrow, book and print** from the home page
+4. **Dashboard** shows what needs you; **managers** also get the Admin link
 
 > **🔗 Access Requirements:** Make sure you are connected to **wifi@iiith** or have **OpenVPN** configured to access the IIIT network before using the system.
 
 Note: mDNS/Bonjour references have been removed. Use the server IP address to access the application.
+
+---
+
+## ⬆️ Upgrading
+
+```bash
+./backup.sh            # always, before pulling new code
+git pull
+./restart.sh --build   # rebuilds the images and starts the new version
+```
+
+The database is updated on start. The first start with accounts carries the old admin
+logins over as Server Admins (username in the email field) and moves existing mocap
+bookings onto the Motion Capture Lab calendar. Step-by-step maintenance is in
+[docs/RUNBOOK.md](docs/RUNBOOK.md).
 
 ---
 
