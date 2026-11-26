@@ -1,5 +1,5 @@
 <script>
-    import { onMount, onDestroy } from 'svelte';
+    import { onMount, onDestroy, tick } from 'svelte';
     import { cameraFeed } from '$lib/camera.js';
     import { api, can, getToken, getUser, loginUrl, refreshUser } from '$lib/auth.js';
 
@@ -36,6 +36,44 @@
     let cameraTimer;
     let pendingTimers = [];
 
+    // Remote control (light, pause/resume/stop, start a print). Keyed by
+    // printer id, holding the command in flight, so every control on that
+    // card is disabled until the printer answers.
+    let busy = {};
+
+    // Starting a print is the only thing here that makes a machine move on
+    // its own, so the form asks for the plate explicitly rather than guessing,
+    // and the confirm step spells out what is about to happen. Same options
+    // and request body as the admin panel.
+    let startFor = '';
+    let startFile = '';
+    let startBed = 'textured_plate';
+    let startPlate = 1;
+    // 'external', or the flat AMS tray number as a string
+    let startSpool = 'external';
+    let startLevel = true;
+    let startFlow = false;
+    let startTimelapse = false;
+
+    const BED_TYPES = [
+        { value: 'textured_plate', label: 'Textured PEI' },
+        { value: 'cool_plate', label: 'Cool Plate' },
+        { value: 'high_temp_plate', label: 'High Temp' },
+        { value: 'eng_plate', label: 'Engineering' },
+        { value: 'supertack_plate', label: 'Cool Plate SuperTack' }
+    ];
+
+    // Firmware 01.10 with Authorization Control drops unsigned commands and
+    // raises this fault ("MQTT command verification failed") instead.
+    const COMMAND_REJECTED = '0500_0500_0001_0007';
+
+    // "Notify me when done": printer ids this browser is watching, and the
+    // state each printer was in at the previous refresh
+    const NOTIFY_KEY = 'printerNotify';
+    const ACTIVE_STATES = ['RUNNING', 'PREPARE', 'PAUSE'];
+    let notifyOn = {};
+    let lastSeen = {};
+
     $: canUpload = can(user, 'upload_prints');
     $: canManage = can(user, 'manage_printers');
 
@@ -52,6 +90,7 @@
         loginHref = loginUrl();
         // Permissions may have changed since login; a 401 ends the session
         refreshUser().then((fresh) => (user = fresh));
+        notifyOn = loadNotify();
 
         loadPrinters();
         statusTimer = setInterval(loadPrinters, STATUS_INTERVAL);
@@ -88,7 +127,9 @@
         try {
             const response = await fetch('/api/printers');
             if (response.ok) {
-                printers = await response.json();
+                const next = await response.json();
+                watchForFinish(next);
+                printers = next;
                 if (error === 'Could not load printer status' || error === 'Could not reach the server') error = '';
             } else {
                 error = 'Could not load printer status';
@@ -237,7 +278,8 @@
         uploadProgress = 0;
 
         if (result.status === 200) {
-            showNotice(result.body.message || 'File sent to the printer');
+            const sent = (result.body.message || 'File sent to the printer').replace(/\.?\s*$/, '.');
+            showNotice(`${sent} You'll get a notification when it finishes.`);
             loadPrinterFiles(printer);
         } else if (result.status === 401) {
             // The session ended while the page was open
@@ -300,6 +342,270 @@
         } finally {
             deleting = '';
             loadPrinterFiles(printer);
+        }
+    }
+
+    // --- remote control --------------------------------------------------
+
+    // Every command goes through here so the messages stay consistent
+    async function control(printer, path, options, okMessage) {
+        if (busy[printer.id]) return false;
+        busy = { ...busy, [printer.id]: path };
+        try {
+            const response = await api(`/api/admin/printers/${printer.id}/${path}`, options);
+            if (response.status === 401) {
+                user = null;
+                showError('Your session expired. Log in again.');
+                return false;
+            }
+            const result = await response.json().catch(() => ({}));
+            if (response.ok) {
+                showNotice(okMessage || result.message || 'Command sent', 6000);
+                loadPrinters();
+                later(loadPrinters, 2500);
+                return true;
+            }
+            if (response.status === 403) {
+                showError("Your account can't control printers. Ask a server admin.");
+            } else {
+                showError(result.error || `The printer refused that command (HTTP ${response.status})`);
+            }
+            return false;
+        } catch (e) {
+            showError('Could not reach the server');
+            return false;
+        } finally {
+            busy = { ...busy, [printer.id]: '' };
+        }
+    }
+
+    function toggleLight(printer) {
+        const on = !printer.light_on;
+        control(
+            printer,
+            'light',
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ on })
+            },
+            `${printer.name}: light ${on ? 'on' : 'off'}`
+        );
+    }
+
+    function pausePrint(printer) {
+        control(printer, 'pause', { method: 'POST' }, `Paused ${printer.name}`);
+    }
+
+    function resumePrint(printer) {
+        control(printer, 'resume', { method: 'POST' }, `Resumed ${printer.name}`);
+    }
+
+    function stopPrint(printer) {
+        const job = tidyFileName(printer.file_name) || 'the current job';
+        if (!confirm(`Stop ${job} on ${printer.name}?\n\nThis cannot be undone - the print will be cancelled.`)) {
+            return;
+        }
+        control(printer, 'stop', { method: 'POST' }, `Stop command sent to ${printer.name}`);
+    }
+
+    // Running, or about to: pause/stop make sense
+    function isActive(printer) {
+        return printer.online && ACTIVE_STATES.includes(printer.state);
+    }
+
+    function canStart(printer) {
+        return printer.online && ['IDLE', 'FINISH', 'FAILED'].includes(printer.state);
+    }
+
+    // The firmware wants one flat, zero based tray number across every unit:
+    // the first AMS holds 0-3, the second 4-7. The UI counts slots from 1
+    // because that is what is printed on the machine.
+    function amsChoices(printer) {
+        const choices = [];
+        for (const unit of printer.ams || []) {
+            for (const slot of unit.slots || []) {
+                if (slot.empty) continue;
+                choices.push({
+                    index: unit.id * 4 + (slot.slot - 1),
+                    label: `${slot.material || 'Unknown'}`,
+                    color: slot.color,
+                    unit: unit.id + 1,
+                    slot: slot.slot,
+                    remain: slot.remain
+                });
+            }
+        }
+        return choices;
+    }
+
+    function toggleStart(printer) {
+        if (startFor === printer.id) {
+            startFor = '';
+            return;
+        }
+        startFor = printer.id;
+        startFile = '';
+        startPlate = 1;
+        startLevel = true;
+        startFlow = false;
+        startTimelapse = false;
+        // The first loaded AMS slot, or the external spool with no AMS fitted
+        const slots = amsChoices(printer);
+        startSpool = slots.length > 0 ? String(slots[0].index) : 'external';
+        loadPrinterFiles(printer);
+    }
+
+    async function printThisFile(printer, name) {
+        if (startFor !== printer.id) toggleStart(printer);
+        startFile = name;
+        await tick();
+        document.getElementById(`start-${printer.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    async function startPrint(printer) {
+        if (!startFile) {
+            showError('Choose a file to print', 6000);
+            return;
+        }
+
+        const bed = BED_TYPES.find((b) => b.value === startBed)?.label || startBed;
+        const useAMS = startSpool !== 'external';
+        const slot = useAMS ? Number(startSpool) : 0;
+        const chosen = amsChoices(printer).find((c) => c.index === slot);
+        let spool = 'the external spool';
+        if (useAMS) {
+            spool = chosen ? `AMS ${chosen.unit} slot ${chosen.slot} — ${chosen.label}` : `AMS tray ${slot}`;
+        }
+
+        const ok = confirm(
+            `Start ${startFile} on ${printer.name}?\n\n` +
+            `Plate: ${bed}\nFilament: ${spool}\n\n` +
+            `The printer will start moving. Check the plate is clear and the ` +
+            `right one is fitted before continuing.`
+        );
+        if (!ok) return;
+
+        const file = startFile;
+        const started = await control(
+            printer,
+            'print',
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    file_name: file,
+                    plate: Number(startPlate) || 1,
+                    bed_type: startBed,
+                    use_ams: useAMS,
+                    ams_slot: slot,
+                    bed_levelling: startLevel,
+                    flow_cali: startFlow,
+                    timelapse: startTimelapse
+                })
+            },
+            `Started ${file} on ${printer.name}`
+        );
+        if (started) startFor = '';
+    }
+
+    // Bambu writes codes with or without the HMS_ prefix
+    function isRejected(printer) {
+        return (printer.faults || []).some(
+            (f) => (f.code || '').toUpperCase().replace(/^HMS_/, '') === COMMAND_REJECTED
+        );
+    }
+
+    // --- "notify me when done" ------------------------------------------
+
+    function loadNotify() {
+        try {
+            const saved = JSON.parse(localStorage.getItem(NOTIFY_KEY) || '{}');
+            return saved && typeof saved === 'object' ? saved : {};
+        } catch (e) {
+            return {};
+        }
+    }
+
+    function saveNotify() {
+        try {
+            localStorage.setItem(NOTIFY_KEY, JSON.stringify(notifyOn));
+        } catch (e) {
+            // Private window or blocked storage: the toggle lasts this visit
+        }
+    }
+
+    async function toggleNotify(printer) {
+        if (notifyOn[printer.id]) {
+            const rest = { ...notifyOn };
+            delete rest[printer.id];
+            notifyOn = rest;
+            saveNotify();
+            return;
+        }
+
+        notifyOn = { ...notifyOn, [printer.id]: true };
+        saveNotify();
+
+        let permission = typeof Notification === 'undefined' ? 'unsupported' : Notification.permission;
+        if (permission === 'default') {
+            try {
+                permission = await Notification.requestPermission();
+            } catch (e) {
+                permission = 'denied';
+            }
+        }
+
+        if (permission === 'granted') {
+            showNotice(`You'll get a notification when ${printer.name} is done - keep this page open.`, 6000);
+        } else if (permission === 'unsupported') {
+            showNotice(`This browser can't show notifications - you'll see an alert on this page when ${printer.name} is done.`);
+        } else {
+            showNotice(`Notifications are blocked for this site - you'll see an alert on this page when ${printer.name} is done.`);
+        }
+    }
+
+    // Compare each printer with the previous refresh, and announce the end
+    // of a job on the printers this browser is watching
+    function watchForFinish(next) {
+        for (const p of next) {
+            const before = lastSeen[p.id];
+            if (
+                notifyOn[p.id] &&
+                before &&
+                ACTIVE_STATES.includes(before.state) &&
+                ['FINISH', 'FAILED'].includes(p.state)
+            ) {
+                announce(p, before.file);
+            }
+        }
+        lastSeen = Object.fromEntries(next.map((p) => [p.id, { state: p.state, file: p.file_name }]));
+    }
+
+    function announce(printer, previousFile) {
+        const job = tidyFileName(printer.file_name || previousFile);
+        const failed = printer.state === 'FAILED';
+        const title = failed
+            ? `${printer.name} failed - check it`
+            : `${printer.name} finished${job ? ' ' + job : ''}`;
+
+        if (failed) showError(`⚠️ ${title}`, 15000);
+        else showNotice(`✅ ${title}`, 15000);
+
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+            try {
+                new Notification(title, {
+                    body: failed
+                        ? `${job || 'The job'} stopped before it was done.`
+                        : 'Collect it from the lab and clear the plate.',
+                    icon: '/P1S.png',
+                    tag: `printer-${printer.id}`,
+                    silent: true
+                });
+            } catch (e) {
+                // Some mobile browsers only allow notifications from a
+                // service worker; the in-page alert above still shows
+            }
         }
     }
 
@@ -464,6 +770,39 @@
                         </div>
                     {/if}
 
+                    {#if isRejected(printer)}
+                        <div class="reject-card">
+                            {#if canManage}
+                                <strong>🔒 Remote control blocked by the printer</strong>
+                                <p>
+                                    This printer rejected a command from the website: its firmware
+                                    only accepts signed commands. Turn on
+                                    <strong>LAN Only Mode → Developer Mode</strong> on the printer's
+                                    screen (Settings → Network) to allow remote control.
+                                </p>
+                            {:else}
+                                <strong>🔒 Remote control is off</strong>
+                                <p>
+                                    {printer.name} isn't accepting commands from the website yet. Use
+                                    the printer's screen - a printer admin is sorting it out.
+                                </p>
+                            {/if}
+                        </div>
+                    {/if}
+
+                    {#if printer.faults && printer.faults.length > 0}
+                        <div class="faults">
+                            <strong>⚠️ {printer.faults.length} fault{printer.faults.length > 1 ? 's' : ''} reported</strong>
+                            {#each printer.faults as fault (fault.code)}
+                                <a class="fault {fault.severity}" href={fault.url} target="_blank" rel="noopener">
+                                    <span class="fault-sev">{fault.severity}</span>
+                                    <span class="fault-code">{fault.code}</span>
+                                    <span class="fault-link">look up →</span>
+                                </a>
+                            {/each}
+                        </div>
+                    {/if}
+
                     <div class="camera">
                         {#if printer.camera_online && $camera[printer.id]}
                             <img
@@ -498,6 +837,135 @@
                             <p class="file" title={printer.file_name}>
                                 📄 {tidyFileName(printer.file_name)}
                             </p>
+                        {/if}
+
+                        <div class="controls" aria-label="{printer.name} controls">
+                            <button
+                                class="ctl notify"
+                                class:on={notifyOn[printer.id]}
+                                aria-pressed={!!notifyOn[printer.id]}
+                                on:click={() => toggleNotify(printer)}
+                                title="Get a notification in this browser when the current job finishes or fails"
+                            >
+                                {notifyOn[printer.id] ? '🔔 Notifying you' : '🔕 Notify me when done'}
+                            </button>
+
+                            {#if canManage}
+                                <button
+                                    class="ctl light"
+                                    class:on={printer.light_on}
+                                    aria-pressed={!!printer.light_on}
+                                    on:click={() => toggleLight(printer)}
+                                    disabled={!!busy[printer.id]}
+                                    title="Chamber light - the camera is useless in the dark"
+                                >
+                                    {busy[printer.id] === 'light' ? '...' : printer.light_on ? '💡 Light on' : '🌑 Light off'}
+                                </button>
+
+                                {#if printer.state === 'PAUSE'}
+                                    <button class="ctl resume" on:click={() => resumePrint(printer)} disabled={!!busy[printer.id]}>
+                                        {busy[printer.id] === 'resume' ? 'Resuming...' : '▶ Resume'}
+                                    </button>
+                                {:else if isActive(printer)}
+                                    <button class="ctl pause" on:click={() => pausePrint(printer)} disabled={!!busy[printer.id]}>
+                                        {busy[printer.id] === 'pause' ? 'Pausing...' : '⏸ Pause'}
+                                    </button>
+                                {/if}
+
+                                {#if isActive(printer)}
+                                    <button class="ctl stop" on:click={() => stopPrint(printer)} disabled={!!busy[printer.id]}>
+                                        {busy[printer.id] === 'stop' ? 'Stopping...' : '⏹ Stop'}
+                                    </button>
+                                {/if}
+
+                                {#if canStart(printer)}
+                                    <button
+                                        class="ctl start"
+                                        aria-expanded={startFor === printer.id}
+                                        on:click={() => toggleStart(printer)}
+                                        disabled={!!busy[printer.id] && startFor !== printer.id}
+                                    >
+                                        {startFor === printer.id ? '✕ Close' : '▶ Start print'}
+                                    </button>
+                                {/if}
+                            {/if}
+                        </div>
+
+                        {#if canManage && startFor === printer.id && canStart(printer)}
+                            <div class="start-panel" id="start-{printer.id}">
+                                <label class="start-row">
+                                    <span>File</span>
+                                    <select bind:value={startFile}>
+                                        <option value="">
+                                            {printerFiles[printer.id]
+                                                ? printerFiles[printer.id].length
+                                                    ? 'Choose a file...'
+                                                    : 'No files on this printer'
+                                                : filesError[printer.id]
+                                                    ? 'Could not read the files'
+                                                    : 'Loading files...'}
+                                        </option>
+                                        {#each printerFiles[printer.id] || [] as file (file.name)}
+                                            <option value={file.name}>{file.name}</option>
+                                        {/each}
+                                    </select>
+                                </label>
+
+                                <label class="start-row">
+                                    <span>Plate fitted</span>
+                                    <select bind:value={startBed}>
+                                        {#each BED_TYPES as bed}<option value={bed.value}>{bed.label}</option>{/each}
+                                    </select>
+                                </label>
+
+                                <label class="start-row">
+                                    <span>Filament</span>
+                                    <select bind:value={startSpool}>
+                                        {#each amsChoices(printer) as choice}
+                                            <option value={String(choice.index)}>
+                                                AMS {choice.unit} slot {choice.slot} — {choice.label}{choice.remain >= 0 ? ` (${choice.remain}%)` : ''}
+                                            </option>
+                                        {/each}
+                                        <option value="external">External spool</option>
+                                    </select>
+                                </label>
+
+                                {#if startSpool !== 'external'}
+                                    <div class="swatches">
+                                        {#each amsChoices(printer) as choice}
+                                            <button
+                                                class="swatch"
+                                                class:picked={startSpool === String(choice.index)}
+                                                style="background: {choice.color || 'var(--ctp-surface1)'}"
+                                                title="AMS {choice.unit} slot {choice.slot} — {choice.label}"
+                                                aria-label="AMS {choice.unit} slot {choice.slot}: {choice.label}"
+                                                aria-pressed={startSpool === String(choice.index)}
+                                                on:click={() => (startSpool = String(choice.index))}
+                                            ><span>{choice.slot}</span></button>
+                                        {/each}
+                                    </div>
+                                {/if}
+
+                                <label class="start-row">
+                                    <span>Plate number</span>
+                                    <input type="number" min="1" max="64" bind:value={startPlate} />
+                                </label>
+
+                                <div class="start-opts">
+                                    <label><input type="checkbox" bind:checked={startLevel} /> Bed levelling</label>
+                                    <label><input type="checkbox" bind:checked={startFlow} /> Flow calibration</label>
+                                    <label><input type="checkbox" bind:checked={startTimelapse} /> Timelapse</label>
+                                </div>
+
+                                <p class="start-warn">
+                                    Check the camera above: the plate must be clear and the plate
+                                    type must match what you chose.
+                                </p>
+
+                                <button class="start-go" on:click={() => startPrint(printer)} disabled={!!busy[printer.id] || !startFile}>
+                                    {busy[printer.id] === 'print' ? 'Starting...' : '▶ Start print'}
+                                </button>
+                            </div>
                         {/if}
 
                         <button
@@ -617,6 +1085,15 @@
                                                             {#if isCurrentJob(printer, file)}<span class="send-now"> · printing</span>{/if}
                                                         </span>
                                                     </span>
+                                                    {#if canManage && canStart(printer)}
+                                                        <button
+                                                            class="print-btn"
+                                                            on:click={() => printThisFile(printer, file.name)}
+                                                            disabled={!!busy[printer.id]}
+                                                            title="Print {file.name} on {printer.name}"
+                                                            aria-label="Print {file.name}"
+                                                        >▶</button>
+                                                    {/if}
                                                     {#if canManage}
                                                         <button
                                                             class="delete-btn"
@@ -873,7 +1350,7 @@
     .printer-card.idle { --stripe: var(--ctp-sapphire); }
 
     /* Faded, but the access-code fix stays fully readable */
-    .printer-card.offline > :not(.code-warning) { opacity: 0.62; }
+    .printer-card.offline > :not(.code-warning):not(.reject-card):not(.faults) { opacity: 0.62; }
 
     /* A quiet heartbeat on the machines that are actually working */
     .printer-card.running .availability.busy::before {
@@ -1570,6 +2047,288 @@
         font-size: 0.78rem;
         cursor: pointer;
     }
+
+    .print-btn {
+        flex-shrink: 0;
+        width: 40px;
+        height: 40px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: 6px;
+        color: var(--ctp-green);
+        font-size: 0.95rem;
+        cursor: pointer;
+        transition: background-color var(--fast) var(--ease), border-color var(--fast) var(--ease);
+    }
+
+    .print-btn:hover:not(:disabled) {
+        background: color-mix(in srgb, var(--ctp-green) 12%, transparent);
+        border-color: color-mix(in srgb, var(--ctp-green) 40%, transparent);
+    }
+
+    .print-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* --- remote control ---------------------------------------------------- */
+    .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 12px;
+    }
+
+    .ctl {
+        flex: 1 1 auto;
+        min-height: 44px;
+        padding: 0 12px;
+        background: var(--ctp-surface0);
+        color: var(--ctp-text);
+        border: 1px solid var(--ctp-surface1);
+        border-radius: var(--radius-sm);
+        font-weight: 600;
+        font-family: inherit;
+        font-size: 0.84rem;
+        white-space: nowrap;
+        cursor: pointer;
+        transition:
+            background-color var(--fast) var(--ease),
+            border-color var(--fast) var(--ease),
+            transform var(--fast) var(--ease);
+    }
+
+    .ctl:hover:not(:disabled) {
+        background: var(--ctp-surface1);
+        transform: translateY(-1px);
+    }
+
+    .ctl:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    .ctl.notify { color: var(--ctp-subtext0); }
+
+    .ctl.notify.on {
+        color: var(--ctp-mauve);
+        border-color: var(--ctp-mauve);
+        background: color-mix(in srgb, var(--ctp-mauve) 12%, var(--ctp-surface0));
+    }
+
+    .ctl.light.on {
+        color: var(--ctp-yellow);
+        border-color: var(--ctp-yellow);
+        background: color-mix(in srgb, var(--ctp-yellow) 12%, var(--ctp-surface0));
+    }
+
+    .ctl.pause { color: var(--ctp-yellow); border-color: var(--ctp-yellow); }
+    .ctl.resume,
+    .ctl.start { color: var(--ctp-green); border-color: var(--ctp-green); }
+
+    .ctl.stop {
+        background: var(--danger);
+        border-color: var(--danger);
+        color: var(--rp-base);
+    }
+
+    .ctl.stop:hover:not(:disabled) {
+        background: var(--danger);
+        filter: brightness(1.08);
+    }
+
+    .start-panel {
+        margin-top: 10px;
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        border: 1px solid var(--ctp-green);
+        border-radius: var(--radius-sm);
+        background: var(--ctp-crust);
+        animation: rise var(--normal) var(--ease) both;
+    }
+
+    .start-row {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+        color: var(--ctp-overlay0);
+    }
+
+    .start-row select,
+    .start-row input {
+        min-height: 40px;
+        box-sizing: border-box;
+        width: 100%;
+        background: var(--ctp-base);
+        border: 1px solid var(--ctp-surface1);
+        border-radius: 6px;
+        padding: 6px 8px;
+        color: var(--ctp-text);
+        font-family: inherit;
+        font-size: 0.88rem;
+        font-weight: 400;
+        text-transform: none;
+        letter-spacing: normal;
+    }
+
+    .swatches {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+
+    .swatch {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        border: 2px solid var(--ctp-surface2);
+        cursor: pointer;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    /* Readable on any filament colour */
+    .swatch span {
+        font-size: 0.7rem;
+        font-weight: 700;
+        color: var(--ctp-text);
+        background: var(--ctp-mantle);
+        border-radius: var(--radius-pill);
+        padding: 1px 5px;
+    }
+
+    .swatch.picked {
+        border-color: var(--ctp-green);
+        box-shadow: 0 0 0 2px var(--ctp-green);
+    }
+
+    .start-opts {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 14px;
+    }
+
+    .start-opts label {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 40px;
+        font-size: 0.82rem;
+        color: var(--ctp-text);
+        cursor: pointer;
+    }
+
+    .start-opts input {
+        width: 18px;
+        height: 18px;
+        accent-color: var(--ctp-green);
+    }
+
+    .start-warn {
+        margin: 0;
+        padding: 8px 10px;
+        border-radius: 6px;
+        border: 1px solid var(--ctp-yellow);
+        background: color-mix(in srgb, var(--ctp-yellow) 10%, transparent);
+        font-size: 0.78rem;
+        line-height: 1.4;
+        color: var(--ctp-text);
+    }
+
+    .start-go {
+        min-height: 44px;
+        background: var(--ctp-green);
+        color: var(--rp-base);
+        border: none;
+        border-radius: var(--radius-sm);
+        font-weight: 700;
+        font-family: inherit;
+        font-size: 0.9rem;
+        cursor: pointer;
+    }
+
+    .start-go:hover:not(:disabled) { filter: brightness(1.06); }
+    .start-go:disabled { opacity: 0.55; cursor: not-allowed; }
+
+    /* --- faults ------------------------------------------------------------ */
+    .reject-card {
+        background: color-mix(in srgb, var(--ctp-mauve) 12%, var(--card));
+        border: 1px solid var(--ctp-mauve);
+        border-radius: 8px;
+        padding: 10px 12px;
+        margin-bottom: 10px;
+        font-size: 0.82rem;
+        color: var(--ctp-mauve);
+    }
+
+    .reject-card p {
+        margin: 6px 0 0;
+        color: var(--ctp-text);
+        line-height: 1.4;
+    }
+
+    .reject-card p strong { color: var(--ctp-mauve); }
+
+    .faults {
+        background: color-mix(in srgb, var(--ctp-red) 10%, var(--card));
+        border: 1px solid var(--ctp-red);
+        border-radius: 8px;
+        padding: 10px 12px;
+        margin-bottom: 10px;
+        font-size: 0.82rem;
+        color: var(--ctp-red);
+    }
+
+    .fault {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 6px;
+        min-height: 40px;
+        padding: 6px 8px;
+        box-sizing: border-box;
+        border-radius: 6px;
+        background: var(--ctp-crust);
+        text-decoration: none;
+        color: var(--ctp-subtext0);
+        font-size: 0.75rem;
+        transition: background-color var(--fast) var(--ease);
+    }
+
+    .fault:hover { background: var(--ctp-surface0); }
+
+    .fault-sev {
+        text-transform: uppercase;
+        font-weight: 700;
+        letter-spacing: 0.4px;
+        padding: 2px 6px;
+        border-radius: var(--radius-pill);
+        background: var(--ctp-surface1);
+        color: var(--ctp-text);
+        font-size: 0.65rem;
+    }
+
+    .fault.fatal .fault-sev { background: var(--ctp-red); color: var(--rp-base); }
+    .fault.serious .fault-sev { background: var(--ctp-peach); color: var(--rp-base); }
+    .fault.common .fault-sev { background: var(--ctp-yellow); color: var(--rp-base); }
+    .fault.info .fault-sev { background: var(--ctp-sapphire); color: var(--rp-base); }
+
+    .fault-code {
+        flex: 1;
+        min-width: 0;
+        font-family: var(--mono, monospace);
+        color: var(--ctp-text);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .fault-link { color: var(--link); white-space: nowrap; }
 
     .offline-note {
         margin: 8px 0 0;
