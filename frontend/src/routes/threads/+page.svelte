@@ -381,12 +381,14 @@
     .thread-card {
         background:
             linear-gradient(180deg, color-mix(in srgb, var(--rp-text) 4%, transparent), transparent 60%),
-            var(--card);
+            color-mix(in srgb, var(--card) 60%, transparent);
         border: 1px solid var(--ctp-surface0);
         border-radius: var(--radius-lg);
         padding: clamp(15px, 3vw, 22px);
         box-shadow: var(--shadow-sm);
         min-width: 0;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .section-title {
@@ -402,7 +404,7 @@
         margin-left: 6px;
         padding: 2px 8px;
         border-radius: 12px;
-        background: var(--ctp-surface0);
+        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
         color: var(--ctp-subtext0);
         font-size: 0.75rem;
         font-weight: 600;
@@ -488,11 +490,13 @@
         padding: 8px 12px;
         border: 2px solid var(--ctp-surface0);
         border-radius: 8px;
-        background: var(--bg);
+        background: color-mix(in srgb, var(--bg) 60%, transparent);
         color: var(--ctp-text);
         font: inherit;
         box-sizing: border-box;
         transition: border-color var(--fast) var(--ease), box-shadow var(--fast) var(--ease);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     input:not([type='checkbox']):focus,
@@ -686,7 +690,7 @@
         min-height: 32px;
         padding: 2px 12px;
         border-radius: 999px;
-        background: var(--ctp-surface0);
+        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
         border: 1px solid var(--ctp-surface1);
         font-size: 0.88rem;
         color: var(--ctp-text);
@@ -694,7 +698,9 @@
 
     .member-chip.is-lead {
         border-color: color-mix(in srgb, var(--hue) 55%, transparent);
-        background: color-mix(in srgb, var(--hue) 14%, var(--card));
+        background: color-mix(in srgb, var(--hue) 14%, color-mix(in srgb, var(--card) 60%, transparent));
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .lead-tag {
@@ -780,7 +786,7 @@
     .bar {
         height: 8px;
         border-radius: 999px;
-        background: var(--ctp-surface0);
+        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
         overflow: hidden;
     }
 
@@ -811,7 +817,7 @@
         font-size: 0.75rem;
         font-weight: 700;
         white-space: nowrap;
-        background: var(--ctp-surface0);
+        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
         color: var(--ctp-subtext0);
     }
 
@@ -889,13 +895,13 @@
 
     .ghost-btn {
         border: 1px solid var(--ctp-surface1);
-        background: var(--ctp-surface0);
+        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
         color: var(--ctp-text);
         font-weight: 500;
     }
 
     .ghost-btn:hover:not(:disabled) {
-        background: var(--ctp-surface1);
+        background: color-mix(in srgb, var(--ctp-surface1) 60%, transparent);
     }
 
     .danger-btn {
@@ -934,11 +940,15 @@
     }
 
     .message.success {
-        background: color-mix(in srgb, var(--rp-foam) 15%, var(--card));
+        background: color-mix(in srgb, var(--rp-foam) 15%, color-mix(in srgb, var(--card) 60%, transparent));
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .message.error {
-        background: color-mix(in srgb, var(--rp-love) 15%, var(--card));
+        background: color-mix(in srgb, var(--rp-love) 15%, color-mix(in srgb, var(--card) 60%, transparent));
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     @media (max-width: 520px) {

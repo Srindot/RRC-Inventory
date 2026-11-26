@@ -98,9 +98,6 @@
 
     <main class="content" class:home><slot /></main>
 
-    <footer class="site-foot">
-        <span>Created by <a href="https://github.com/srindot" target="_blank" rel="noopener noreferrer">Srinath</a></span>
-    </footer>
 </div>
 
 <style>
@@ -138,7 +135,7 @@
         padding: clamp(5px, 0.6vw, 8px) clamp(14px, 1.6vw, 22px) clamp(5px, 0.6vw, 8px) clamp(5px, 0.6vw, 8px);
         border: 1px solid var(--line);
         border-radius: clamp(14px, 1.4vw, 20px);
-        background: color-mix(in srgb, var(--card) 55%, transparent);
+        background: color-mix(in srgb, color-mix(in srgb, var(--card) 60%, transparent) 55%, transparent);
         -webkit-backdrop-filter: blur(10px) saturate(1.15);
         backdrop-filter: blur(10px) saturate(1.15);
         box-shadow: var(--shadow-sm);
@@ -343,29 +340,8 @@
         width: 100%;
     }
 
-    .site-foot {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 2px;
-        padding: 18px 16px calc(18px + env(safe-area-inset-bottom));
-        border-top: 1px solid var(--line);
-        background: var(--glass);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-        color: var(--muted);
-        font-size: 0.8rem;
-        text-align: center;
-    }
 
-    .site-foot a {
-        color: var(--rp-rose);
-        text-decoration: none;
-    }
 
-    .site-foot a:hover {
-        text-decoration: underline;
-    }
 
     /* --- phones ---------------------------------------------------------- */
 

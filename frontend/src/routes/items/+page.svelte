@@ -301,12 +301,14 @@
     .panel {
         background:
             linear-gradient(180deg, color-mix(in srgb, var(--rp-text) 4%, transparent), transparent 60%),
-            var(--card);
+            color-mix(in srgb, var(--card) 60%, transparent);
         border: 1px solid var(--ctp-surface0);
         border-radius: var(--radius-lg);
         padding: clamp(14px, 2.5vw, 20px);
         margin-bottom: 16px;
         box-shadow: var(--shadow-sm);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .section-title {
@@ -363,11 +365,13 @@
         padding: 10px 14px;
         border: 2px solid var(--ctp-surface0);
         border-radius: 8px;
-        background: var(--bg);
+        background: color-mix(in srgb, var(--bg) 60%, transparent);
         color: var(--ctp-text);
         font: inherit;
         box-sizing: border-box;
         transition: border-color var(--fast) var(--ease), box-shadow var(--fast) var(--ease);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .search-input-group input {
@@ -417,7 +421,7 @@
         padding: 6px 14px;
         border: 1px solid var(--ctp-surface1);
         border-radius: 999px;
-        background: var(--ctp-surface0);
+        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
         color: var(--ctp-text);
         font: inherit;
         font-size: 0.9rem;
@@ -426,7 +430,7 @@
     }
 
     .chip:hover {
-        background: var(--ctp-surface1);
+        background: color-mix(in srgb, var(--ctp-surface1) 60%, transparent);
     }
 
     .chip .mono {
@@ -492,9 +496,11 @@
         border-radius: 12px;
         background:
             linear-gradient(180deg, color-mix(in srgb, var(--rp-text) 4%, transparent), transparent 60%),
-            var(--card);
+            color-mix(in srgb, var(--card) 60%, transparent);
         box-shadow: var(--shadow-sm);
         transition: transform var(--normal) var(--ease), border-color var(--normal) var(--ease), box-shadow var(--normal) var(--ease);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .item-card:hover {
@@ -534,7 +540,7 @@
         font-size: 0.78rem;
         font-weight: 700;
         white-space: nowrap;
-        background: var(--ctp-surface0);
+        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
         color: var(--ctp-subtext0);
     }
 
@@ -718,13 +724,13 @@
 
     .ghost-btn {
         border: 1px solid var(--ctp-surface1);
-        background: var(--ctp-surface0);
+        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
         color: var(--ctp-text);
         font-weight: 500;
     }
 
     .ghost-btn:hover {
-        background: var(--ctp-surface1);
+        background: color-mix(in srgb, var(--ctp-surface1) 60%, transparent);
         transform: translateY(-1px);
     }
 
@@ -745,11 +751,15 @@
 
     /* Toast in the old message colours */
     .message.success {
-        background: color-mix(in srgb, var(--rp-foam) 15%, var(--card));
+        background: color-mix(in srgb, var(--rp-foam) 15%, color-mix(in srgb, var(--card) 60%, transparent));
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .message.error {
-        background: color-mix(in srgb, var(--rp-love) 15%, var(--card));
+        background: color-mix(in srgb, var(--rp-love) 15%, color-mix(in srgb, var(--card) 60%, transparent));
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     @media (max-width: 520px) {

@@ -796,7 +796,7 @@
         padding: 0 14px;
         border: none;
         border-radius: 6px;
-        background: var(--ctp-surface0);
+        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
         color: var(--ctp-text);
         font: inherit;
         font-size: 0.9rem;
@@ -807,7 +807,7 @@
 
     .lab-switch a:hover,
     .robot-tabs button:hover {
-        background: var(--ctp-surface1);
+        background: color-mix(in srgb, var(--ctp-surface1) 60%, transparent);
     }
 
     .lab-switch a.active,
@@ -825,7 +825,9 @@
     }
 
     .robot-tabs button.active .dot {
-        background: var(--rp-base);
+        background: color-mix(in srgb, var(--rp-base) 60%, transparent);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .dot {
@@ -857,15 +859,19 @@
     }
 
     .msg.success {
-        background: color-mix(in srgb, var(--ctp-green) 14%, var(--card));
+        background: color-mix(in srgb, var(--ctp-green) 14%, color-mix(in srgb, var(--card) 60%, transparent));
         color: var(--ctp-green);
         border: 1px solid var(--ctp-green);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .msg.error {
-        background: color-mix(in srgb, var(--ctp-red) 14%, var(--card));
+        background: color-mix(in srgb, var(--ctp-red) 14%, color-mix(in srgb, var(--card) 60%, transparent));
         color: var(--ctp-red);
         border: 1px solid var(--ctp-red);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .rules {
@@ -881,13 +887,15 @@
     .panel,
     .booking-form,
     .booking-details {
-        background: var(--ctp-mantle);
+        background: color-mix(in srgb, var(--ctp-mantle) 60%, transparent);
         border: 1px solid var(--ctp-surface0);
         border-radius: var(--radius-lg);
         padding: 16px;
         margin: 14px 0 16px;
         box-shadow: var(--shadow-sm);
         animation: rise var(--normal) var(--ease) both;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .panel h3 {
@@ -913,7 +921,9 @@
         gap: 12px;
         flex-wrap: wrap;
         border-color: color-mix(in srgb, var(--hue) 45%, transparent);
-        background: color-mix(in srgb, var(--hue) 8%, var(--ctp-mantle));
+        background: color-mix(in srgb, var(--hue) 8%, color-mix(in srgb, var(--ctp-mantle) 60%, transparent));
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .notice p {
@@ -974,7 +984,7 @@
     }
 
     .link-row:hover {
-        background: var(--ctp-surface0);
+        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
     }
 
     .when {
@@ -1004,7 +1014,7 @@
     }
 
     .week-nav button {
-        background: var(--ctp-surface0);
+        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
         color: var(--ctp-text);
         border: none;
         border-radius: 6px;
@@ -1015,7 +1025,7 @@
     }
 
     .week-nav button:hover {
-        background: var(--ctp-surface1);
+        background: color-mix(in srgb, var(--ctp-surface1) 60%, transparent);
     }
 
     .week-label {
@@ -1081,7 +1091,7 @@
 
     .booking-form input,
     .booking-form select {
-        background: var(--ctp-base);
+        background: color-mix(in srgb, var(--ctp-base) 60%, transparent);
         border: 1px solid var(--ctp-surface1);
         border-radius: 6px;
         padding: 9px;
@@ -1089,6 +1099,8 @@
         box-sizing: border-box;
         color: var(--ctp-text);
         font-size: 0.95rem;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .picked {
@@ -1190,7 +1202,7 @@
         display: inline-flex;
         align-items: center;
         box-sizing: border-box;
-        background: var(--ctp-surface0);
+        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
         color: var(--ctp-text);
         border: none;
         border-radius: 6px;
@@ -1202,7 +1214,7 @@
     }
 
     .close-btn:hover {
-        background: var(--ctp-surface1);
+        background: color-mix(in srgb, var(--ctp-surface1) 60%, transparent);
     }
 
     .link-btn {
@@ -1220,8 +1232,10 @@
         border: 1px solid var(--ctp-surface0);
         border-radius: var(--radius-lg);
         overflow: hidden;
-        background: var(--ctp-mantle);
+        background: color-mix(in srgb, var(--ctp-mantle) 60%, transparent);
         box-shadow: var(--shadow-sm);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .calendar-head,
@@ -1358,10 +1372,12 @@
         min-height: 40px;
         border: 1px solid var(--ctp-surface1);
         border-radius: 6px;
-        background: var(--ctp-base);
+        background: color-mix(in srgb, var(--ctp-base) 60%, transparent);
         color: var(--ctp-text);
         font: inherit;
         cursor: pointer;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .durations button.active {
@@ -1418,9 +1434,11 @@
 
     /* A request nobody has approved yet does not hold the slot */
     .booking-block.pending {
-        background: color-mix(in srgb, var(--hue) 14%, var(--ctp-mantle));
+        background: color-mix(in srgb, var(--hue) 14%, color-mix(in srgb, var(--ctp-mantle) 60%, transparent));
         border: 1px dashed var(--hue);
         color: var(--ctp-text);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .booking-block.noshow {
@@ -1487,19 +1505,25 @@
     }
 
     .swatch.pending {
-        background: color-mix(in srgb, var(--hue) 14%, var(--ctp-mantle));
+        background: color-mix(in srgb, var(--hue) 14%, color-mix(in srgb, var(--ctp-mantle) 60%, transparent));
         border: 1px dashed var(--hue);
         box-sizing: border-box;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     /* Rosé Pine Dawn: dark text reads better on the lighter hues */
     :global(:root[data-theme='light']) .booking-block:not(.pending) {
         color: var(--ctp-text);
-        background: linear-gradient(135deg, color-mix(in srgb, var(--hue) 55%, var(--card)), color-mix(in srgb, var(--hue) 40%, var(--card)));
+        background: linear-gradient(135deg, color-mix(in srgb, var(--hue) 55%, color-mix(in srgb, var(--card) 60%, transparent)), color-mix(in srgb, var(--hue) 40%, color-mix(in srgb, var(--card) 60%, transparent)));
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     :global(:root[data-theme='light']) .swatch:not(.pending):not(.past) {
-        background: color-mix(in srgb, var(--hue) 50%, var(--card));
+        background: color-mix(in srgb, var(--hue) 50%, color-mix(in srgb, var(--card) 60%, transparent));
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     :global(:root[data-theme='light']) .booking-block:not(.pending) .block-name,
@@ -1529,7 +1553,9 @@
             position: sticky;
             left: 0;
             z-index: 5;
-            background: var(--ctp-mantle);
+            background: color-mix(in srgb, var(--ctp-mantle) 60%, transparent);
+            -webkit-backdrop-filter: var(--glass-blur);
+            backdrop-filter: var(--glass-blur);
         }
 
         .calendar {

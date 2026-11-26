@@ -108,12 +108,14 @@
     .login-form {
         background:
             linear-gradient(180deg, color-mix(in srgb, var(--rp-text) 4%, transparent), transparent 60%),
-            var(--card);
+            color-mix(in srgb, var(--card) 60%, transparent);
         padding: clamp(22px, 5vw, 40px);
         border-radius: var(--radius-lg);
         border: 1px solid var(--ctp-surface0);
         box-shadow: var(--shadow-lg);
         margin-bottom: 18px;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .form-group {
@@ -134,11 +136,13 @@
         padding: 10px 14px;
         border: 2px solid var(--ctp-surface0);
         border-radius: 8px;
-        background: var(--bg);
+        background: color-mix(in srgb, var(--bg) 60%, transparent);
         color: var(--ctp-text);
         font: inherit;
         box-sizing: border-box;
         transition: border-color var(--fast) var(--ease), box-shadow var(--fast) var(--ease);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .form-group input:focus {
@@ -162,14 +166,14 @@
         padding: 0 14px;
         border: 1px solid var(--ctp-surface1);
         border-radius: 8px;
-        background: var(--ctp-surface0);
+        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
         color: var(--ctp-text);
         font: inherit;
         cursor: pointer;
     }
 
     .ghost-btn:hover {
-        background: var(--ctp-surface1);
+        background: color-mix(in srgb, var(--ctp-surface1) 60%, transparent);
     }
 
     .submit-btn {
@@ -193,7 +197,7 @@
     }
 
     .submit-btn:disabled {
-        background: var(--ctp-surface0);
+        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
         color: var(--ctp-subtext0);
         cursor: wait;
         transform: none;

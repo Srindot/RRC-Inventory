@@ -2065,7 +2065,7 @@
     .chip {
         display: inline-flex;
         align-items: center;
-        background: var(--card-raised);
+        background: color-mix(in srgb, var(--card-raised) 60%, transparent);
         color: var(--rp-text);
         border: 1px solid var(--line-strong);
         border-radius: 999px;
@@ -2076,6 +2076,8 @@
         font-size: 0.95rem;
         cursor: pointer;
         transition: background var(--fast) var(--ease), border-color var(--fast) var(--ease);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .chip:hover {
@@ -2093,7 +2095,7 @@
     .form-container,
     .return-container,
     .printer-guide-container {
-        background: var(--card);
+        background: color-mix(in srgb, var(--card) 60%, transparent);
         padding: clamp(16px, 3vw, 25px);
         border-radius: 12px;
         margin: 0 auto;
@@ -2102,6 +2104,8 @@
         max-width: 800px;
         box-sizing: border-box;
         animation: rise var(--slow) var(--ease) both;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .printer-guide-container {
@@ -2133,9 +2137,11 @@
         font: inherit;
         font-size: clamp(0.95rem, 2vw, 1rem);
         box-sizing: border-box;
-        background: var(--bg);
+        background: color-mix(in srgb, var(--bg) 60%, transparent);
         color: var(--rp-text);
         transition: border-color var(--fast) var(--ease), box-shadow var(--fast) var(--ease);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .form-group textarea {
@@ -2198,7 +2204,9 @@
         padding: 12px 14px;
         border: 2px solid var(--line-strong);
         border-radius: 8px;
-        background: var(--bg);
+        background: color-mix(in srgb, var(--bg) 60%, transparent);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .account-name {
@@ -2297,11 +2305,13 @@
         padding: 0 14px;
         border-radius: 8px;
         border: 1px solid var(--line-strong);
-        background: var(--card-raised);
+        background: color-mix(in srgb, var(--card-raised) 60%, transparent);
         color: var(--rp-text);
         font: inherit;
         font-size: 0.85rem;
         cursor: pointer;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .submit-btn {
@@ -2326,11 +2336,13 @@
     }
 
     .submit-btn:disabled {
-        background: var(--card-raised);
+        background: color-mix(in srgb, var(--card-raised) 60%, transparent);
         cursor: not-allowed;
         transform: none;
         box-shadow: none;
         color: var(--muted);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     /* Return Styles */
@@ -2356,9 +2368,11 @@
         border-radius: 8px;
         font: inherit;
         font-size: clamp(0.95rem, 2vw, 1rem);
-        background: var(--bg);
+        background: color-mix(in srgb, var(--bg) 60%, transparent);
         color: var(--rp-text);
         box-sizing: border-box;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .search-container input:focus {
@@ -2404,9 +2418,11 @@
     .no-items-state {
         text-align: center;
         padding: 40px 20px;
-        background: var(--bg);
+        background: color-mix(in srgb, var(--bg) 60%, transparent);
         border-radius: 12px;
         border: 1px solid var(--line-strong);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .loading-state p,
@@ -2422,23 +2438,27 @@
     }
 
     .results-header {
-        background: var(--bg);
+        background: color-mix(in srgb, var(--bg) 60%, transparent);
         padding: 14px 18px;
         margin: 0 0 15px;
         border-radius: 8px;
         border: 1px solid var(--line-strong);
         font-size: 1.05rem;
         font-weight: 600;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .item-card {
-        background: var(--bg);
+        background: color-mix(in srgb, var(--bg) 60%, transparent);
         border: 1px solid var(--line-strong);
         border-radius: 12px;
         margin-bottom: 15px;
         overflow: hidden;
         transition: transform var(--normal) var(--ease), border-color var(--normal) var(--ease), box-shadow var(--normal) var(--ease);
         box-shadow: var(--shadow-sm);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .item-card:hover {
@@ -2625,11 +2645,13 @@
     }
 
     .return-action-btn:disabled {
-        background: var(--card-raised);
+        background: color-mix(in srgb, var(--card-raised) 60%, transparent);
         color: var(--faint);
         cursor: not-allowed;
         transform: none;
         box-shadow: none;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .return-confirm {
@@ -2648,10 +2670,12 @@
         padding: 12px;
         border-radius: 8px;
         border: 2px solid var(--line-strong);
-        background: var(--card);
+        background: color-mix(in srgb, var(--card) 60%, transparent);
         color: var(--rp-text);
         font: inherit;
         font-size: 1rem;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .return-confirm input:focus {
@@ -2697,12 +2721,14 @@
     }
 
     .guide-section {
-        background: var(--bg);
+        background: color-mix(in srgb, var(--bg) 60%, transparent);
         padding: clamp(16px, 3.5vw, 28px);
         border-radius: 10px;
         margin-bottom: 22px;
         border: 1px solid var(--line-strong);
         min-width: 0;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .guide-section h3 {
@@ -2730,13 +2756,15 @@
     }
 
     .guide-content code {
-        background: var(--card-raised);
+        background: color-mix(in srgb, var(--card-raised) 60%, transparent);
         border: 1px solid var(--line-strong);
         border-radius: 4px;
         padding: 1px 6px;
         font-family: var(--mono);
         font-size: 0.88em;
         overflow-wrap: anywhere;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .guide-content a:not(.guide-link) {
@@ -2744,12 +2772,14 @@
     }
 
     .rule-box {
-        background: color-mix(in srgb, var(--rp-iris) 12%, var(--card));
+        background: color-mix(in srgb, var(--rp-iris) 12%, color-mix(in srgb, var(--card) 60%, transparent));
         border: 1px solid var(--rp-iris);
         border-left: 4px solid var(--rp-iris);
         border-radius: 8px;
         padding: 14px 16px;
         margin-bottom: 22px;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .rule-box strong {
@@ -2823,11 +2853,13 @@
     }
 
     .wifi-box {
-        background: var(--card);
+        background: color-mix(in srgb, var(--card) 60%, transparent);
         border: 1px solid var(--line-strong);
         border-radius: 8px;
         padding: 10px 12px;
         margin: 8px 0 4px;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .wifi-row {
@@ -2850,7 +2882,7 @@
     }
 
     .reveal-btn {
-        background: var(--card-raised);
+        background: color-mix(in srgb, var(--card-raised) 60%, transparent);
         color: var(--rp-text);
         border: 1px solid var(--line-strong);
         border-radius: 6px;
@@ -2859,6 +2891,8 @@
         font: inherit;
         font-size: 0.82rem;
         cursor: pointer;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .reveal-btn:hover {
@@ -2897,9 +2931,11 @@
     }
 
     .printer-table th {
-        background: var(--card);
+        background: color-mix(in srgb, var(--card) 60%, transparent);
         color: var(--muted);
         font-weight: 600;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .printer-table .nowrap {
@@ -2913,10 +2949,12 @@
     }
 
     .col-box {
-        background: var(--card);
+        background: color-mix(in srgb, var(--card) 60%, transparent);
         border: 1px solid var(--line-strong);
         border-radius: 8px;
         padding: 10px 12px;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .col-box h4 {
@@ -2947,12 +2985,14 @@
         align-items: flex-start;
         gap: 15px;
         padding: 16px 18px;
-        background: var(--card);
+        background: color-mix(in srgb, var(--card) 60%, transparent);
         border: 2px solid var(--line-strong);
         border-radius: 8px;
         text-decoration: none;
         color: var(--rp-text);
         transition: transform var(--normal) var(--ease), border-color var(--normal) var(--ease), box-shadow var(--normal) var(--ease);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .guide-link:hover {
@@ -2993,7 +3033,9 @@
 
     .warning-section {
         border: 2px solid var(--rp-love);
-        background: linear-gradient(135deg, color-mix(in srgb, var(--rp-love) 8%, var(--bg)), var(--bg));
+        background: linear-gradient(135deg, color-mix(in srgb, var(--rp-love) 8%, color-mix(in srgb, var(--bg) 60%, transparent)), color-mix(in srgb, var(--bg) 60%, transparent));
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .warning-section h3 {
@@ -3011,15 +3053,19 @@
         align-items: flex-start;
         gap: 16px;
         padding: 16px 18px;
-        background: var(--card);
+        background: color-mix(in srgb, var(--card) 60%, transparent);
         border-left: 4px solid var(--rp-love);
         border-radius: 8px;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .community-item {
         border-left-color: var(--rp-foam);
-        background: color-mix(in srgb, var(--rp-foam) 8%, var(--card));
+        background: color-mix(in srgb, var(--rp-foam) 8%, color-mix(in srgb, var(--card) 60%, transparent));
         align-items: center;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .warning-icon {
@@ -3042,9 +3088,11 @@
     }
 
     .contact-section {
-        background: color-mix(in srgb, var(--rp-pine) 12%, var(--bg));
+        background: color-mix(in srgb, var(--rp-pine) 12%, color-mix(in srgb, var(--bg) 60%, transparent));
         border: 2px solid var(--rp-pine);
         text-align: center;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .contact-section h3 {

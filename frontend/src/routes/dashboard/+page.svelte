@@ -397,13 +397,15 @@
         padding: 10px 14px;
         border: 1px solid var(--ctp-surface0);
         border-radius: 12px;
-        background: var(--card);
+        background: color-mix(in srgb, var(--card) 60%, transparent);
         color: var(--tile-accent);
         font-weight: 600;
         text-decoration: none;
         overflow: hidden;
         box-sizing: border-box;
         transition: transform var(--normal) var(--ease), border-color var(--normal) var(--ease);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .quick::after {
@@ -446,12 +448,14 @@
     .thread-card {
         background:
             linear-gradient(180deg, color-mix(in srgb, var(--rp-text) 4%, transparent), transparent 60%),
-            var(--card);
+            color-mix(in srgb, var(--card) 60%, transparent);
         border: 1px solid var(--ctp-surface0);
         border-radius: var(--radius-lg);
         box-shadow: var(--shadow-sm);
         min-width: 0;
         box-sizing: border-box;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .card {
@@ -633,16 +637,20 @@
         border-radius: 10px;
         border: 1px solid var(--ctp-surface0);
         border-left: 3px solid var(--hue);
-        background: color-mix(in srgb, var(--hue) 6%, var(--card));
+        background: color-mix(in srgb, var(--hue) 6%, color-mix(in srgb, var(--card) 60%, transparent));
         color: var(--ctp-text);
         text-decoration: none;
         box-sizing: border-box;
         transition: transform var(--fast) var(--ease), background var(--fast) var(--ease);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     a.need:hover {
         transform: translateX(3px);
-        background: color-mix(in srgb, var(--hue) 12%, var(--card));
+        background: color-mix(in srgb, var(--hue) 12%, color-mix(in srgb, var(--card) 60%, transparent));
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .need-icon {
@@ -744,7 +752,7 @@
         margin-top: 8px;
         height: 8px;
         border-radius: 999px;
-        background: var(--ctp-surface0);
+        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
         overflow: hidden;
     }
 
@@ -837,7 +845,7 @@
         padding: 8px 16px;
         border: 1px solid var(--ctp-surface1);
         border-radius: 8px;
-        background: var(--ctp-surface0);
+        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
         color: var(--ctp-text);
         font: inherit;
         cursor: pointer;

@@ -1257,11 +1257,15 @@
 
     /* The shell floats .message as a toast; keep the old tinted look */
     .message.error {
-        background: color-mix(in srgb, var(--ctp-red) 14%, var(--card));
+        background: color-mix(in srgb, var(--ctp-red) 14%, color-mix(in srgb, var(--card) 60%, transparent));
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .message.success {
-        background: color-mix(in srgb, var(--ctp-green) 14%, var(--card));
+        background: color-mix(in srgb, var(--ctp-green) 14%, color-mix(in srgb, var(--card) 60%, transparent));
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .note,
@@ -1287,10 +1291,12 @@
         padding: 5px 12px;
         border-radius: var(--radius-pill);
         border: 1px solid var(--ctp-surface0);
-        background: var(--ctp-mantle);
+        background: color-mix(in srgb, var(--ctp-mantle) 60%, transparent);
         font-size: 0.8rem;
         font-weight: 600;
         color: var(--ctp-subtext0);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .pill .pip {
@@ -1319,7 +1325,7 @@
         min-width: 0;
         background:
             linear-gradient(180deg, color-mix(in srgb, var(--ctp-text) 3.5%, transparent), transparent 55%),
-            var(--ctp-mantle);
+            color-mix(in srgb, var(--ctp-mantle) 60%, transparent);
         border: 1px solid var(--ctp-surface0);
         border-left: 4px solid var(--stripe);
         border-radius: var(--radius-lg);
@@ -1331,6 +1337,8 @@
             border-color var(--normal) var(--ease);
         animation: rise var(--slow) var(--ease) both;
         animation-delay: calc(var(--i, 0) * 70ms);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     /* No staggered entrance for people who asked for less motion */
@@ -1405,7 +1413,7 @@
         font-size: 0.75rem;
         padding: 3px 9px;
         border-radius: 999px;
-        background: var(--ctp-surface0);
+        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
         color: var(--ctp-text);
         white-space: nowrap;
     }
@@ -1417,11 +1425,13 @@
 
     .camera {
         aspect-ratio: 16 / 9;
-        background: var(--ctp-crust);
+        background: color-mix(in srgb, var(--ctp-crust) 60%, transparent);
         border: 1px solid var(--ctp-surface0);
         border-radius: var(--radius);
         overflow: hidden;
         margin-bottom: 12px;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .camera img {
@@ -1473,7 +1483,7 @@
     .progress-bar {
         flex: 1;
         height: 8px;
-        background: var(--ctp-surface0);
+        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
         border-radius: 999px;
         overflow: hidden;
     }
@@ -1495,11 +1505,13 @@
         background: linear-gradient(
             90deg,
             transparent,
-            color-mix(in srgb, var(--rp-surface) 45%, transparent),
+            color-mix(in srgb, color-mix(in srgb, var(--rp-surface) 60%, transparent) 45%, transparent),
             transparent
         );
         transform: translateX(-100%);
         animation: sweep 2.2s var(--ease) infinite;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     @keyframes sweep {
@@ -1542,13 +1554,15 @@
     }
 
     .code-warning {
-        background: color-mix(in srgb, var(--ctp-peach) 12%, var(--card));
+        background: color-mix(in srgb, var(--ctp-peach) 12%, color-mix(in srgb, var(--card) 60%, transparent));
         border: 1px solid var(--ctp-peach);
         border-radius: 8px;
         padding: 10px 12px;
         margin-bottom: 10px;
         font-size: 0.82rem;
         color: var(--ctp-yellow);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .code-warning p {
@@ -1569,12 +1583,14 @@
         min-width: 150px;
         min-height: 40px;
         box-sizing: border-box;
-        background: var(--ctp-base);
+        background: color-mix(in srgb, var(--ctp-base) 60%, transparent);
         border: 1px solid var(--ctp-surface1);
         border-radius: 6px;
         padding: 8px;
         color: var(--ctp-text);
         font-size: 0.9rem;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .fix-code-btn,
@@ -1599,7 +1615,7 @@
     }
 
     .cancel-code-btn {
-        background: var(--ctp-surface0);
+        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
         color: var(--ctp-text);
         border: none;
         border-radius: 6px;
@@ -1627,7 +1643,9 @@
         padding: 10px;
         border: 1px solid var(--ctp-surface0);
         border-radius: var(--radius-sm);
-        background: var(--ctp-crust);
+        background: color-mix(in srgb, var(--ctp-crust) 60%, transparent);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .ams-head {
@@ -1664,8 +1682,10 @@
         padding: 7px;
         border: 1px solid var(--ctp-surface1);
         border-radius: var(--radius-sm);
-        background: var(--ctp-mantle);
+        background: color-mix(in srgb, var(--ctp-mantle) 60%, transparent);
         min-width: 0;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .ams-slot.active {
@@ -1715,7 +1735,7 @@
     .ams-bar {
         display: block;
         height: 4px;
-        background: var(--ctp-surface0);
+        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
         border-radius: var(--radius-pill);
         overflow: hidden;
     }
@@ -1771,7 +1791,7 @@
         margin-top: 12px;
         width: 100%;
         min-height: 44px;
-        background: var(--ctp-surface0);
+        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
         color: var(--ctp-text);
         border: 1px solid var(--ctp-surface1);
         border-radius: var(--radius-sm);
@@ -1783,7 +1803,7 @@
     }
 
     .send-toggle:hover {
-        background: var(--ctp-surface1);
+        background: color-mix(in srgb, var(--ctp-surface1) 60%, transparent);
         transform: translateY(-1px);
     }
 
@@ -1792,8 +1812,10 @@
         padding: 12px;
         border: 1px solid var(--ctp-surface0);
         border-radius: var(--radius-sm);
-        background: var(--ctp-crust);
+        background: color-mix(in srgb, var(--ctp-crust) 60%, transparent);
         animation: rise var(--normal) var(--ease) both;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .send-rule {
@@ -1806,11 +1828,13 @@
     .send-rule strong { color: var(--ctp-mauve); }
 
     .send-rule code {
-        background: var(--ctp-mantle);
+        background: color-mix(in srgb, var(--ctp-mantle) 60%, transparent);
         border: 1px solid var(--ctp-surface0);
         border-radius: 4px;
         padding: 1px 5px;
         color: var(--ctp-text);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .dropzone {
@@ -1860,7 +1884,7 @@
     .upload-bar {
         width: 100%;
         height: 6px;
-        background: var(--ctp-surface0);
+        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
         border-radius: var(--radius-pill);
         overflow: hidden;
         margin-top: 8px;
@@ -1941,7 +1965,7 @@
     .mini-btn {
         min-height: 40px;
         padding: 0 12px;
-        background: var(--ctp-surface0);
+        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
         color: var(--ctp-text);
         border: 1px solid var(--ctp-surface1);
         border-radius: 6px;
@@ -1951,7 +1975,7 @@
         cursor: pointer;
     }
 
-    .mini-btn:hover:not(:disabled) { background: var(--ctp-surface1); }
+    .mini-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--ctp-surface1) 60%, transparent); }
 
     .mini-btn.danger { color: var(--danger); }
 
@@ -1984,12 +2008,14 @@
         align-items: center;
         gap: 8px;
         font-size: 0.75rem;
-        background: var(--ctp-mantle);
+        background: color-mix(in srgb, var(--ctp-mantle) 60%, transparent);
         border: 1px solid var(--ctp-surface0);
         border-radius: 6px;
         padding: 6px 6px 6px 10px;
         min-height: 40px;
         box-sizing: border-box;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .send-info {
@@ -2083,7 +2109,7 @@
         flex: 1 1 auto;
         min-height: 44px;
         padding: 0 12px;
-        background: var(--ctp-surface0);
+        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
         color: var(--ctp-text);
         border: 1px solid var(--ctp-surface1);
         border-radius: var(--radius-sm);
@@ -2099,7 +2125,7 @@
     }
 
     .ctl:hover:not(:disabled) {
-        background: var(--ctp-surface1);
+        background: color-mix(in srgb, var(--ctp-surface1) 60%, transparent);
         transform: translateY(-1px);
     }
 
@@ -2110,13 +2136,13 @@
     .ctl.notify.on {
         color: var(--ctp-mauve);
         border-color: var(--ctp-mauve);
-        background: color-mix(in srgb, var(--ctp-mauve) 12%, var(--ctp-surface0));
+        background: color-mix(in srgb, var(--ctp-mauve) 12%, color-mix(in srgb, var(--ctp-surface0) 60%, transparent));
     }
 
     .ctl.light.on {
         color: var(--ctp-yellow);
         border-color: var(--ctp-yellow);
-        background: color-mix(in srgb, var(--ctp-yellow) 12%, var(--ctp-surface0));
+        background: color-mix(in srgb, var(--ctp-yellow) 12%, color-mix(in srgb, var(--ctp-surface0) 60%, transparent));
     }
 
     .ctl.pause { color: var(--ctp-yellow); border-color: var(--ctp-yellow); }
@@ -2142,8 +2168,10 @@
         gap: 10px;
         border: 1px solid var(--ctp-green);
         border-radius: var(--radius-sm);
-        background: var(--ctp-crust);
+        background: color-mix(in srgb, var(--ctp-crust) 60%, transparent);
         animation: rise var(--normal) var(--ease) both;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .start-row {
@@ -2162,7 +2190,7 @@
         min-height: 40px;
         box-sizing: border-box;
         width: 100%;
-        background: var(--ctp-base);
+        background: color-mix(in srgb, var(--ctp-base) 60%, transparent);
         border: 1px solid var(--ctp-surface1);
         border-radius: 6px;
         padding: 6px 8px;
@@ -2172,6 +2200,8 @@
         font-weight: 400;
         text-transform: none;
         letter-spacing: normal;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .swatches {
@@ -2197,9 +2227,11 @@
         font-size: 0.7rem;
         font-weight: 700;
         color: var(--ctp-text);
-        background: var(--ctp-mantle);
+        background: color-mix(in srgb, var(--ctp-mantle) 60%, transparent);
         border-radius: var(--radius-pill);
         padding: 1px 5px;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .swatch.picked {
@@ -2257,13 +2289,15 @@
 
     /* --- faults ------------------------------------------------------------ */
     .reject-card {
-        background: color-mix(in srgb, var(--ctp-mauve) 12%, var(--card));
+        background: color-mix(in srgb, var(--ctp-mauve) 12%, color-mix(in srgb, var(--card) 60%, transparent));
         border: 1px solid var(--ctp-mauve);
         border-radius: 8px;
         padding: 10px 12px;
         margin-bottom: 10px;
         font-size: 0.82rem;
         color: var(--ctp-mauve);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .reject-card p {
@@ -2275,13 +2309,15 @@
     .reject-card p strong { color: var(--ctp-mauve); }
 
     .faults {
-        background: color-mix(in srgb, var(--ctp-red) 10%, var(--card));
+        background: color-mix(in srgb, var(--ctp-red) 10%, color-mix(in srgb, var(--card) 60%, transparent));
         border: 1px solid var(--ctp-red);
         border-radius: 8px;
         padding: 10px 12px;
         margin-bottom: 10px;
         font-size: 0.82rem;
         color: var(--ctp-red);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .fault {
@@ -2293,14 +2329,16 @@
         padding: 6px 8px;
         box-sizing: border-box;
         border-radius: 6px;
-        background: var(--ctp-crust);
+        background: color-mix(in srgb, var(--ctp-crust) 60%, transparent);
         text-decoration: none;
         color: var(--ctp-subtext0);
         font-size: 0.75rem;
         transition: background-color var(--fast) var(--ease);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
-    .fault:hover { background: var(--ctp-surface0); }
+    .fault:hover { background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent); }
 
     .fault-sev {
         text-transform: uppercase;
@@ -2308,7 +2346,7 @@
         letter-spacing: 0.4px;
         padding: 2px 6px;
         border-radius: var(--radius-pill);
-        background: var(--ctp-surface1);
+        background: color-mix(in srgb, var(--ctp-surface1) 60%, transparent);
         color: var(--ctp-text);
         font-size: 0.65rem;
     }

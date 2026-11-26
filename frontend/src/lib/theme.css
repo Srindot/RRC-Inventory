@@ -99,7 +99,7 @@
     --content-width: min(100% - 2 * var(--gutter), var(--page-max) - 2 * var(--gutter));
 
     /* Glass: content surfaces that float over the ASCII background */
-    --glass: color-mix(in srgb, var(--card) 72%, transparent);
+    --glass: color-mix(in srgb, var(--card) 60%, transparent);
     --glass-strong: color-mix(in srgb, var(--card) 88%, transparent);
     --glass-blur: saturate(140%) blur(14px);
     --bg-opacity: 0.42;
@@ -199,11 +199,13 @@ body {
 }
 
 .card {
-    background: var(--card);
+    background: color-mix(in srgb, var(--card) 60%, transparent);
     border: 1px solid var(--line);
     border-radius: var(--radius-lg);
     padding: 20px;
     min-width: 0;
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
 }
 
 .card.accent {
@@ -267,13 +269,15 @@ body {
     padding: 0 16px;
     border-radius: var(--radius-sm);
     border: 1px solid var(--line-strong);
-    background: var(--card-raised);
+    background: color-mix(in srgb, var(--card-raised) 60%, transparent);
     color: var(--ctp-text);
     font: inherit;
     font-weight: 550;
     text-decoration: none;
     cursor: pointer;
     transition: background var(--fast) var(--ease), border-color var(--fast) var(--ease);
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
 }
 
 .btn:hover {
@@ -360,8 +364,10 @@ body {
 }
 
 .card.hued {
-    background: color-mix(in srgb, var(--hue) 7%, var(--card));
+    background: color-mix(in srgb, var(--hue) 7%, color-mix(in srgb, var(--card) 60%, transparent));
     border-color: color-mix(in srgb, var(--hue) 28%, var(--line));
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
 }
 
 .card.hued .label,
@@ -411,9 +417,11 @@ select,
 textarea {
     font: inherit;
     color: var(--ctp-text);
-    background: var(--card-raised);
+    background: color-mix(in srgb, var(--card-raised) 60%, transparent);
     border: 1px solid var(--line-strong);
     border-radius: var(--radius-sm);
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
 }
 
 @media (max-width: 700px) {
@@ -450,12 +458,12 @@ textarea {
 }
 
 *::-webkit-scrollbar-thumb {
-    background: var(--ctp-surface1);
+    background: color-mix(in srgb, var(--ctp-surface1) 60%, transparent);
     border-radius: var(--radius-pill);
 }
 
 *::-webkit-scrollbar-thumb:hover {
-    background: var(--ctp-surface2);
+    background: color-mix(in srgb, var(--ctp-surface2) 60%, transparent);
 }
 
 *::-webkit-scrollbar-track {
@@ -525,14 +533,16 @@ textarea {
     padding: 12px 16px;
     border-radius: var(--radius);
     border: 1px solid var(--ctp-surface1);
-    background: var(--ctp-mantle);
+    background: color-mix(in srgb, var(--ctp-mantle) 60%, transparent);
     color: var(--ctp-text);
     box-shadow: var(--shadow-lg);
-    background: var(--card-raised);
+    background: color-mix(in srgb, var(--card-raised) 60%, transparent);
     border-color: var(--line-strong);
     text-align: center;
     font-weight: 500;
     animation: rise var(--normal) var(--ease) both;
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
 }
 
 .message.success {
@@ -564,11 +574,13 @@ textarea {
 }
 
 .account-card {
-    background: var(--card);
+    background: color-mix(in srgb, var(--card) 60%, transparent);
     border: 1px solid var(--line);
     border-radius: var(--radius-lg);
     padding: 24px;
     margin-bottom: 20px;
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
 }
 
 .account-card h2 {
@@ -592,9 +604,11 @@ textarea {
     padding: 10px 12px;
     border-radius: var(--radius-sm);
     border: 1px solid var(--line-strong);
-    background: var(--card-raised);
+    background: color-mix(in srgb, var(--card-raised) 60%, transparent);
     color: var(--ctp-text);
     font: inherit;
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
 }
 
 .account-card button[type='submit'],
@@ -635,7 +649,7 @@ textarea {
 
 /* --- text over the live background ------------------------------------
    Secondary text that sits straight on the dot background (subtitles,
-   hints, the back link, the footer) gets a soft halo in the page colour:
+   hints, the back link) gets a soft halo in the page colour:
    the dots fade out right around the letters and stay untouched elsewhere.
    Class names cover each page's own subtitle styles. */
 .subtitle,
@@ -643,7 +657,6 @@ textarea {
 .site-sub,
 .footnote,
 .crumbs a,
-.site-foot,
 .home-options h2,
 .page-head p,
 .admin-info > span:first-child {

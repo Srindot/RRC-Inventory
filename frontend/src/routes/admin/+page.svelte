@@ -2757,7 +2757,7 @@
     code {
         font-family: var(--mono);
         font-size: 0.9em;
-        background: var(--ctp-surface0);
+        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
         padding: 1px 5px;
         border-radius: 4px;
     }
@@ -2805,7 +2805,7 @@
     .role-pill {
         padding: 4px 10px;
         border-radius: var(--radius-pill);
-        background: var(--ctp-surface0);
+        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
         border: 1px solid var(--ctp-surface1);
         color: var(--ctp-mauve);
         font-size: 0.8rem;
@@ -2847,8 +2847,10 @@
         position: sticky;
         top: 0;
         z-index: 5;
-        background: linear-gradient(var(--bg) 80%, transparent);
+        background: linear-gradient(color-mix(in srgb, var(--bg) 60%, transparent) 80%, transparent);
         padding-bottom: 2px;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .nav-tabs::-webkit-scrollbar {
@@ -2944,7 +2946,7 @@
     .card {
         background:
             linear-gradient(180deg, color-mix(in srgb, var(--ctp-text) 4%, transparent), transparent 60%),
-            var(--ctp-mantle);
+            color-mix(in srgb, var(--ctp-mantle) 60%, transparent);
         padding: clamp(18px, 3.5vw, 30px);
         border-radius: var(--radius-lg);
         box-shadow: var(--shadow-sm);
@@ -2954,6 +2956,8 @@
             transform var(--normal) var(--ease),
             box-shadow var(--normal) var(--ease),
             border-color var(--normal) var(--ease);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .card:hover {
@@ -2967,7 +2971,9 @@
         border-color: color-mix(in srgb, var(--ctp-yellow) 60%, var(--ctp-surface1));
         background:
             linear-gradient(180deg, color-mix(in srgb, var(--ctp-yellow) 10%, transparent), transparent 70%),
-            var(--ctp-mantle);
+            color-mix(in srgb, var(--ctp-mantle) 60%, transparent);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .card.attention .stat-number {
@@ -3019,9 +3025,11 @@
         gap: 10px;
         margin-top: 30px;
         padding: clamp(18px, 4vw, 25px);
-        background: var(--ctp-crust);
+        background: color-mix(in srgb, var(--ctp-crust) 60%, transparent);
         border-radius: 12px;
         border: 1px solid var(--ctp-surface0);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .export-btn {
@@ -3058,7 +3066,7 @@
     }
 
     .filter-btn {
-        background: var(--ctp-crust);
+        background: color-mix(in srgb, var(--ctp-crust) 60%, transparent);
         border: 2px solid var(--ctp-surface0);
         color: var(--ctp-subtext0);
         min-height: 40px;
@@ -3069,10 +3077,12 @@
         font-size: clamp(0.85rem, 1.8vw, 0.95rem);
         transition: all 0.3s ease;
         font-weight: 500;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .filter-btn:hover {
-        background: var(--ctp-surface0);
+        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
         border-color: var(--ctp-flamingo);
         color: var(--ctp-text);
     }
@@ -3093,7 +3103,7 @@
     }
 
     .loan-card {
-        background: var(--ctp-crust);
+        background: color-mix(in srgb, var(--ctp-crust) 60%, transparent);
         border-radius: 12px;
         padding: clamp(16px, 4vw, 25px);
         box-shadow: var(--shadow);
@@ -3101,6 +3111,8 @@
         border-left: 5px solid var(--ctp-flamingo);
         transition: all 0.3s ease;
         min-width: 0;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .loan-card:hover {
@@ -3111,23 +3123,31 @@
 
     .loan-card.pending {
         border-left-color: var(--warn);
-        background: color-mix(in srgb, var(--warn) 6%, var(--ctp-crust));
+        background: color-mix(in srgb, var(--warn) 6%, color-mix(in srgb, var(--ctp-crust) 60%, transparent));
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .loan-card.overdue {
         border-left-color: var(--danger);
-        background: color-mix(in srgb, var(--danger) 5%, var(--ctp-crust));
+        background: color-mix(in srgb, var(--danger) 5%, color-mix(in srgb, var(--ctp-crust) 60%, transparent));
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .loan-card.lost-missing {
         border-left-color: var(--ctp-peach);
-        background: color-mix(in srgb, var(--ctp-peach) 5%, var(--ctp-crust));
+        background: color-mix(in srgb, var(--ctp-peach) 5%, color-mix(in srgb, var(--ctp-crust) 60%, transparent));
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .loan-card.archived {
         border-left-color: var(--ctp-overlay0);
-        background: color-mix(in srgb, var(--ctp-overlay0) 5%, var(--ctp-crust));
+        background: color-mix(in srgb, var(--ctp-overlay0) 5%, color-mix(in srgb, var(--ctp-crust) 60%, transparent));
         opacity: 0.9;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .loan-header {
@@ -3270,7 +3290,7 @@
 
     .clickable-phone:hover {
         color: var(--ctp-lavender);
-        background-color: var(--ctp-surface0);
+        background-color: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
         text-decoration-style: solid;
     }
 
@@ -3294,9 +3314,11 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        background: var(--ctp-mantle);
+        background: color-mix(in srgb, var(--ctp-mantle) 60%, transparent);
         color: var(--ctp-subtext0);
         font-size: clamp(1.2rem, 3vw, 1.8rem);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .loan-actions {
@@ -3387,8 +3409,10 @@
         border: 2px solid var(--ctp-surface0);
         border-radius: 6px;
         text-align: center;
-        background: var(--ctp-base);
+        background: color-mix(in srgb, var(--ctp-base) 60%, transparent);
         color: var(--ctp-text);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .extend-inputs input:focus {
@@ -3559,7 +3583,7 @@
         --state: var(--ctp-overlay0);
         background:
             linear-gradient(180deg, color-mix(in srgb, var(--ctp-text) 3.5%, transparent), transparent 55%),
-            var(--ctp-mantle);
+            color-mix(in srgb, var(--ctp-mantle) 60%, transparent);
         border: 1px solid var(--ctp-surface0);
         border-left: 4px solid var(--state);
         border-radius: var(--radius-lg);
@@ -3571,6 +3595,8 @@
             box-shadow var(--normal) var(--ease);
         animation: rise var(--slow) var(--ease) both;
         animation-delay: calc(var(--i, 0) * 70ms);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .printer-admin-card:hover {
@@ -3639,7 +3665,7 @@
         font-size: 0.72rem;
         padding: 4px 10px;
         border-radius: var(--radius-pill);
-        background: var(--ctp-surface0);
+        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
         color: var(--ctp-text);
         white-space: nowrap;
     }
@@ -3652,11 +3678,13 @@
 
     .pa-camera {
         aspect-ratio: 16 / 9;
-        background: var(--ctp-crust);
+        background: color-mix(in srgb, var(--ctp-crust) 60%, transparent);
         border: 1px solid var(--ctp-surface0);
         border-radius: var(--radius);
         overflow: hidden;
         margin-bottom: 12px;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .pa-camera img {
@@ -3699,7 +3727,7 @@
     .pa-progress-bar {
         flex: 1;
         height: 8px;
-        background: var(--ctp-surface0);
+        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
         border-radius: var(--radius-pill);
         overflow: hidden;
     }
@@ -3748,7 +3776,9 @@
         padding: 10px;
         border: 1px solid var(--ctp-surface0);
         border-radius: var(--radius-sm);
-        background: var(--ctp-crust);
+        background: color-mix(in srgb, var(--ctp-crust) 60%, transparent);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .pa-ams-head {
@@ -3785,8 +3815,10 @@
         padding: 7px;
         border: 1px solid var(--ctp-surface1);
         border-radius: var(--radius-sm);
-        background: var(--ctp-mantle);
+        background: color-mix(in srgb, var(--ctp-mantle) 60%, transparent);
         min-width: 0;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .pa-ams-slot.active {
@@ -3836,7 +3868,7 @@
     .pa-ams-bar {
         display: block;
         height: 4px;
-        background: var(--ctp-surface0);
+        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
         border-radius: var(--radius-pill);
         overflow: hidden;
     }
@@ -3916,7 +3948,7 @@
         min-height: 44px;
         border: 1px solid var(--ctp-surface1);
         border-radius: var(--radius-sm);
-        background: var(--ctp-surface0);
+        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
         color: var(--ctp-text);
         font-weight: 600;
         font-family: inherit;
@@ -3930,10 +3962,10 @@
 
     .pa-light:hover,
     .pa-pause:hover,
-    .pa-resume:hover { transform: translateY(-1px); background: var(--ctp-surface1); }
+    .pa-resume:hover { transform: translateY(-1px); background: color-mix(in srgb, var(--ctp-surface1) 60%, transparent); }
 
     .pa-light.on {
-        background: color-mix(in srgb, var(--ctp-yellow) 22%, var(--ctp-surface0));
+        background: color-mix(in srgb, var(--ctp-yellow) 22%, color-mix(in srgb, var(--ctp-surface0) 60%, transparent));
         border-color: var(--ctp-yellow);
         color: var(--ctp-yellow);
     }
@@ -3964,14 +3996,16 @@
         min-height: 40px;
         padding: 6px 8px;
         border-radius: 6px;
-        background: var(--ctp-crust);
+        background: color-mix(in srgb, var(--ctp-crust) 60%, transparent);
         text-decoration: none;
         color: var(--ctp-subtext0);
         font-size: 0.75rem;
         transition: background-color var(--fast) var(--ease);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
-    .pa-fault:hover { background: var(--ctp-surface0); }
+    .pa-fault:hover { background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent); }
 
     .pa-fault-sev {
         text-transform: uppercase;
@@ -3979,7 +4013,7 @@
         letter-spacing: 0.4px;
         padding: 2px 6px;
         border-radius: var(--radius-pill);
-        background: var(--ctp-surface1);
+        background: color-mix(in srgb, var(--ctp-surface1) 60%, transparent);
         color: var(--ctp-text);
         font-size: 0.65rem;
     }
@@ -4025,11 +4059,13 @@
         flex: 1;
         min-width: 140px;
         min-height: 40px;
-        background: var(--ctp-base);
+        background: color-mix(in srgb, var(--ctp-base) 60%, transparent);
         border: 1px solid var(--ctp-surface1);
         border-radius: 6px;
         padding: 8px;
         color: var(--ctp-text);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .pa-fix,
@@ -4052,7 +4088,7 @@
     .pa-save:disabled { opacity: 0.6; cursor: not-allowed; }
 
     .pa-cancel {
-        background: var(--ctp-surface0);
+        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
         color: var(--ctp-text);
         border: none;
         border-radius: 6px;
@@ -4067,7 +4103,7 @@
         margin-top: 10px;
         width: 100%;
         min-height: 44px;
-        background: var(--ctp-surface0);
+        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
         color: var(--ctp-text);
         border: 1px solid var(--ctp-surface1);
         border-radius: var(--radius-sm);
@@ -4078,15 +4114,17 @@
         transition: background-color var(--fast) var(--ease);
     }
 
-    .pa-send-toggle:hover { background: var(--ctp-surface1); }
+    .pa-send-toggle:hover { background: color-mix(in srgb, var(--ctp-surface1) 60%, transparent); }
 
     .pa-send {
         margin-top: 10px;
         padding: 12px;
         border: 1px solid color-mix(in srgb, var(--state) 45%, var(--ctp-surface0));
         border-radius: var(--radius-sm);
-        background: var(--ctp-crust);
+        background: color-mix(in srgb, var(--ctp-crust) 60%, transparent);
         animation: rise var(--normal) var(--ease) both;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .pa-send-head {
@@ -4114,14 +4152,14 @@
         padding: 0 12px;
         border-radius: 6px;
         border: 1px solid var(--ctp-surface1);
-        background: var(--ctp-surface0);
+        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
         color: var(--ctp-text);
         font: inherit;
         font-size: 0.78rem;
         cursor: pointer;
     }
 
-    .pa-refresh:hover { background: var(--ctp-surface1); }
+    .pa-refresh:hover { background: color-mix(in srgb, var(--ctp-surface1) 60%, transparent); }
     .pa-refresh:disabled { opacity: 0.6; cursor: progress; }
 
     .pa-send-hint {
@@ -4162,7 +4200,7 @@
 
     .pa-upload-bar {
         height: 6px;
-        background: var(--ctp-surface0);
+        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
         border-radius: var(--radius-pill);
         overflow: hidden;
         margin-top: 8px;
@@ -4204,10 +4242,12 @@
         align-items: center;
         gap: 8px;
         font-size: 0.78rem;
-        background: var(--ctp-mantle);
+        background: color-mix(in srgb, var(--ctp-mantle) 60%, transparent);
         border: 1px solid var(--ctp-surface0);
         border-radius: 6px;
         padding: 4px 4px 4px 8px;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .pa-file-icon {
@@ -4291,12 +4331,14 @@
         margin-top: 10px;
         padding: 12px;
         border-radius: 10px;
-        background: var(--ctp-crust);
+        background: color-mix(in srgb, var(--ctp-crust) 60%, transparent);
         border: 1px solid var(--ctp-surface0);
         display: flex;
         flex-direction: column;
         gap: 10px;
         animation: rise var(--normal) var(--ease) both;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .pa-start-row {
@@ -4312,11 +4354,13 @@
         padding: 8px;
         border-radius: 8px;
         border: 1px solid var(--ctp-surface1);
-        background: var(--ctp-base);
+        background: color-mix(in srgb, var(--ctp-base) 60%, transparent);
         color: var(--ctp-text);
         font-size: 0.88rem;
         min-height: 42px;
         width: 100%;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .pa-swatches {
@@ -4437,12 +4481,14 @@
         grid-template-columns: 110px 90px minmax(0, 1fr) 70px 150px;
         gap: 10px;
         align-items: center;
-        background: var(--ctp-mantle);
+        background: color-mix(in srgb, var(--ctp-mantle) 60%, transparent);
         border: 1px solid var(--ctp-surface0);
         border-left: 3px solid var(--ctp-overlay0);
         border-radius: var(--radius-sm);
         padding: 8px 12px;
         font-size: 0.8rem;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .joblog-row.finished { border-left-color: var(--ctp-green); }
@@ -4504,16 +4550,20 @@
         display: flex;
         align-items: center;
         gap: 14px;
-        background: var(--ctp-crust);
+        background: color-mix(in srgb, var(--ctp-crust) 60%, transparent);
         border: 1px solid var(--ctp-surface0);
         border-left: 4px solid var(--res, var(--ctp-mauve));
         border-radius: 8px;
         padding: 12px 14px;
         flex-wrap: wrap;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .booking-row.pending {
-        background: color-mix(in srgb, var(--warn) 6%, var(--ctp-crust));
+        background: color-mix(in srgb, var(--warn) 6%, color-mix(in srgb, var(--ctp-crust) 60%, transparent));
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .booking-row.past {
@@ -4575,7 +4625,7 @@
     .tag {
         padding: 2px 8px;
         border-radius: var(--radius-pill);
-        background: var(--ctp-surface0);
+        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
         color: var(--ctp-subtext0);
         font-size: 0.72rem;
         font-weight: 600;
@@ -4613,12 +4663,14 @@
 
     /* --- history --- */
     .history-search-container {
-        background: var(--ctp-crust);
+        background: color-mix(in srgb, var(--ctp-crust) 60%, transparent);
         padding: 20px;
         border-radius: 12px;
         margin-bottom: 20px;
         border: 1px solid var(--ctp-surface0);
         box-shadow: var(--shadow-sm);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .history-search-container label {
@@ -4644,9 +4696,11 @@
         border: 2px solid var(--ctp-surface0);
         border-radius: 8px;
         font-size: 1rem;
-        background: var(--ctp-base);
+        background: color-mix(in srgb, var(--ctp-base) 60%, transparent);
         color: var(--ctp-text);
         transition: all 0.3s ease;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .history-search-input:focus {
@@ -4661,13 +4715,13 @@
         height: 44px;
         border-radius: 8px;
         border: 1px solid var(--ctp-surface1);
-        background: var(--ctp-surface0);
+        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
         color: var(--ctp-text);
         cursor: pointer;
         font-size: 1rem;
     }
 
-    .clear-search-btn:hover { background: var(--ctp-surface1); }
+    .clear-search-btn:hover { background: color-mix(in srgb, var(--ctp-surface1) 60%, transparent); }
 
     .history-filters {
         margin-top: 12px;
@@ -4683,10 +4737,12 @@
     .no-search-results {
         text-align: center;
         padding: 40px 20px;
-        background: var(--ctp-crust);
+        background: color-mix(in srgb, var(--ctp-crust) 60%, transparent);
         border-radius: 12px;
         border: 1px solid var(--ctp-surface0);
         margin-top: 20px;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .no-search-results p {
@@ -4723,13 +4779,15 @@
 
     .history-item {
         display: flex;
-        background: var(--ctp-crust);
+        background: color-mix(in srgb, var(--ctp-crust) 60%, transparent);
         border-radius: 12px;
         box-shadow: var(--shadow);
         border: 1px solid var(--ctp-surface0);
         transition: all 0.3s ease;
         position: relative;
         min-width: 0;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .history-item:hover {
@@ -4770,7 +4828,7 @@
     .timeline-line {
         width: 2px;
         flex: 1;
-        background: var(--ctp-surface0);
+        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
         margin-top: 10px;
     }
 
@@ -4793,11 +4851,14 @@
         flex-wrap: wrap;
     }
 
+    /* Grows to fill the row, but wraps the badges and date underneath
+       rather than shrinking below a readable width (it squeezed the item
+       name to a letter per line on phones) */
     .history-title-section {
         display: flex;
         align-items: flex-start;
         gap: 15px;
-        flex: 1;
+        flex: 1 1 220px;
         min-width: 0;
     }
 
@@ -4906,7 +4967,7 @@
     }
 
     .form-card {
-        background: var(--ctp-surface0);
+        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
         border-radius: 12px;
         padding: clamp(16px, 4vw, 24px);
         border: 1px solid var(--ctp-surface1);
@@ -4944,12 +5005,14 @@
         width: 100%;
         min-height: 44px;
         padding: 10px 14px;
-        background: var(--ctp-base);
+        background: color-mix(in srgb, var(--ctp-base) 60%, transparent);
         border: 2px solid var(--ctp-surface1);
         border-radius: 8px;
         color: var(--ctp-text);
         font-size: 1rem;
         transition: all 0.2s ease;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .form-group input:not([type='checkbox']):focus,
@@ -5045,7 +5108,7 @@
     }
 
     .management-section {
-        background: var(--ctp-surface0);
+        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
         border-radius: 12px;
         padding: clamp(16px, 3vw, 24px);
         margin: 0 0 24px;
@@ -5059,7 +5122,7 @@
 
     .management-section.waiting {
         border-color: var(--warn);
-        background: color-mix(in srgb, var(--warn) 7%, var(--ctp-surface0));
+        background: color-mix(in srgb, var(--warn) 7%, color-mix(in srgb, var(--ctp-surface0) 60%, transparent));
     }
 
     .section-header {
@@ -5103,9 +5166,11 @@
     }
 
     .toggle-btn.subtle {
-        background: var(--ctp-base);
+        background: color-mix(in srgb, var(--ctp-base) 60%, transparent);
         color: var(--ctp-text);
         border: 1px solid var(--ctp-surface1);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .refresh-btn {
@@ -5139,7 +5204,7 @@
     }
 
     .admin-card {
-        background: var(--ctp-base);
+        background: color-mix(in srgb, var(--ctp-base) 60%, transparent);
         border-radius: 8px;
         padding: 18px;
         border: 1px solid var(--ctp-surface1);
@@ -5148,6 +5213,8 @@
         flex-direction: column;
         justify-content: space-between;
         min-width: 0;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .admin-card:hover,
@@ -5228,7 +5295,7 @@
     .group-chip {
         padding: 4px 10px;
         border-radius: var(--radius-pill);
-        background: var(--ctp-surface0);
+        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
         color: var(--ctp-mauve);
         font-size: 0.85rem;
     }
@@ -5273,9 +5340,11 @@
     }
 
     .override-card {
-        background: var(--ctp-mantle);
+        background: color-mix(in srgb, var(--ctp-mantle) 60%, transparent);
         border-color: var(--ctp-blue);
         animation: rise var(--normal) var(--ease) both;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .override-grid {
@@ -5306,9 +5375,11 @@
 
     .table-wrap {
         overflow-x: auto;
-        background: var(--ctp-base);
+        background: color-mix(in srgb, var(--ctp-base) 60%, transparent);
         border: 1px solid var(--ctp-surface1);
         border-radius: 8px;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .perm-table {
@@ -5328,7 +5399,9 @@
         color: var(--ctp-subtext0);
         font-weight: 600;
         white-space: nowrap;
-        background: var(--ctp-mantle);
+        background: color-mix(in srgb, var(--ctp-mantle) 60%, transparent);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .perm-table tbody th {
@@ -5338,7 +5411,7 @@
     }
 
     .perm-table tbody tr:hover {
-        background: color-mix(in srgb, var(--ctp-surface0) 50%, transparent);
+        background: color-mix(in srgb, color-mix(in srgb, var(--ctp-surface0) 60%, transparent) 50%, transparent);
     }
 
     .perm-table .center {
@@ -5354,7 +5427,7 @@
 
     .danger-zone {
         border-color: var(--ctp-red) !important;
-        background: color-mix(in srgb, var(--ctp-red) 8%, var(--ctp-surface0));
+        background: color-mix(in srgb, var(--ctp-red) 8%, color-mix(in srgb, var(--ctp-surface0) 60%, transparent));
     }
 
     .danger-zone .section-header h3 {
@@ -5373,9 +5446,11 @@
         align-items: center;
         gap: 16px;
         padding: 16px;
-        background: var(--ctp-base);
+        background: color-mix(in srgb, var(--ctp-base) 60%, transparent);
         border-radius: 8px;
         border: 1px solid var(--ctp-surface1);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .danger-info h4 {

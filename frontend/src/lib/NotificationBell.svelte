@@ -96,11 +96,13 @@
         width: 340px;
         max-height: 60vh;
         overflow-y: auto;
-        background: var(--card-raised);
+        background: color-mix(in srgb, var(--card-raised) 60%, transparent);
         border: 1px solid var(--line-strong);
         border-radius: var(--radius);
         box-shadow: var(--shadow);
         z-index: 80;
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     .dropdown.up {
