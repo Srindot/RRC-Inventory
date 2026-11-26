@@ -1,5 +1,6 @@
 // Colour with meaning: each area of the site and each research thread owns a
-// Catppuccin hue, so people link things together without reading.
+// hue, so people link things together without reading. The --ctp-* names are
+// aliases onto the Rosé Pine palette (see lib/theme.css).
 
 export const AREA = {
     home: 'var(--ctp-mauve)',

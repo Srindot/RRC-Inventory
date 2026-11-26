@@ -479,13 +479,6 @@
     {/if}
 
     {#if currentView === 'home'}
-        <header class="page-head">
-            <div>
-                <h1>Lab equipment</h1>
-                <p>Borrow and return gear, book robots, check the printers.</p>
-            </div>
-        </header>
-
         {#if openMine.length}
             <section class="card hued mine" style="--hue: {AREA.equipment}" aria-labelledby="my-loans-title">
                 <p class="label" id="my-loans-title">You have</p>
@@ -503,37 +496,92 @@
             </section>
         {/if}
 
-        <div class="grid tiles">
-            <button class="card tile main" on:click={() => go('borrow')} style="--hue: {AREA.equipment}">
-                <span class="icon-badge"><Icon name="box" size={20} /></span>
-                <span class="tile-title">Borrow</span>
-                <span class="muted">Take equipment out of the lab</span>
-            </button>
-            <button class="card tile main" on:click={() => go('return')} style="--hue: {AREA.home}">
-                <span class="icon-badge"><Icon name="arrow" size={20} /></span>
-                <span class="tile-title">Return</span>
-                <span class="muted">Give equipment back</span>
-            </button>
-            <a class="card tile" href="/mechlab" style="--hue: {AREA.mech}">
-                <span class="icon-badge"><Icon name="bot" size={20} /></span>
-                <span class="tile-title">Mech Lab</span>
-                <span class="muted">Book a manipulator</span>
-            </a>
-            <a class="card tile" href="/mocap" style="--hue: {AREA.mocap}">
-                <span class="icon-badge"><Icon name="video" size={20} /></span>
-                <span class="tile-title">Motion capture</span>
-                <span class="muted">Book a slot, see the calendar</span>
-            </a>
-            <a class="card tile" href="/printers" style="--hue: {AREA.printers}">
-                <span class="icon-badge"><Icon name="printer" size={20} /></span>
-                <span class="tile-title">3D printers</span>
-                <span class="muted">See which printers are free</span>
-            </a>
-            <a class="card tile" href="/items" style="--hue: {AREA.equipment}">
-                <span class="icon-badge"><Icon name="grid" size={20} /></span>
-                <span class="tile-title">What's in the lab</span>
-                <span class="muted">Who has what, report a problem</span>
-            </a>
+        <div class="home-options">
+            <h2>What would you like to do?</h2>
+            <div class="option-buttons">
+                <button class="option-btn" style="--i: 0; --tile-accent: var(--rp-rose)" on:click={() => go('borrow')}>
+                    <span class="tile-icon" aria-hidden="true">📦</span>
+                    <span class="tile-body">
+                        <span class="tile-title">Borrow Item</span>
+                        <span class="tile-sub">Take equipment from the lab</span>
+                    </span>
+                    <span class="tile-arrow" aria-hidden="true">→</span>
+                </button>
+
+                <button class="option-btn" style="--i: 1; --tile-accent: var(--rp-foam)" on:click={() => go('return')}>
+                    <span class="tile-icon" aria-hidden="true">↩️</span>
+                    <span class="tile-body">
+                        <span class="tile-title">Return Item</span>
+                        <span class="tile-sub">Give equipment back</span>
+                    </span>
+                    <span class="tile-arrow" aria-hidden="true">→</span>
+                </button>
+
+                <a class="option-btn" style="--i: 2; --tile-accent: var(--rp-gold)" href="/printers">
+                    <img class="tile-image" src="/P1S.png" alt="" aria-hidden="true" />
+                    <span class="tile-body">
+                        <span class="tile-title">3D Printers</span>
+                        <span class="tile-sub">See which printers are free</span>
+                    </span>
+                    <span class="tile-arrow" aria-hidden="true">→</span>
+                </a>
+
+                <a class="option-btn" style="--i: 3; --tile-accent: var(--rp-iris)" href="/mocap">
+                    <span class="tile-icon" aria-hidden="true">🎥</span>
+                    <span class="tile-body">
+                        <span class="tile-title">Motion Capture Lab</span>
+                        <span class="tile-sub">Book a slot, see the calendar</span>
+                    </span>
+                    <span class="tile-arrow" aria-hidden="true">→</span>
+                </a>
+
+                <a class="option-btn" style="--i: 4; --tile-accent: var(--rp-love)" href="/mechlab">
+                    <span class="tile-icon" aria-hidden="true">🦾</span>
+                    <span class="tile-body">
+                        <span class="tile-title">Mech Lab</span>
+                        <span class="tile-sub">Book a robot</span>
+                    </span>
+                    <span class="tile-arrow" aria-hidden="true">→</span>
+                </a>
+
+                <a class="option-btn" style="--i: 5; --tile-accent: var(--rp-foam)" href="/items">
+                    <span class="tile-icon" aria-hidden="true">🧰</span>
+                    <span class="tile-body">
+                        <span class="tile-title">What's in the Lab</span>
+                        <span class="tile-sub">Who has what, report a problem</span>
+                    </span>
+                    <span class="tile-arrow" aria-hidden="true">→</span>
+                </a>
+
+                <button class="option-btn" style="--i: 6; --tile-accent: var(--rp-gold)" on:click={() => go('printer-guide')}>
+                    <span class="tile-icon" aria-hidden="true">📖</span>
+                    <span class="tile-body">
+                        <span class="tile-title">Printer Guidelines</span>
+                        <span class="tile-sub">How to print, safely</span>
+                    </span>
+                    <span class="tile-arrow" aria-hidden="true">→</span>
+                </button>
+
+                {#if user}
+                    <a class="option-btn" style="--i: 7; --tile-accent: var(--rp-iris)" href="/dashboard">
+                        <span class="tile-icon" aria-hidden="true">📊</span>
+                        <span class="tile-body">
+                            <span class="tile-title">Dashboard</span>
+                            <span class="tile-sub">What needs you, your bookings</span>
+                        </span>
+                        <span class="tile-arrow" aria-hidden="true">→</span>
+                    </a>
+
+                    <a class="option-btn" style="--i: 8; --tile-accent: var(--rp-rose)" href="/threads">
+                        <span class="tile-icon" aria-hidden="true">🧪</span>
+                        <span class="tile-body">
+                            <span class="tile-title">Research Threads</span>
+                            <span class="tile-sub">Your projects and robot access</span>
+                        </span>
+                        <span class="tile-arrow" aria-hidden="true">→</span>
+                    </a>
+                {/if}
+            </div>
         </div>
     {/if}
 
@@ -543,7 +591,6 @@
                 <h1>Borrow equipment</h1>
                 <p>Borrowing as {user?.name}{#if user?.phone} · <span class="mono">{user.phone}</span>{/if}</p>
             </div>
-            <button class="btn" on:click={goHome}>Back</button>
         </header>
 
         <form class="card form" style="--hue: {AREA.equipment}" on:submit|preventDefault={() => submitBorrow()}>
@@ -653,7 +700,6 @@
                 <h1>Return equipment</h1>
                 <p>Your own loans are at the top.</p>
             </div>
-            <button class="btn" on:click={goHome}>Back</button>
         </header>
 
         <div class="field search">
@@ -748,7 +794,6 @@
                 <h1>Printer guide</h1>
                 <p>How to print on the lab's Bambu Lab P1S printers, step by step.</p>
             </div>
-            <button class="btn" on:click={goHome}>Back</button>
         </header>
 
         <article class="card guide">
@@ -1147,10 +1192,6 @@
 
 <style>
     /* Home */
-    .mine {
-        margin-bottom: 14px;
-    }
-
     .grow {
         min-width: 0;
     }
@@ -1169,42 +1210,172 @@
         color: var(--warn);
     }
 
-    .tiles {
-        grid-template-columns: repeat(4, minmax(0, 1fr));
+    /* Home: the menu of tiles, one row each - icon, text, arrow */
+    .mine {
+        max-width: 1000px;
+        margin: 0 auto 18px;
     }
 
-    .tile {
+    .home-options {
+        text-align: center;
+    }
+
+    .home-options h2 {
+        margin: 8px 0 0;
+        font-size: clamp(1.25rem, 3vw, 1.6rem);
+        font-weight: 500;
+        color: var(--rp-text);
+    }
+
+    .option-buttons {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: clamp(12px, 2vw, 18px);
+        max-width: 1000px;
+        margin: clamp(18px, 3vw, 28px) auto 0;
+    }
+
+    .option-btn {
+        --tile-accent: var(--rp-iris);
+        position: relative;
         display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 4px;
-        font: inherit;
-        color: inherit;
+        align-items: center;
+        gap: 14px;
+        width: 100%;
+        min-height: 84px;
+        box-sizing: border-box;
         text-align: left;
         text-decoration: none;
+        padding: clamp(14px, 2.4vw, 20px);
+        border: 1px solid var(--line-strong);
+        border-radius: var(--radius-lg);
+        background:
+            linear-gradient(180deg, color-mix(in srgb, var(--rp-text) 4%, transparent), transparent 60%),
+            var(--card);
+        color: var(--rp-text);
+        font: inherit;
         cursor: pointer;
-        transition: border-color var(--fast) var(--ease);
+        overflow: hidden;
+        box-shadow: var(--shadow-sm);
+        transition:
+            transform var(--normal) var(--ease),
+            border-color var(--normal) var(--ease),
+            box-shadow var(--normal) var(--ease);
+        animation: rise var(--slow) var(--ease) both;
+        animation-delay: calc(var(--i, 0) * 50ms);
     }
 
-    .tile:hover {
-        border-color: color-mix(in srgb, var(--hue) 45%, var(--line));
+    /* A colour wash that grows from the left edge on hover */
+    .option-btn::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(90deg, color-mix(in srgb, var(--tile-accent) 18%, transparent), transparent 55%);
+        opacity: 0;
+        transition: opacity var(--normal) var(--ease);
+        pointer-events: none;
     }
 
-    .tile.main {
-        grid-column: span 2;
+    /* The accent stripe down the leading edge */
+    .option-btn::after {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 3px;
+        background: var(--tile-accent);
+        transform: scaleY(0.3);
+        transition: transform var(--normal) var(--ease);
     }
 
-    .tile .icon-badge {
-        margin-bottom: 14px;
+    .option-btn:hover,
+    .option-btn:focus-visible {
+        transform: translateY(-3px);
+        border-color: color-mix(in srgb, var(--tile-accent) 55%, var(--line-strong));
+        box-shadow: var(--shadow);
+    }
+
+    .option-btn:hover::before,
+    .option-btn:focus-visible::before {
+        opacity: 1;
+    }
+
+    .option-btn:hover::after,
+    .option-btn:focus-visible::after {
+        transform: scaleY(1);
+    }
+
+    .option-btn:active {
+        transform: translateY(-1px) scale(0.995);
+    }
+
+    .tile-icon {
+        font-size: 1.85rem;
+        line-height: 1;
+        flex-shrink: 0;
+        transition: transform var(--normal) var(--ease);
+    }
+
+    .tile-image {
+        width: 46px;
+        height: 46px;
+        object-fit: contain;
+        flex-shrink: 0;
+        transition: transform var(--normal) var(--ease);
+    }
+
+    .option-btn:hover .tile-icon,
+    .option-btn:hover .tile-image {
+        transform: scale(1.08) rotate(-2deg);
+    }
+
+    .tile-body {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        min-width: 0;
+        flex: 1;
     }
 
     .tile-title {
-        font-size: 1.05rem;
-        font-weight: 600;
+        font-size: clamp(1rem, 2vw, 1.12rem);
+        font-weight: 650;
+        color: var(--tile-accent);
     }
 
-    .tile .muted {
-        font-size: 0.9rem;
+    .tile-sub {
+        font-size: clamp(0.82rem, 1.6vw, 0.9rem);
+        color: var(--muted);
+        line-height: 1.35;
+    }
+
+    .tile-arrow {
+        flex-shrink: 0;
+        color: var(--faint);
+        font-size: 1.1rem;
+        opacity: 0;
+        transform: translateX(-4px);
+        transition: transform var(--normal) var(--ease), opacity var(--normal) var(--ease), color var(--normal) var(--ease);
+    }
+
+    .option-btn:hover .tile-arrow,
+    .option-btn:focus-visible .tile-arrow {
+        opacity: 1;
+        transform: none;
+        color: var(--tile-accent);
+    }
+
+    /* Phones: there is no hover, so show the arrow, and use one column */
+    @media (max-width: 640px) {
+        .option-buttons {
+            grid-template-columns: 1fr;
+        }
+
+        .tile-arrow {
+            opacity: 1;
+            transform: none;
+        }
     }
 
     /* Forms */

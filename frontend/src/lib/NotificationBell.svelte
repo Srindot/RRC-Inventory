@@ -5,7 +5,7 @@
     import { api } from '$lib/auth.js';
     import Icon from '$lib/Icon.svelte';
 
-    export let up = false; // open upwards, for the sidebar footer
+    export let up = false; // open upwards instead of down
 
     let notes = [];
     let open = false;

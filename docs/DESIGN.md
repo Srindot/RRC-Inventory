@@ -1,8 +1,11 @@
 # Design guide
 
-The site should look like a calm, professional tool, not a demo. Structure is
-borrowed from desktop dashboard apps (a sidebar, a grid of quiet cards with
-small labels and big numbers); colour is Catppuccin (Mocha dark, Latte light).
+The site should look like a calm, professional tool, not a demo. The frame is
+the lab's original design: the RRC logo and name across the top, a home page of
+large tiles ("What would you like to do?"), and a "Back to Home" link on every
+other page. Inside a page: a grid of quiet cards with small labels and big
+numbers. Colour is Rosé Pine (dark by default) and Rosé Pine Dawn (light),
+switched with the Dark/Light button in the header and remembered per browser.
 
 Everything below already exists in `frontend/src/lib/theme.css`,
 `Shell.svelte` and `Icon.svelte`. Build pages from these pieces instead of
@@ -10,9 +13,13 @@ adding new styles.
 
 ## Layout
 
-- The shell (`lib/Shell.svelte`, mounted in `+layout.svelte`) draws the sidebar
-  on desktop and the top bar + bottom tab bar on phones. Pages never add their
-  own navigation, logo, back links or account links.
+- The shell (`lib/Shell.svelte`, mounted in `+layout.svelte`) draws the header
+  (logo, title, theme button, notifications, account), the "Back to Home" link
+  on every page but home, and the footer. It is the same on phones; the header
+  wraps and the home tiles stack into one column. Pages never add their own
+  navigation, logo, back links or account links.
+- New areas of the site get a tile on the home page (`routes/+page.svelte`,
+  `.option-btn` with an emoji and a `--tile-accent` Rosé Pine colour).
 - A page is `<div class="page">` with a `<header class="page-head">` holding an
   `<h1>` and at most one muted line under it, then content.
 - Content is a `.grid` of `.card`s. A card starts with a small `.label`, then a
@@ -30,14 +37,15 @@ Use only these tokens; never hex or rgba literals (shadows excepted):
 | `--card`, `--card-raised` | cards; inputs, menus, toasts |
 | `--line`, `--line-strong` | hairline borders, dividers, hover fills |
 | `--ctp-text`, `--muted`, `--faint` | text, secondary text, tertiary text |
-| `--accent`, `--accent-soft` | the one accent (Catppuccin mauve) and its tint |
+| `--accent`, `--accent-soft` | the one accent (Rosé Pine iris) and its tint |
 | `--accent-ink` | text on a filled accent |
 | `--danger`, `--warn` | errors, overdue; warnings |
 
 ### Colour with meaning
 
 Colour is used to say *what something is*, not to decorate. Each area of the
-site owns a Catppuccin hue (`lib/palette.js` → `AREA`), and each research
+site owns a hue (`lib/palette.js` → `AREA`; the `--ctp-*` names there are
+aliases onto Rosé Pine, see `theme.css`), and each research
 thread or robot gets a stable hue from `hueFor(id)`:
 
 | Area | Hue |

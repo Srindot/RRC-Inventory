@@ -1,50 +1,76 @@
-/* The design system: Catppuccin colours (Mocha dark, Latte light), a few
-   semantic tokens on top, and the shared pieces every page builds from.
-   Imported once in +layout.svelte. The theme is <html data-theme="light|dark">,
-   set before first paint by app.html (saved choice, else the system's). */
+/* The design system: Rosé Pine colours (Rosé Pine dark, Rosé Pine Dawn
+   light), a few semantic tokens on top, and the shared pieces every page
+   builds from. Imported once in +layout.svelte. The theme is
+   <html data-theme="light|dark">, set before first paint by app.html from the
+   saved choice (dark until someone picks light with the header button).
+
+   Pages were written against Catppuccin names (--ctp-*); those names are kept
+   as aliases onto the Rosé Pine palette below, so every page follows the theme
+   without each one being rewritten. New code should use --rp-* or the
+   semantic tokens. */
 
 :root {
-    /* Catppuccin Mocha */
-    --ctp-rosewater: #f5e0dc;
-    --ctp-flamingo: #f2cdcd;
-    --ctp-pink: #f5c2e7;
-    --ctp-mauve: #cba6f7;
-    --ctp-red: #f38ba8;
-    --ctp-maroon: #eba0ac;
-    --ctp-peach: #fab387;
-    --ctp-yellow: #f9e2af;
-    --ctp-green: #a6e3a1;
-    --ctp-teal: #94e2d5;
-    --ctp-sky: #89dceb;
-    --ctp-sapphire: #74c7ec;
-    --ctp-blue: #89b4fa;
-    --ctp-lavender: #b4befe;
-    --ctp-text: #cdd6f4;
-    --ctp-subtext1: #bac2de;
-    --ctp-subtext0: #a6adc8;
-    --ctp-overlay2: #9399b2;
-    --ctp-overlay1: #7f849c;
-    --ctp-overlay0: #6c7086;
-    --ctp-surface2: #585b70;
-    --ctp-surface1: #45475a;
-    --ctp-surface0: #313244;
-    --ctp-base: #1e1e2e;
-    --ctp-mantle: #181825;
-    --ctp-crust: #11111b;
+    /* Rosé Pine */
+    --rp-base: #191724;
+    --rp-surface: #1f1d2e;
+    --rp-overlay: #26233a;
+    --rp-muted: #6e6a86;
+    --rp-subtle: #908caa;
+    --rp-text: #e0def4;
+    --rp-love: #eb6f92;
+    --rp-gold: #f6c177;
+    --rp-rose: #ebbcba;
+    --rp-pine: #31748f;
+    --rp-foam: #9ccfd8;
+    --rp-iris: #c4a7e7;
+    --rp-hl-low: #21202e;
+    --rp-hl-med: #403d52;
+    --rp-hl-high: #524f67;
+
+    /* Catppuccin names, mapped onto Rosé Pine (see the note above) */
+    --ctp-rosewater: var(--rp-rose);
+    --ctp-flamingo: var(--rp-rose);
+    --ctp-pink: var(--rp-rose);
+    --ctp-mauve: var(--rp-iris);
+    --ctp-lavender: var(--rp-iris);
+    --ctp-red: var(--rp-love);
+    --ctp-maroon: var(--rp-love);
+    --ctp-peach: var(--rp-gold);
+    --ctp-yellow: var(--rp-gold);
+    --ctp-green: var(--rp-foam);
+    --ctp-teal: var(--rp-foam);
+    --ctp-sky: var(--rp-foam);
+    --ctp-sapphire: var(--rp-pine);
+    --ctp-blue: var(--rp-pine);
+    --ctp-text: var(--rp-text);
+    --ctp-subtext1: var(--rp-subtle);
+    --ctp-subtext0: var(--rp-subtle);
+    --ctp-overlay2: var(--rp-muted);
+    --ctp-overlay1: var(--rp-muted);
+    --ctp-overlay0: var(--rp-muted);
+    --ctp-surface2: var(--rp-hl-high);
+    --ctp-surface1: var(--rp-hl-med);
+    --ctp-surface0: var(--rp-overlay);
+    --ctp-base: var(--rp-base);
+    --ctp-mantle: var(--rp-surface);
+    --ctp-crust: var(--rp-base);
 
     /* Semantic tokens: use these in new code */
-    --bg: #0e0e15;                  /* page canvas, a touch below crust */
-    --card: var(--ctp-crust);       /* cards and panels */
-    --card-raised: var(--ctp-mantle);
-    --line: rgba(205, 214, 244, 0.08);
-    --line-strong: rgba(205, 214, 244, 0.14);
-    --muted: var(--ctp-subtext0);
-    --faint: var(--ctp-overlay1);
-    --accent: var(--ctp-mauve);     /* Catppuccin's own signature colour */
-    --accent-ink: #11111b;          /* text on a filled accent */
-    --accent-soft: rgba(203, 166, 247, 0.1);
-    --danger: var(--ctp-red);
-    --warn: var(--ctp-yellow);
+    --bg: var(--rp-base);           /* page canvas */
+    --card: var(--rp-surface);      /* cards and panels */
+    --card-raised: var(--rp-overlay);
+    --line: rgba(224, 222, 244, 0.08);
+    --line-strong: rgba(224, 222, 244, 0.15);
+    --muted: var(--rp-subtle);
+    --faint: var(--rp-muted);
+    --accent: var(--rp-iris);
+    --accent-ink: var(--rp-base);   /* text on a filled accent */
+    --accent-soft: rgba(196, 167, 231, 0.1);
+    --danger: var(--rp-love);
+    --warn: var(--rp-gold);
+    --link: var(--rp-foam);
+    --glow-1: rgba(196, 167, 231, 0.09);
+    --glow-2: rgba(156, 207, 216, 0.07);
 
     color-scheme: dark;
 
@@ -53,7 +79,7 @@
     --radius-lg: 16px;
     --radius-pill: 999px;
 
-    --shadow-sm: none;
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.25);
     --shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
     --shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.45);
 
@@ -64,51 +90,40 @@
 
     --font: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
     --mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
-
-    --sidebar: 236px;
 }
 
-/* Catppuccin Latte */
+/* Rosé Pine Dawn */
 :root[data-theme='light'] {
-    --ctp-rosewater: #dc8a78;
-    --ctp-flamingo: #dd7878;
-    --ctp-pink: #ea76cb;
-    --ctp-mauve: #8839ef;
-    --ctp-red: #d20f39;
-    --ctp-maroon: #e64553;
-    --ctp-peach: #fe640b;
-    --ctp-yellow: #df8e1d;
-    --ctp-green: #40a02b;
-    --ctp-teal: #179299;
-    --ctp-sky: #04a5e5;
-    --ctp-sapphire: #209fb5;
-    --ctp-blue: #1e66f5;
-    --ctp-lavender: #7287fd;
-    --ctp-text: #4c4f69;
-    --ctp-subtext1: #5c5f77;
-    --ctp-subtext0: #6c6f85;
-    --ctp-overlay2: #7c7f93;
-    --ctp-overlay1: #8c8fa1;
-    --ctp-overlay0: #9ca0b0;
-    --ctp-surface2: #acb0be;
-    --ctp-surface1: #bcc0cc;
-    --ctp-surface0: #ccd0da;
-    --ctp-base: #eff1f5;
-    --ctp-mantle: #e6e9ef;
-    --ctp-crust: #dce0e8;
+    --rp-base: #faf4ed;
+    --rp-surface: #fffaf3;
+    --rp-overlay: #f2e9e1;
+    --rp-muted: #9893a5;
+    --rp-subtle: #797593;
+    --rp-text: #575279;
+    --rp-love: #b4637a;
+    --rp-gold: #ea9d34;
+    --rp-rose: #d7827e;
+    --rp-pine: #286983;
+    --rp-foam: #56949f;
+    --rp-iris: #907aa9;
+    --rp-hl-low: #f4ede8;
+    --rp-hl-med: #dfdad9;
+    --rp-hl-high: #cecacd;
 
-    --bg: #e6e9ef;
-    --card: #f7f8fb;
     --card-raised: #ffffff;
-    --line: rgba(76, 79, 105, 0.12);
-    --line-strong: rgba(76, 79, 105, 0.2);
-    --accent-ink: #ffffff;          /* Latte mauve is dark enough for white */
-    --accent-soft: rgba(136, 57, 239, 0.08);
+    --line: rgba(87, 82, 121, 0.12);
+    --line-strong: rgba(87, 82, 121, 0.22);
+    --accent-ink: #fffaf3;
+    --accent-soft: rgba(144, 122, 169, 0.1);
+    --link: var(--rp-pine);
+    --glow-1: rgba(144, 122, 169, 0.08);
+    --glow-2: rgba(86, 148, 159, 0.07);
 
     color-scheme: light;
 
-    --shadow: 0 8px 24px rgba(76, 79, 105, 0.12);
-    --shadow-lg: 0 18px 48px rgba(76, 79, 105, 0.18);
+    --shadow-sm: 0 2px 8px rgba(87, 82, 121, 0.08);
+    --shadow: 0 8px 24px rgba(87, 82, 121, 0.12);
+    --shadow-lg: 0 18px 48px rgba(87, 82, 121, 0.18);
 }
 
 html {
@@ -116,7 +131,11 @@ html {
 }
 
 body {
-    background: var(--bg);
+    background:
+        radial-gradient(1100px 600px at 12% -8%, var(--glow-1), transparent 60%),
+        radial-gradient(900px 520px at 92% 4%, var(--glow-2), transparent 60%),
+        var(--bg);
+    background-attachment: fixed;
     color: var(--ctp-text);
     font-family: var(--font);
     margin: 0;
@@ -130,7 +149,7 @@ body {
 .page {
     max-width: 1200px;
     margin: 0 auto;
-    padding: 28px 28px 96px;
+    padding: 20px clamp(16px, 3vw, 28px) 48px;
 }
 
 .page-head {
@@ -352,20 +371,20 @@ body {
     background: var(--hue, var(--accent));
 }
 
-/* Latte's pastel hues are too light to read as text on a light page, so
-   coloured text is darkened there; fills and dots keep the true colour. */
+/* On Dawn, coloured text is nudged towards the text colour so it stays
+   readable on the light page; fills and dots keep the true colour. */
 :root[data-theme='light'] .card.hued .label,
 :root[data-theme='light'] .hue-text,
 :root[data-theme='light'] .chip.hue {
-    color: color-mix(in srgb, var(--hue) 62%, #1e1e2e);
+    color: color-mix(in srgb, var(--hue) 85%, #575279);
 }
 
 :root[data-theme='light'] .chip.ok {
-    color: color-mix(in srgb, var(--accent) 70%, #1e1e2e);
+    color: color-mix(in srgb, var(--accent) 85%, #575279);
 }
 
 :root[data-theme='light'] .chip.warn {
-    color: color-mix(in srgb, var(--warn) 62%, #1e1e2e);
+    color: color-mix(in srgb, var(--warn) 75%, #575279);
 }
 
 input,
@@ -380,7 +399,7 @@ textarea {
 
 @media (max-width: 700px) {
     .page {
-        padding: 18px 16px 120px;
+        padding: 18px 16px 40px;
     }
 
     .page-head h1 {
@@ -500,12 +519,6 @@ textarea {
     animation: rise var(--normal) var(--ease) both;
 }
 
-@media (max-width: 899px) {
-    .message {
-        bottom: 84px; /* above the tab bar */
-    }
-}
-
 .message.success {
     border-color: var(--ctp-green);
     color: var(--ctp-green);
@@ -593,7 +606,7 @@ textarea {
 }
 
 .account-page .note a {
-    color: var(--ctp-blue);
+    color: var(--link);
 }
 
 .account-page .error {

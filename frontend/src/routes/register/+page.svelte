@@ -43,10 +43,6 @@
 <svelte:head><title>Sign up · RRC</title></svelte:head>
 
 <main class="account-page auth">
-    <a class="brand" href="/">
-        <img src="/rrc_logo.png" alt="" width="32" height="32" />
-        <span>RRC Lab</span>
-    </a>
 
     {#if done}
         <div class="account-card">
@@ -110,19 +106,6 @@
         font-size: 1.35rem;
     }
 
-    .brand {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        margin: 0 0 20px;
-        color: var(--ctp-text);
-        text-decoration: none;
-        font-weight: 650;
-    }
-
-    .brand img {
-        border-radius: 6px;
-    }
 
     .hint {
         color: var(--faint);

@@ -1,399 +1,338 @@
 <script>
-    // The frame around every page: a sidebar on desktop, and on phones a slim
-    // top bar plus a bottom tab bar with the five things people do most.
+    // The frame around every page, in the lab's original style: the RRC logo
+    // and name across the top, the page in a centred column, and a small
+    // footer. The home page is the menu (big tiles); every other page gets a
+    // "Back to Home" link instead of a sidebar, which reads the same on a
+    // phone as on a desktop.
     import { onMount } from 'svelte';
     import { page } from '$app/stores';
     import { can, getUser, loginUrl, refreshUser } from '$lib/auth.js';
     import Icon from '$lib/Icon.svelte';
     import NotificationBell from '$lib/NotificationBell.svelte';
-    import { AREA } from '$lib/palette.js';
 
     let user = null;
     let theme = 'dark';
 
-    const nav = [
-        { href: '/', label: 'Home', icon: 'home', hue: AREA.home },
-        { href: '/dashboard', label: 'Dashboard', icon: 'grid', hue: AREA.dashboard, login: true },
-        { href: '/mechlab', label: 'Mech Lab', icon: 'bot', hue: AREA.mech },
-        { href: '/mocap', label: 'MoCap Lab', icon: 'video', hue: AREA.mocap },
-        { href: '/items', label: 'Equipment', icon: 'box', hue: AREA.equipment },
-        { href: '/threads', label: 'Research threads', icon: 'users', hue: AREA.threads, login: true },
-        { href: '/printers', label: '3D printers', icon: 'printer', hue: AREA.printers }
-    ];
-    const tabs = [
-        { href: '/', label: 'Home', icon: 'home', hue: AREA.home },
-        { href: '/mechlab', label: 'Book', icon: 'calendar', hue: AREA.mech },
-        { href: '/items', label: 'Equipment', icon: 'box', hue: AREA.equipment },
-        { href: '/dashboard', label: 'Dashboard', icon: 'grid', hue: AREA.dashboard },
-        { href: '/account', label: 'Me', icon: 'user', hue: AREA.account }
-    ];
-
     $: path = $page.url.pathname;
+    // The home page also hosts the borrow/return/guide views. Tiles open them
+    // with shallow routing, which changes page.state but not page.url, so
+    // both are checked.
+    $: view = $page.state?.view || $page.url.searchParams.get('view') || ($page.url.searchParams.has('borrow') ? 'borrow' : 'home');
+    $: home = path === '/' && view === 'home';
     $: isAdmin = ['manage_users', 'manage_inventory', 'manage_printers', 'manage_bookings', 'approve_mech_bookings', 'approve_loans'].some((p) => can(user, p));
     $: initial = (user?.name || '?').trim().charAt(0).toUpperCase();
-    $: bare = path === '/login' || path === '/register';
-
-    const active = (href) => (href === '/' ? path === '/' : path === href || path.startsWith(href + '/'));
-    // The phone "Book" tab covers both labs.
-    const tabActive = (href) => active(href) || (href === '/mechlab' && active('/mocap'));
+    $: firstName = (user?.name || '').trim().split(/\s+/)[0];
 
     onMount(async () => {
-        theme = document.documentElement.dataset.theme || 'dark';
-        // Follow the system until someone picks a theme themselves.
-        const media = matchMedia('(prefers-color-scheme: light)');
-        const follow = (e) => {
-            try {
-                if (localStorage.getItem('theme')) return;
-            } catch {}
-            setTheme(e.matches ? 'light' : 'dark', false);
-        };
-        media.addEventListener('change', follow);
-
+        theme = document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
         user = getUser();
         user = await refreshUser();
-        return () => media.removeEventListener('change', follow);
     });
 
-    function setTheme(next, remember = true) {
-        theme = next;
-        document.documentElement.dataset.theme = next;
-        if (remember) {
-            try {
-                localStorage.setItem('theme', next);
-            } catch {}
-        }
+    // The choice is remembered in this browser; app.html applies it before
+    // the first paint on the next visit.
+    function toggleTheme() {
+        theme = theme === 'dark' ? 'light' : 'dark';
+        document.documentElement.dataset.theme = theme;
+        try {
+            localStorage.setItem('theme', theme);
+        } catch {}
     }
 
     // Read at click time: the shell outlives client-side navigation.
     const goLogin = () => (location.href = loginUrl());
 </script>
 
-{#if bare}
-    <main class="bare"><slot /></main>
-{:else}
-    <aside class="sidebar">
-        <a class="brand" href="/">
-            <img src="/rrc_logo.png" alt="" width="26" height="26" />
-            <span>RRC Lab</span>
+<div class="frame">
+    <header class="site-head" class:compact={!home}>
+        <a class="brand" href="/" aria-label="Robotics Research Centre - home">
+            <img class="logo" src="/rrc_logo.png" alt="" />
+            <span class="titles">
+                <span class="site-title">Robotics Research Centre</span>
+                <span class="site-sub">Lab Equipment Management System</span>
+            </span>
         </a>
 
-        <nav aria-label="Main">
-            {#each nav.filter((n) => !n.login || user) as item (item.href)}
-                <a class="nav-item" class:active={active(item.href)} style="--hue: {item.hue}" href={item.href} aria-current={active(item.href) ? 'page' : undefined}>
-                    <Icon name={item.icon} />
-                    <span>{item.label}</span>
-                </a>
-            {/each}
-            {#if isAdmin}
-                <a class="nav-item" class:active={active('/admin')} style="--hue: {AREA.admin}" href="/admin">
-                    <Icon name="shield" />
-                    <span>Admin</span>
-                </a>
-            {/if}
-        </nav>
-
-        <div class="sidebar-foot">
-            {#if user}
-                <a class="me" class:active={active('/account')} href="/account">
-                    <span class="avatar">{initial}</span>
-                    <span class="me-text">
-                        <span class="me-name">{user.name}</span>
-                        <span class="me-group">{user.group}</span>
-                    </span>
-                </a>
-                <div class="foot-actions">
-                    <NotificationBell up />
-                    <button class="icon-btn" on:click={() => setTheme(theme === 'dark' ? 'light' : 'dark')} aria-label="Switch to {theme === 'dark' ? 'light' : 'dark'} mode">
-                        <Icon name={theme === 'dark' ? 'sun' : 'moon'} />
-                    </button>
-                </div>
-            {:else}
-                <button class="nav-item" on:click={goLogin}>
-                    <Icon name="login" />
-                    <span>Log in</span>
-                </button>
-                <button class="icon-btn" on:click={() => setTheme(theme === 'dark' ? 'light' : 'dark')} aria-label="Switch to {theme === 'dark' ? 'light' : 'dark'} mode">
-                    <Icon name={theme === 'dark' ? 'sun' : 'moon'} />
-                </button>
-            {/if}
-        </div>
-    </aside>
-
-    <header class="topbar">
-        <a class="brand" href="/">
-            <img src="/rrc_logo.png" alt="" width="24" height="24" />
-            <span>RRC Lab</span>
-        </a>
-        <div class="top-actions">
-            <button class="icon-btn" on:click={() => setTheme(theme === 'dark' ? 'light' : 'dark')} aria-label="Switch to {theme === 'dark' ? 'light' : 'dark'} mode">
-                <Icon name={theme === 'dark' ? 'sun' : 'moon'} />
+        <div class="actions">
+            <button
+                class="theme-toggle"
+                on:click={toggleTheme}
+                aria-label="Switch to {theme === 'dark' ? 'light' : 'dark'} mode"
+                title="Switch to {theme === 'dark' ? 'light' : 'dark'} mode"
+            >
+                <Icon name={theme === 'dark' ? 'moon' : 'sun'} size={16} />
+                <span>{theme === 'dark' ? 'Dark' : 'Light'}</span>
             </button>
+
             {#if user}
                 <NotificationBell />
                 {#if isAdmin}
-                    <a class="icon-btn" href="/admin" aria-label="Admin"><Icon name="shield" /></a>
+                    <a class="head-btn" class:active={path.startsWith('/admin')} href="/admin" title="Admin">
+                        <Icon name="shield" size={16} />
+                        <span class="hide-sm">Admin</span>
+                    </a>
                 {/if}
-            {:else}
-                <button class="text-btn" on:click={goLogin}>Log in</button>
+                <a class="head-btn me" class:active={path.startsWith('/account')} href="/account" title="Your account">
+                    <span class="avatar">{initial}</span>
+                    <span class="hide-sm">{firstName}</span>
+                </a>
+            {:else if path !== '/login' && path !== '/register'}
+                <button class="head-btn" on:click={goLogin}>
+                    <Icon name="login" size={16} />
+                    <span>Log in</span>
+                </button>
             {/if}
         </div>
     </header>
 
+    {#if !home}
+        <nav class="crumbs" aria-label="Breadcrumb">
+            <a href="/">← Back to Home</a>
+        </nav>
+    {/if}
+
     <main class="content"><slot /></main>
 
-    <nav class="tabbar" aria-label="Main">
-        {#each tabs as tab (tab.href)}
-            <a class="tab" class:active={tabActive(tab.href)} style="--hue: {tab.hue}" href={tab.href === '/account' && !user ? '/login' : tab.href}>
-                <Icon name={tab.icon} size={20} />
-                <span>{tab.label}</span>
-            </a>
-        {/each}
-    </nav>
-{/if}
+    <footer class="site-foot">
+        <span>Created by <a href="https://github.com/srindot" target="_blank" rel="noopener noreferrer">Srinath</a></span>
+        <span>Theme: <a href="https://rosepinetheme.com" target="_blank" rel="noopener noreferrer">Rosé Pine</a></span>
+    </footer>
+</div>
 
 <style>
-    .sidebar {
-        position: fixed;
-        inset: 0 auto 0 0;
-        width: var(--sidebar);
+    .frame {
         display: flex;
         flex-direction: column;
-        gap: 18px;
-        padding: 18px 12px;
+        min-height: 100vh;
+        min-height: 100dvh;
+    }
+
+    /* --- header ---------------------------------------------------------- */
+
+    .site-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 14px 20px;
+        width: 100%;
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: clamp(14px, 3vw, 24px) clamp(16px, 3vw, 28px) 8px;
         box-sizing: border-box;
-        background: var(--bg);
-        border-right: 1px solid var(--line);
-        z-index: 50;
     }
 
     .brand {
         display: flex;
         align-items: center;
-        gap: 10px;
-        padding: 4px 10px;
-        color: var(--ctp-text);
+        gap: clamp(12px, 2.5vw, 18px);
+        min-width: 0;
+        color: inherit;
         text-decoration: none;
-        font-weight: 650;
-        letter-spacing: -0.01em;
     }
 
-    .brand img {
-        border-radius: 6px;
+    /* The logo's lettering is white on transparent, so it always sits on a
+       dark Rosé Pine plate - otherwise it vanishes on the light theme. */
+    .logo {
+        height: clamp(52px, 8vw, 78px);
+        width: auto;
+        padding: 3px 6px 3px 3px;
+        border-radius: 12px;
+        background: #191724;
+        box-shadow: var(--shadow-sm);
+        transition: transform var(--normal) var(--ease), box-shadow var(--normal) var(--ease);
     }
 
-    nav {
+    .brand:hover .logo {
+        transform: scale(1.04);
+        box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 30%, transparent);
+    }
+
+    .titles {
         display: flex;
         flex-direction: column;
         gap: 2px;
+        min-width: 0;
     }
 
-    .nav-item {
-        position: relative;
+    .site-title {
+        font-size: clamp(1.35rem, 3.6vw, 2.3rem);
+        font-weight: 500;
+        letter-spacing: -0.01em;
+        line-height: 1.15;
+        color: var(--rp-text);
+    }
+
+    .site-sub {
+        font-size: clamp(0.85rem, 1.6vw, 1.05rem);
+        color: var(--muted);
+    }
+
+    /* Inner pages: the same header, smaller, so the page itself leads */
+    .site-head.compact .logo {
+        height: clamp(40px, 5vw, 52px);
+    }
+
+    .site-head.compact .site-title {
+        font-size: clamp(1.1rem, 2.4vw, 1.45rem);
+    }
+
+    .site-head.compact .site-sub {
+        font-size: 0.85rem;
+    }
+
+    .actions {
         display: flex;
         align-items: center;
-        gap: 12px;
+        gap: 8px;
+        margin-left: auto;
+    }
+
+    .theme-toggle,
+    .head-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
         min-height: 40px;
-        padding: 0 12px;
-        border: none;
-        border-radius: var(--radius-sm);
-        background: transparent;
-        color: var(--muted);
+        padding: 0 14px;
+        border: 1px solid var(--line-strong);
+        border-radius: var(--radius-pill);
+        background: color-mix(in srgb, var(--card) 80%, transparent);
+        color: var(--rp-text);
         font: inherit;
-        font-size: 0.94rem;
+        font-size: 0.9rem;
+        font-weight: 550;
         text-decoration: none;
         cursor: pointer;
-        text-align: left;
+        transition: border-color var(--fast) var(--ease), background var(--fast) var(--ease);
     }
 
-    .nav-item :global(svg) {
-        color: var(--hue, var(--muted));
-        opacity: 0.85;
+    .theme-toggle :global(svg) {
+        color: var(--rp-gold);
     }
 
-    .nav-item:hover {
-        background: var(--line);
-        color: var(--ctp-text);
+    :global(:root[data-theme='dark']) .theme-toggle :global(svg) {
+        color: var(--rp-iris);
     }
 
-    .nav-item.active {
-        background: color-mix(in srgb, var(--hue, var(--accent)) 14%, transparent);
-        color: var(--ctp-text);
-        font-weight: 550;
-    }
-
-    .nav-item.active :global(svg) {
-        opacity: 1;
-    }
-
-    .nav-item.active::before {
-        content: '';
-        position: absolute;
-        left: 0;
-        top: 10px;
-        bottom: 10px;
-        width: 3px;
-        border-radius: 3px;
-        background: var(--hue, var(--accent));
-    }
-
-    .sidebar-foot {
-        margin-top: auto;
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-        padding-top: 12px;
-        border-top: 1px solid var(--line);
+    .theme-toggle:hover,
+    .head-btn:hover,
+    .head-btn.active {
+        border-color: color-mix(in srgb, var(--accent) 55%, var(--line-strong));
+        background: var(--accent-soft);
     }
 
     .me {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        padding: 8px 10px;
-        border-radius: var(--radius-sm);
-        color: var(--ctp-text);
-        text-decoration: none;
-    }
-
-    .me:hover,
-    .me.active {
-        background: var(--line);
+        padding-left: 5px;
     }
 
     .avatar {
         display: grid;
         place-items: center;
-        flex: none;
-        width: 32px;
-        height: 32px;
+        width: 30px;
+        height: 30px;
         border-radius: 50%;
         background: var(--accent);
         color: var(--accent-ink);
-        font-weight: 650;
-        font-size: 0.9rem;
+        font-weight: 700;
+        font-size: 0.85rem;
     }
 
-    .me-text {
-        display: flex;
-        flex-direction: column;
-        min-width: 0;
-    }
-
-    .me-name {
-        font-size: 0.9rem;
-        font-weight: 550;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-
-    .me-group {
-        font-size: 0.78rem;
-        color: var(--faint);
-    }
-
-    .foot-actions,
-    .top-actions {
-        display: flex;
-        align-items: center;
-        gap: 2px;
-    }
-
-    .icon-btn {
-        display: grid;
-        place-items: center;
-        width: 40px;
-        height: 40px;
-        border: none;
-        border-radius: var(--radius-sm);
-        background: transparent;
-        color: var(--muted);
-        cursor: pointer;
-    }
-
-    .icon-btn:hover {
-        background: var(--line);
-        color: var(--ctp-text);
-    }
-
-    .text-btn {
-        min-height: 36px;
-        padding: 0 14px;
+    /* The bell is its own component; give it the same round outline */
+    .actions :global(.bell-btn) {
         border: 1px solid var(--line-strong);
-        border-radius: var(--radius-sm);
-        background: transparent;
-        color: var(--ctp-text);
-        font: inherit;
-        font-weight: 550;
-        cursor: pointer;
+        border-radius: var(--radius-pill);
+        background: color-mix(in srgb, var(--card) 80%, transparent);
     }
+
+    /* --- back link ------------------------------------------------------- */
+
+    .crumbs {
+        width: 100%;
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 6px clamp(16px, 3vw, 28px) 0;
+        box-sizing: border-box;
+    }
+
+    .crumbs a {
+        color: var(--link);
+        text-decoration: none;
+        font-size: 0.95rem;
+    }
+
+    .crumbs a:hover {
+        text-decoration: underline;
+    }
+
+    /* --- page and footer ------------------------------------------------- */
 
     .content {
-        margin-left: var(--sidebar);
-        min-height: 100vh;
+        flex: 1;
+        width: 100%;
     }
 
-    .bare {
-        min-height: 100vh;
+    .site-foot {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 2px;
+        padding: 18px 16px calc(18px + env(safe-area-inset-bottom));
+        border-top: 1px solid var(--line);
+        background: color-mix(in srgb, var(--rp-surface) 70%, transparent);
+        color: var(--muted);
+        font-size: 0.8rem;
+        text-align: center;
     }
 
-    .topbar,
-    .tabbar {
-        display: none;
+    .site-foot a {
+        color: var(--rp-rose);
+        text-decoration: none;
     }
 
-    /* Phones and small tablets: top bar + bottom tabs instead of the sidebar */
-    @media (max-width: 899px) {
-        .sidebar {
+    .site-foot a:hover {
+        text-decoration: underline;
+    }
+
+    /* --- phones ---------------------------------------------------------- */
+
+    @media (max-width: 640px) {
+        /* Logo and name on one line, the buttons on the line below */
+        .site-head {
+            gap: 12px;
+        }
+
+        .actions {
+            width: 100%;
+            margin-left: 0;
+            justify-content: flex-end;
+        }
+
+        .site-head:not(.compact) .brand {
+            width: 100%;
+        }
+
+        .hide-sm {
             display: none;
         }
 
-        .content {
-            margin-left: 0;
+        .logo,
+        .site-head.compact .logo {
+            height: 44px;
         }
 
-        .topbar {
-            position: sticky;
-            top: 0;
-            z-index: 60;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            height: 56px;
-            padding: 0 8px 0 12px;
-            background: color-mix(in srgb, var(--bg) 88%, transparent);
-            backdrop-filter: blur(12px);
-            border-bottom: 1px solid var(--line);
+        .site-title,
+        .site-head.compact .site-title {
+            font-size: 1.15rem;
         }
 
-        .tabbar {
-            position: fixed;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            z-index: 60;
-            display: grid;
-            grid-template-columns: repeat(5, 1fr);
-            padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
-            background: color-mix(in srgb, var(--bg) 92%, transparent);
-            backdrop-filter: blur(12px);
-            border-top: 1px solid var(--line);
+        .site-sub,
+        .site-head.compact .site-sub {
+            font-size: 0.8rem;
         }
 
-        .tab {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 3px;
-            min-height: 48px;
-            justify-content: center;
-            color: var(--faint);
-            font-size: 0.7rem;
-            text-decoration: none;
-        }
-
-        .tab.active {
-            color: var(--hue, var(--accent));
+        .head-btn.me {
+            padding: 0 5px;
         }
     }
 </style>
