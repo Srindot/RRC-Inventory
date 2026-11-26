@@ -1,13 +1,11 @@
-/* The design system: Rosé Pine colours (Rosé Pine dark, Rosé Pine Dawn
-   light), a few semantic tokens on top, and the shared pieces every page
-   builds from. Imported once in +layout.svelte. The theme is
-   <html data-theme="light|dark">, set before first paint by app.html from the
-   saved choice (dark until someone picks light with the header button).
+/* The site is built on Tabler (Bootstrap 5, MIT), imported in +layout.svelte
+   before this file. This file only re-tints Tabler with the Rosé Pine
+   palette: Rosé Pine for the dark theme, Rosé Pine Dawn for the light one.
 
-   Pages were written against Catppuccin names (--ctp-*); those names are kept
-   as aliases onto the Rosé Pine palette below, so every page follows the theme
-   without each one being rewritten. New code should use --rp-* or the
-   semantic tokens. */
+   The theme is <html data-theme="light|dark">, set before first paint by
+   app.html from the saved choice; Tabler reads the same attribute. Pages use
+   Tabler/Bootstrap classes (card, btn, badge, table, form-control, ...) and,
+   where they need a colour of their own, the --rp-* or --tblr-* variables. */
 
 :root {
     /* Rosé Pine */
@@ -20,14 +18,18 @@
     --rp-love: #eb6f92;
     --rp-gold: #f6c177;
     --rp-rose: #ebbcba;
-    --rp-pine: #31748f;
+    --rp-pine: #3e8fb0; /* Rosé Pine Moon's pine: plain pine is too dark to read on base */
     --rp-foam: #9ccfd8;
     --rp-iris: #c4a7e7;
     --rp-hl-low: #21202e;
     --rp-hl-med: #403d52;
     --rp-hl-high: #524f67;
+    --rp-input: #191724;
+    --rp-on-accent: #191724; /* text on a filled accent */
+    --rp-link: var(--rp-foam);
 
-    /* Catppuccin names, mapped onto Rosé Pine (see the note above) */
+    /* Catppuccin names, kept as aliases (lib/palette.js and a few pages use
+       them for per-thread and per-lab hues) */
     --ctp-rosewater: var(--rp-rose);
     --ctp-flamingo: var(--rp-rose);
     --ctp-pink: var(--rp-rose);
@@ -40,10 +42,8 @@
     --ctp-green: var(--rp-foam);
     --ctp-teal: var(--rp-foam);
     --ctp-sky: var(--rp-foam);
-    /* Old pages put dark text on blue buttons and use blue for links; pine
-       is too dark for either on the dark theme, so blues map to foam. */
-    --ctp-sapphire: var(--rp-foam);
-    --ctp-blue: var(--rp-foam);
+    --ctp-sapphire: var(--rp-pine);
+    --ctp-blue: var(--rp-pine);
     --ctp-text: var(--rp-text);
     --ctp-subtext1: var(--rp-subtle);
     --ctp-subtext0: var(--rp-subtle);
@@ -57,55 +57,60 @@
     --ctp-mantle: var(--rp-surface);
     --ctp-crust: var(--rp-base);
 
-    /* Semantic tokens: use these in new code */
-    --bg: var(--rp-base);           /* page canvas */
-    --card: var(--rp-surface);      /* cards and panels */
-    --card-raised: var(--rp-overlay);
-    --line: rgba(224, 222, 244, 0.08);
-    --line-strong: rgba(224, 222, 244, 0.15);
-    --muted: var(--rp-subtle);
-    --faint: var(--rp-muted);
-    --accent: var(--rp-iris);
-    --accent-ink: var(--rp-base);   /* text on a filled accent */
-    --accent-soft: rgba(196, 167, 231, 0.1);
-    --danger: var(--rp-love);
-    --warn: var(--rp-gold);
-    --link: var(--rp-foam);
-    --glow-1: rgba(196, 167, 231, 0.09);
-    --glow-2: rgba(156, 207, 216, 0.07);
+    /* --- Tabler, tinted -------------------------------------------------- */
 
-    color-scheme: dark;
+    --tblr-body-bg: var(--rp-base);
+    --tblr-body-color: var(--rp-text);
+    --tblr-emphasis-color: var(--rp-text);
+    --tblr-heading-color: var(--rp-text);
+    --tblr-bg-surface: var(--rp-surface);
+    --tblr-bg-surface-secondary: var(--rp-overlay);
+    --tblr-bg-surface-tertiary: var(--rp-hl-low);
+    --tblr-bg-forms: var(--rp-input);
+    --tblr-secondary-bg: var(--rp-overlay);
+    --tblr-tertiary-bg: var(--rp-hl-low);
+    --tblr-border-color: var(--rp-hl-med);
+    --tblr-border-color-translucent: color-mix(in srgb, var(--rp-hl-high) 60%, transparent);
+    --tblr-secondary: var(--rp-subtle);
+    --tblr-secondary-color: var(--rp-subtle);
+    --tblr-muted: var(--rp-subtle);
+    --tblr-tertiary: var(--rp-muted);
+    --tblr-tertiary-color: var(--rp-muted);
+    --tblr-link-color: var(--rp-link);
+    --tblr-link-hover-color: color-mix(in srgb, var(--rp-link) 80%, var(--rp-text));
+    --tblr-code-color: var(--rp-rose);
+    --tblr-highlight-bg: color-mix(in srgb, var(--rp-gold) 30%, transparent);
+    --tblr-highlight-color: var(--rp-text);
+    --tblr-focus-ring-color: color-mix(in srgb, var(--rp-iris) 35%, transparent);
+    --tblr-border-active-color: var(--rp-iris);
 
-    --radius-sm: 8px;
-    --radius: 12px;
-    --radius-lg: 16px;
-    --radius-pill: 999px;
+    --tblr-primary: var(--rp-iris);
+    --tblr-primary-fg: var(--rp-on-accent);
+    --tblr-secondary-fg: var(--rp-on-accent);
+    --tblr-success: var(--rp-pine);
+    --tblr-success-fg: #fff;
+    --tblr-info: var(--rp-foam);
+    --tblr-info-fg: var(--rp-on-accent);
+    --tblr-warning: var(--rp-gold);
+    --tblr-warning-fg: var(--rp-on-accent);
+    --tblr-danger: var(--rp-love);
+    --tblr-danger-fg: var(--rp-on-accent);
 
-    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.25);
-    --shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-    --shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.45);
+    /* Tabler's named colours (bg-blue-lt, text-green, ...) */
+    --tblr-blue: var(--rp-pine);
+    --tblr-azure: var(--rp-foam);
+    --tblr-indigo: var(--rp-iris);
+    --tblr-purple: var(--rp-iris);
+    --tblr-pink: var(--rp-rose);
+    --tblr-red: var(--rp-love);
+    --tblr-orange: var(--rp-gold);
+    --tblr-yellow: var(--rp-gold);
+    --tblr-lime: var(--rp-foam);
+    --tblr-green: var(--rp-pine);
+    --tblr-teal: var(--rp-foam);
+    --tblr-cyan: var(--rp-foam);
 
-    --ease: cubic-bezier(0.22, 1, 0.36, 1);
-    --fast: 140ms;
-    --normal: 260ms;
-    --slow: 420ms;
-
-    /* Layout: one fluid width for the whole site. The header, the back link
-       and .page all use it, so pages line up at every screen size. Page
-       containers should use max-width: var(--page-max) (it includes the
-       gutters) or width: var(--content-width) (it does not). */
-    --gutter: clamp(16px, 3.4vw, 64px);
-    --page-max: 1680px;
-    --content-width: min(100% - 2 * var(--gutter), var(--page-max) - 2 * var(--gutter));
-
-    /* Glass: content surfaces that float over the ASCII background */
-    --glass: color-mix(in srgb, var(--card) 60%, transparent);
-    --glass-strong: color-mix(in srgb, var(--card) 88%, transparent);
-    --glass-blur: saturate(140%) blur(14px);
-    --bg-opacity: 0.42;
-
-    --font: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
-    --mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+    --tblr-font-monospace: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
 }
 
 /* Rosé Pine Dawn */
@@ -125,544 +130,91 @@
     --rp-hl-low: #f4ede8;
     --rp-hl-med: #dfdad9;
     --rp-hl-high: #cecacd;
+    --rp-input: #ffffff;
+    --rp-on-accent: #ffffff;
+    --rp-link: var(--rp-pine);
 
-    --card-raised: #ffffff;
-    --line: rgba(87, 82, 121, 0.12);
-    --line-strong: rgba(87, 82, 121, 0.22);
-    --accent-ink: #fffaf3;
-    --accent-soft: rgba(144, 122, 169, 0.1);
-    --link: var(--rp-pine);
-    --glow-1: rgba(144, 122, 169, 0.08);
-    --glow-2: rgba(86, 148, 159, 0.07);
-
-    color-scheme: light;
-
-    --shadow-sm: 0 2px 8px rgba(87, 82, 121, 0.08);
-    --shadow: 0 8px 24px rgba(87, 82, 121, 0.12);
-    --shadow-lg: 0 18px 48px rgba(87, 82, 121, 0.18);
-
-    --bg-opacity: 0.5;   /* Dawn hues are pale on cream; DotBackground also darkens them */
-}
-
-html {
-    -webkit-text-size-adjust: 100%;
+    --tblr-warning-fg: #3b3247;
 }
 
 body {
-    background:
-        radial-gradient(1100px 600px at 12% -8%, var(--glow-1), transparent 60%),
-        radial-gradient(900px 520px at 92% 4%, var(--glow-2), transparent 60%),
-        var(--bg);
-    background-attachment: fixed;
-    color: var(--ctp-text);
-    font-family: var(--font);
-    margin: 0;
     -webkit-font-smoothing: antialiased;
-}
-
-/* --- shared building blocks ---------------------------------------------
-   Deck-like: quiet cards with hairline borders, small muted labels, big
-   numbers, monospace digits, one accent used sparingly. */
-
-.page {
-    max-width: var(--page-max);
-    margin: 0 auto;
-    padding: clamp(16px, 2vw, 28px) var(--gutter) clamp(40px, 5vw, 72px);
-    box-sizing: border-box;
-}
-
-.page-head {
-    display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 12px;
-    margin-bottom: 24px;
-}
-
-.page-head h1 {
-    margin: 0;
-    font-size: 1.75rem;
-    font-weight: 650;
-    letter-spacing: -0.02em;
-}
-
-.page-head p {
-    margin: 4px 0 0;
-    color: var(--muted);
-}
-
-.grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-    gap: 14px;
-}
-
-.card {
-    background: color-mix(in srgb, var(--card) 60%, transparent);
-    border: 1px solid var(--line);
-    border-radius: var(--radius-lg);
-    padding: 20px;
-    min-width: 0;
-    -webkit-backdrop-filter: var(--glass-blur);
-    backdrop-filter: var(--glass-blur);
-}
-
-.card.accent {
-    background: var(--accent);
-    border-color: transparent;
-    color: var(--accent-ink);
-}
-
-.card.accent .label {
-    color: color-mix(in srgb, var(--accent-ink) 70%, transparent);
-}
-
-.card.tint {
-    background: var(--accent-soft);
-    border-color: color-mix(in srgb, var(--accent) 22%, transparent);
-}
-
-.label {
-    margin: 0 0 10px;
-    font-size: 0.85rem;
-    font-weight: 500;
-    color: var(--muted);
-}
-
-.stat {
-    margin: 0;
-    font-size: 2.6rem;
-    font-weight: 600;
-    letter-spacing: -0.03em;
-    line-height: 1.05;
-}
-
-.mono {
-    font-family: var(--mono);
-    font-variant-numeric: tabular-nums;
-}
-
-.muted {
-    color: var(--muted);
-}
-
-.row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 12px 0;
-    border-top: 1px solid var(--line);
-}
-
-.row:first-of-type {
-    border-top: none;
-}
-
-.btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    min-height: 40px;
-    padding: 0 16px;
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--line-strong);
-    background: color-mix(in srgb, var(--card-raised) 60%, transparent);
-    color: var(--ctp-text);
-    font: inherit;
-    font-weight: 550;
-    text-decoration: none;
-    cursor: pointer;
-    transition: background var(--fast) var(--ease), border-color var(--fast) var(--ease);
-    -webkit-backdrop-filter: var(--glass-blur);
-    backdrop-filter: var(--glass-blur);
-}
-
-.btn:hover {
-    border-color: var(--faint);
-}
-
-.btn.primary {
-    background: var(--accent);
-    border-color: transparent;
-    color: var(--accent-ink);
-}
-
-.btn.primary:hover {
-    filter: brightness(1.05);
-}
-
-.btn.danger {
-    color: var(--danger);
-}
-
-.btn:disabled {
-    opacity: 0.55;
-    cursor: not-allowed;
-}
-
-.chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 3px 10px;
-    border-radius: var(--radius-pill);
-    border: 1px solid var(--line-strong);
-    font-size: 0.8rem;
-    color: var(--muted);
-}
-
-.chip.ok {
-    color: var(--accent);
-    border-color: color-mix(in srgb, var(--accent) 35%, transparent);
-}
-
-.chip.warn {
-    color: var(--warn);
-    border-color: color-mix(in srgb, var(--warn) 35%, transparent);
-}
-
-.bar {
-    height: 6px;
-    border-radius: var(--radius-pill);
-    background: var(--line-strong);
-    overflow: hidden;
-}
-
-.bar > span {
-    display: block;
-    height: 100%;
-    border-radius: inherit;
-    background: var(--accent);
-}
-
-/* --- colour with meaning ------------------------------------------------
-   Each area of the site, and each research thread, owns a Catppuccin hue.
-   Set it with style="--hue: var(--ctp-peach)" (or hueFor() in lib/palette.js)
-   on any element; these pieces then pick it up. */
-
-.icon-badge {
-    display: grid;
-    place-items: center;
-    flex: none;
-    width: 38px;
-    height: 38px;
-    border-radius: 10px;
-    background: color-mix(in srgb, var(--hue, var(--accent)) 16%, transparent);
-    color: var(--hue, var(--accent));
-}
-
-.dot {
-    display: inline-block;
-    flex: none;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--hue, var(--accent));
-}
-
-.card.hued {
-    background: color-mix(in srgb, var(--hue) 7%, color-mix(in srgb, var(--card) 60%, transparent));
-    border-color: color-mix(in srgb, var(--hue) 28%, var(--line));
-    -webkit-backdrop-filter: var(--glass-blur);
-    backdrop-filter: var(--glass-blur);
-}
-
-.card.hued .label,
-.hue-text {
-    color: var(--hue);
-}
-
-.card.filled {
-    background: var(--hue);
-    border-color: transparent;
-    color: var(--accent-ink);
-}
-
-.card.filled .label,
-.card.filled .muted {
-    color: color-mix(in srgb, var(--accent-ink) 72%, transparent);
-}
-
-.chip.hue {
-    color: var(--hue);
-    border-color: color-mix(in srgb, var(--hue) 40%, transparent);
-    background: color-mix(in srgb, var(--hue) 10%, transparent);
-}
-
-.bar > span {
-    background: var(--hue, var(--accent));
-}
-
-/* On Dawn, coloured text is nudged towards the text colour so it stays
-   readable on the light page; fills and dots keep the true colour. */
-:root[data-theme='light'] .card.hued .label,
-:root[data-theme='light'] .hue-text,
-:root[data-theme='light'] .chip.hue {
-    color: color-mix(in srgb, var(--hue) 85%, #575279);
-}
-
-:root[data-theme='light'] .chip.ok {
-    color: color-mix(in srgb, var(--accent) 85%, #575279);
-}
-
-:root[data-theme='light'] .chip.warn {
-    color: color-mix(in srgb, var(--warn) 75%, #575279);
-}
-
-input,
-select,
-textarea {
-    font: inherit;
-    color: var(--ctp-text);
-    background: color-mix(in srgb, var(--card-raised) 60%, transparent);
-    border: 1px solid var(--line-strong);
-    border-radius: var(--radius-sm);
-    -webkit-backdrop-filter: var(--glass-blur);
-    backdrop-filter: var(--glass-blur);
-}
-
-@media (max-width: 700px) {
-
-    .page-head h1 {
-        font-size: 1.45rem;
-    }
-
-    .stat {
-        font-size: 2.1rem;
-    }
-}
-
-/* Visible keyboard focus everywhere, without a ring on mouse clicks */
-:focus-visible {
-    outline: 2px solid var(--ctp-lavender);
-    outline-offset: 2px;
-    border-radius: 4px;
+    background: var(--tblr-body-bg);
 }
 
 ::selection {
-    background: color-mix(in srgb, var(--accent) 35%, transparent);
+    background: color-mix(in srgb, var(--rp-iris) 35%, transparent);
 }
 
-/* Slim scrollbars that match the palette */
-* {
-    scrollbar-width: thin;
-    scrollbar-color: var(--ctp-surface1) transparent;
+/* Buttons whose colour has dark text in the dark theme: Tabler hardcodes
+   white on some of them, so the ink follows --tblr-*-fg here. */
+.btn-primary {
+    --tblr-btn-color: var(--tblr-primary-fg);
+    --tblr-btn-hover-color: var(--tblr-primary-fg);
+    --tblr-btn-active-color: var(--tblr-primary-fg);
+}
+.btn-info {
+    --tblr-btn-color: var(--tblr-info-fg);
+    --tblr-btn-hover-color: var(--tblr-info-fg);
+    --tblr-btn-active-color: var(--tblr-info-fg);
+}
+.btn-warning {
+    --tblr-btn-color: var(--tblr-warning-fg);
+    --tblr-btn-hover-color: var(--tblr-warning-fg);
+    --tblr-btn-active-color: var(--tblr-warning-fg);
+}
+.btn-danger {
+    --tblr-btn-color: var(--tblr-danger-fg);
+    --tblr-btn-hover-color: var(--tblr-danger-fg);
+    --tblr-btn-active-color: var(--tblr-danger-fg);
+}
+.badge.bg-primary,
+.badge.bg-info,
+.badge.bg-warning,
+.badge.bg-danger {
+    color: var(--rp-on-accent) !important;
 }
 
-*::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+/* Page width: one container for every page */
+.page-body > .container-xl {
+    max-width: 1440px;
 }
 
-*::-webkit-scrollbar-thumb {
-    background: color-mix(in srgb, var(--ctp-surface1) 60%, transparent);
-    border-radius: var(--radius-pill);
+.tabular {
+    font-variant-numeric: tabular-nums;
 }
 
-*::-webkit-scrollbar-thumb:hover {
-    background: color-mix(in srgb, var(--ctp-surface2) 60%, transparent);
-}
-
-*::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-/* --- shared motion ---------------------------------------------------- */
-
-@keyframes rise {
-    from {
-        opacity: 0;
-        transform: translateY(14px);
-    }
-    to {
-        opacity: 1;
-        transform: none;
-    }
-}
-
-@keyframes fade {
-    from {
-        opacity: 0;
-    }
-    to {
-        opacity: 1;
-    }
-}
-
-@keyframes soft-pulse {
-    0%, 100% {
-        opacity: 1;
-    }
-    50% {
-        opacity: 0.45;
-    }
-}
-
-.rise {
-    animation: rise var(--slow) var(--ease) both;
-}
-
-/* Respect people who have asked for less motion */
-@media (prefers-reduced-motion: reduce) {
-    *,
-    *::before,
-    *::after {
-        animation-duration: 0.01ms !important;
-        animation-iteration-count: 1 !important;
-        transition-duration: 0.01ms !important;
-        scroll-behavior: auto !important;
-    }
-}
-
-/* --- toast ------------------------------------------------------------- */
-
-/* Feedback floats at the bottom of the screen, so it is seen wherever the
-   person has scrolled to. Pages use class="message success|error". */
-.message {
+/* Toast feedback: pages show `<div class="toast-msg success|error">`.
+   It floats at the bottom so it is seen wherever the person scrolled to. */
+.toast-msg {
     position: fixed;
     left: 16px;
     right: 16px;
     bottom: 16px;
+    z-index: 1090;
     max-width: 520px;
     margin: 0 auto;
-    z-index: 100;
-    box-sizing: border-box;
-    padding: 12px 16px;
-    border-radius: var(--radius);
-    border: 1px solid var(--ctp-surface1);
-    background: color-mix(in srgb, var(--ctp-mantle) 60%, transparent);
-    color: var(--ctp-text);
-    box-shadow: var(--shadow-lg);
-    background: color-mix(in srgb, var(--card-raised) 60%, transparent);
-    border-color: var(--line-strong);
-    text-align: center;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--tblr-border-color);
+    border-left-width: 4px;
+    border-radius: var(--tblr-border-radius-lg, 8px);
+    background: var(--tblr-bg-surface);
+    color: var(--tblr-body-color);
+    box-shadow: var(--tblr-box-shadow-dropdown, 0 16px 24px rgba(0, 0, 0, 0.2));
     font-weight: 500;
-    animation: rise var(--normal) var(--ease) both;
-    -webkit-backdrop-filter: var(--glass-blur);
-    backdrop-filter: var(--glass-blur);
+}
+.toast-msg.success {
+    border-left-color: var(--tblr-success);
+}
+.toast-msg.error {
+    border-left-color: var(--tblr-danger);
 }
 
-.message.success {
-    border-color: var(--ctp-green);
-    color: var(--ctp-green);
-}
-
-.message.error {
-    border-color: var(--ctp-red);
-    color: var(--ctp-red);
-}
-
-/* --- account pages (login, sign up, account) --------------------------- */
-
-.account-page {
-    max-width: 440px;
-    margin: 0 auto;
-    padding: 48px 16px;
-}
-
-.account-page h1 {
-    margin: 0 0 6px;
-    font-size: 1.6rem;
-}
-
-.account-page .lead {
-    margin: 0 0 24px;
-    color: var(--ctp-subtext0);
-}
-
-.account-card {
-    background: color-mix(in srgb, var(--card) 60%, transparent);
-    border: 1px solid var(--line);
-    border-radius: var(--radius-lg);
-    padding: 24px;
-    margin-bottom: 20px;
-    -webkit-backdrop-filter: var(--glass-blur);
-    backdrop-filter: var(--glass-blur);
-}
-
-.account-card h2 {
-    margin: 0 0 16px;
-    font-size: 1.1rem;
-}
-
-.account-card label {
-    display: block;
-    margin-bottom: 14px;
-    font-size: 0.9rem;
-    color: var(--ctp-subtext1);
-}
-
-.account-card input,
-.account-card select {
-    display: block;
-    width: 100%;
-    box-sizing: border-box;
-    margin-top: 6px;
-    padding: 10px 12px;
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--line-strong);
-    background: color-mix(in srgb, var(--card-raised) 60%, transparent);
-    color: var(--ctp-text);
-    font: inherit;
-    -webkit-backdrop-filter: var(--glass-blur);
-    backdrop-filter: var(--glass-blur);
-}
-
-.account-card button[type='submit'],
-.account-card .primary {
-    width: 100%;
-    min-height: 44px;
-    padding: 11px;
-    border: none;
-    border-radius: var(--radius-sm);
-    background: var(--accent);
-    color: var(--accent-ink);
-    font: inherit;
-    font-weight: 600;
-    cursor: pointer;
-}
-
-.account-card button:disabled {
-    opacity: 0.6;
-    cursor: wait;
-}
-
-.account-page .note {
-    font-size: 0.9rem;
-    color: var(--ctp-subtext0);
-}
-
-.account-page .note a {
-    color: var(--link);
-}
-
-.account-page .error {
-    color: var(--ctp-red);
-}
-
-.account-page .success {
-    color: var(--ctp-green);
-}
-
-/* --- text over the live background ------------------------------------
-   Secondary text that sits straight on the dot background (subtitles,
-   hints, the back link) gets a soft halo in the page colour:
-   the dots fade out right around the letters and stay untouched elsewhere.
-   Class names cover each page's own subtitle styles. */
-.subtitle,
-.subtitle-text,
-.site-sub,
-.footnote,
-.crumbs a,
-.home-options h2,
-.page-head p,
-.admin-info > span:first-child {
-    text-shadow:
-        0 0 2px var(--bg),
-        0 0 6px var(--bg),
-        0 0 12px var(--bg),
-        0 0 20px color-mix(in srgb, var(--bg) 70%, transparent);
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+    }
 }

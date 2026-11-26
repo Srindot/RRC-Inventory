@@ -1,6 +1,7 @@
 <script lang="ts">
-	import Shell from '$lib/Shell.svelte';
+	import '@tabler/core/dist/css/tabler.min.css';
 	import '$lib/theme.css';
+	import Shell from '$lib/Shell.svelte';
 
 	let { children } = $props();
 </script>

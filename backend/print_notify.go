@@ -55,14 +55,14 @@ func printEndMessage(job PrintJob) string {
 	name := printNameKey(job.FileName)
 	switch job.Result {
 	case "finished":
-		return fmt.Sprintf("✅ %s finished %s - collect it and clear the plate", job.PrinterName, name)
+		return fmt.Sprintf("%s finished %s - collect it and clear the plate", job.PrinterName, name)
 	case "failed":
-		return fmt.Sprintf("⚠️ %s failed while printing %s (at %d%%) - check the printer", job.PrinterName, name, job.LastPercent)
+		return fmt.Sprintf("%s failed while printing %s (at %d%%) - check the printer", job.PrinterName, name, job.LastPercent)
 	case "stopped":
 		if job.StoppedBy != "" {
-			return fmt.Sprintf("⏹️ %s stopped %s on %s at %d%%", job.StoppedBy, name, job.PrinterName, job.LastPercent)
+			return fmt.Sprintf("%s stopped %s on %s at %d%%", job.StoppedBy, name, job.PrinterName, job.LastPercent)
 		}
-		return fmt.Sprintf("⏹️ %s stopped printing %s at %d%%", job.PrinterName, name, job.LastPercent)
+		return fmt.Sprintf("%s stopped printing %s at %d%%", job.PrinterName, name, job.LastPercent)
 	}
 	return ""
 }

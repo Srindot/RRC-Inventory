@@ -7,23 +7,19 @@
 		<script>
 			// Theme before first paint, so light-mode users never see a dark flash.
 			// Dark (Rosé Pine) unless the person picked light with the header button.
+			// Tabler reads data-theme / data-bs-theme.
+			var t = 'dark';
 			try {
-				document.documentElement.dataset.theme =
-					localStorage.getItem('theme') === 'light' ? 'light' : 'dark';
-			} catch (e) {
-				document.documentElement.dataset.theme = 'dark';
-			}
+				if (localStorage.getItem('theme') === 'light') t = 'light';
+			} catch (e) {}
+			document.documentElement.dataset.theme = t;
+			document.documentElement.dataset.bsTheme = t;
 		</script>
 		<style>
 			* {
 				box-sizing: border-box;
 			}
 			html {
-				/* Type grows gently with the screen: 16px on phones and laptops
-				   (never smaller, so iOS does not zoom into inputs), up to 18px on
-				   large monitors. Everything sized in rem follows. */
-				font-size: clamp(16px, 0.3vw + 12.2px, 18px);
-				line-height: 1.5;
 				background-color: #191724;
 			}
 			html[data-theme='light'] {

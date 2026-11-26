@@ -1,11 +1,9 @@
 <script>
-    // In-app notifications (approvals, overdue reminders, bookings). There
-    // is no email, so this bell is how people hear back.
+    // In-app notifications (approvals, overdue reminders, bookings, prints).
+    // There is no email, so this bell is how people hear back.
     import { onMount } from 'svelte';
     import { api } from '$lib/auth.js';
-    import Icon from '$lib/Icon.svelte';
-
-    export let up = false; // open upwards instead of down
+    import IconBell from '@tabler/icons-svelte-runes/icons/bell';
 
     let notes = [];
     let open = false;
@@ -26,30 +24,49 @@
         }
     }
 
+    function outside(e) {
+        if (open && !e.target.closest?.('.bell')) open = false;
+    }
+
     const when = (d) => new Date(d).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 </script>
 
-<svelte:window on:keydown={(e) => e.key === 'Escape' && (open = false)} />
+<svelte:window on:click={outside} on:keydown={(e) => e.key === 'Escape' && (open = false)} />
 
-<div class="bell">
-    <button class="bell-btn" on:click={toggle} aria-expanded={open} aria-label="Notifications{unread ? `, ${unread} unread` : ''}">
-        <Icon name="bell" />
-        {#if unread}<span class="count">{unread}</span>{/if}
+<div class="nav-item dropdown bell">
+    <button
+        class="btn btn-ghost-secondary btn-icon position-relative"
+        type="button"
+        on:click={toggle}
+        aria-expanded={open}
+        aria-label="Notifications{unread ? `, ${unread} unread` : ''}"
+    >
+        <IconBell size={20} />
+        {#if unread}<span class="badge bg-danger badge-notification badge-pill">{unread}</span>{/if}
     </button>
-    {#if open}
-        <div class="dropdown" class:up>
-            <p class="head">Notifications</p>
-            {#if notes.length === 0}
-                <p class="empty">You're all caught up.</p>
-            {/if}
-            {#each notes as n (n.id)}
-                <a class="note" class:unread={!n.read_at} href={n.link || '#'} on:click={() => (open = false)}>
-                    <span>{n.text}</span>
-                    <small class="mono">{when(n.created_at)}</small>
-                </a>
-            {/each}
+    <div class="dropdown-menu dropdown-menu-end dropdown-menu-arrow dropdown-menu-card" class:show={open}>
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Notifications</h3>
+            </div>
+            <div class="list-group list-group-flush list-group-hoverable">
+                {#if notes.length === 0}
+                    <div class="list-group-item text-secondary">You're all caught up.</div>
+                {/if}
+                {#each notes as n (n.id)}
+                    <a class="list-group-item list-group-item-action" href={n.link || '#'} on:click={() => (open = false)}>
+                        <div class="d-flex gap-2">
+                            <span class="status-dot mt-2 flex-shrink-0" class:status-dot-animated={!n.read_at} class:bg-primary={!n.read_at} class:bg-transparent={n.read_at}></span>
+                            <div class="min-w-0">
+                                <div class="text-body text-wrap">{n.text}</div>
+                                <div class="small text-secondary mt-1">{when(n.created_at)}</div>
+                            </div>
+                        </div>
+                    </a>
+                {/each}
+            </div>
         </div>
-    {/if}
+    </div>
 </div>
 
 <style>
@@ -57,110 +74,25 @@
         position: relative;
     }
 
-    .bell-btn {
-        position: relative;
-        display: grid;
-        place-items: center;
-        width: 40px;
-        height: 40px;
-        border: none;
-        border-radius: var(--radius-sm);
-        background: transparent;
-        color: var(--muted);
-        cursor: pointer;
-    }
-
-    .bell-btn:hover {
-        background: var(--line);
-        color: var(--ctp-text);
-    }
-
-    .count {
+    .dropdown-menu {
         position: absolute;
-        top: 4px;
-        right: 2px;
-        min-width: 16px;
-        padding: 0 4px;
-        border-radius: var(--radius-pill);
-        background: var(--accent);
-        color: var(--accent-ink);
-        font-size: 0.68rem;
-        font-weight: 700;
-        line-height: 16px;
+        right: -3rem;
+        left: auto;
+        top: calc(100% + 0.5rem);
+        width: min(380px, calc(100vw - 24px));
     }
 
-    .dropdown {
-        position: absolute;
-        right: 0;
-        top: calc(100% + 6px);
-        width: 340px;
-        max-height: 60vh;
+    .list-group {
+        max-height: min(60vh, 460px);
         overflow-y: auto;
-        background: color-mix(in srgb, var(--card-raised) 60%, transparent);
-        border: 1px solid var(--line-strong);
-        border-radius: var(--radius);
-        box-shadow: var(--shadow);
-        z-index: 80;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
     }
 
-    .dropdown.up {
-        top: auto;
-        bottom: calc(100% + 6px);
-        right: auto;
-        left: 0;
-    }
-
-    /* On phones anchor the list to the screen, wherever the bell sits */
-    @media (max-width: 899px) {
-        .dropdown,
-        .dropdown.up {
-            position: fixed;
-            left: 16px;
-            right: 16px;
-            top: 64px;
-            bottom: auto;
-            width: auto;
-        }
-    }
-
-    .head {
-        margin: 0;
-        padding: 12px 14px 8px;
-        font-size: 0.8rem;
-        font-weight: 600;
-        color: var(--muted);
-    }
-
-    .note {
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-        padding: 10px 14px;
-        border-top: 1px solid var(--line);
-        color: var(--muted);
-        text-decoration: none;
-        font-size: 0.88rem;
-    }
-
-    .note.unread {
-        color: var(--ctp-text);
-    }
-
-    .note:hover {
-        background: var(--line);
-    }
-
-    .note small {
-        color: var(--faint);
-        font-size: 0.75rem;
-    }
-
-    .empty {
-        margin: 0;
-        padding: 6px 14px 14px;
-        color: var(--faint);
-        font-size: 0.88rem;
+    .badge-notification {
+        position: absolute;
+        top: 2px;
+        right: 2px;
+        font-size: 0.65rem;
+        min-width: 1.1rem;
+        padding: 0.15rem 0.3rem;
     }
 </style>

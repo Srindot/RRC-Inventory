@@ -1,28 +1,62 @@
 <script>
-    // The frame around every page, in the lab's original style: the RRC logo
-    // and name across the top, the page in a centred column, and a small
-    // footer. The home page is the menu (big tiles); every other page gets a
-    // "Back to Home" link instead of a sidebar, which reads the same on a
-    // phone as on a desktop.
+    // The frame around every page: Tabler's horizontal layout. The top bar
+    // carries the RRC logo and name, the theme switch, notifications and the
+    // account menu; the bar below it is the site menu, which folds behind the
+    // menu button on phones.
     import { onMount } from 'svelte';
     import { page } from '$app/stores';
-    import { can, getUser, loginUrl, refreshUser } from '$lib/auth.js';
-    import DotBackground from '$lib/DotBackground.svelte';
-    import Icon from '$lib/Icon.svelte';
+    import { api, can, clearSession, getUser, loginUrl, refreshUser } from '$lib/auth.js';
     import NotificationBell from '$lib/NotificationBell.svelte';
+    import IconMenu from '@tabler/icons-svelte-runes/icons/menu-2';
+    import IconX from '@tabler/icons-svelte-runes/icons/x';
+    import IconSun from '@tabler/icons-svelte-runes/icons/sun';
+    import IconMoon from '@tabler/icons-svelte-runes/icons/moon';
+    import IconHome from '@tabler/icons-svelte-runes/icons/home';
+    import IconBorrow from '@tabler/icons-svelte-runes/icons/package-export';
+    import IconReturn from '@tabler/icons-svelte-runes/icons/package-import';
+    import IconItems from '@tabler/icons-svelte-runes/icons/list-search';
+    import IconPrinter from '@tabler/icons-svelte-runes/icons/printer';
+    import IconVideo from '@tabler/icons-svelte-runes/icons/video';
+    import IconRobot from '@tabler/icons-svelte-runes/icons/robot';
+    import IconDashboard from '@tabler/icons-svelte-runes/icons/layout-dashboard';
+    import IconThreads from '@tabler/icons-svelte-runes/icons/flask';
+    import IconShield from '@tabler/icons-svelte-runes/icons/shield-lock';
+    import IconUser from '@tabler/icons-svelte-runes/icons/user';
+    import IconLogin from '@tabler/icons-svelte-runes/icons/login-2';
+    import IconLogout from '@tabler/icons-svelte-runes/icons/logout';
 
     let user = null;
     let theme = 'dark';
+    let menuOpen = false;
+    let userMenu = false;
 
     $: path = $page.url.pathname;
-    // The home page also hosts the borrow/return/guide views. Tiles open them
-    // with shallow routing, which changes page.state but not page.url, so
-    // both are checked.
+    // The home page also hosts the borrow/return/guide views, opened either
+    // with a ?view= link or with shallow routing (page.state), so both count.
     $: view = $page.state?.view || $page.url.searchParams.get('view') || ($page.url.searchParams.has('borrow') ? 'borrow' : 'home');
-    $: home = path === '/' && view === 'home';
     $: isAdmin = ['manage_users', 'manage_inventory', 'manage_printers', 'manage_bookings', 'approve_mech_bookings', 'approve_loans'].some((p) => can(user, p));
     $: initial = (user?.name || '?').trim().charAt(0).toUpperCase();
     $: firstName = (user?.name || '').trim().split(/\s+/)[0];
+
+    $: links = [
+        { href: '/', label: 'Home', icon: IconHome, active: path === '/' && !['borrow', 'return'].includes(view) },
+        { href: '/?view=borrow', label: 'Borrow', icon: IconBorrow, active: path === '/' && view === 'borrow' },
+        { href: '/?view=return', label: 'Return', icon: IconReturn, active: path === '/' && view === 'return' },
+        { href: '/items', label: 'Inventory', icon: IconItems, active: path.startsWith('/items') },
+        { href: '/printers', label: '3D Printers', icon: IconPrinter, active: path.startsWith('/printers') },
+        { href: '/mocap', label: 'MoCap Lab', icon: IconVideo, active: path.startsWith('/mocap') },
+        { href: '/mechlab', label: 'Mech Lab', icon: IconRobot, active: path.startsWith('/mechlab') },
+        ...(user
+            ? [
+                  { href: '/dashboard', label: 'Dashboard', icon: IconDashboard, active: path.startsWith('/dashboard') },
+                  { href: '/threads', label: 'Threads', icon: IconThreads, active: path.startsWith('/threads') }
+              ]
+            : []),
+        ...(isAdmin ? [{ href: '/admin', label: 'Admin', icon: IconShield, active: path.startsWith('/admin') }] : [])
+    ];
+
+    // Close the menus whenever the page changes
+    $: $page.url, (menuOpen = false), (userMenu = false);
 
     onMount(async () => {
         theme = document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
@@ -30,358 +64,215 @@
         user = await refreshUser();
     });
 
-    // The choice is remembered in this browser; app.html applies it before
-    // the first paint on the next visit.
+    // Remembered in this browser; app.html applies it before the first paint
+    // on the next visit.
     function toggleTheme() {
         theme = theme === 'dark' ? 'light' : 'dark';
         document.documentElement.dataset.theme = theme;
+        document.documentElement.dataset.bsTheme = theme;
         try {
             localStorage.setItem('theme', theme);
         } catch {}
     }
 
+    async function logout() {
+        await api('/api/auth/logout', { method: 'POST' }).catch(() => {});
+        clearSession();
+        location.href = '/';
+    }
+
     // Read at click time: the shell outlives client-side navigation.
     const goLogin = () => (location.href = loginUrl());
+
+    function outside(e) {
+        if (userMenu && !e.target.closest?.('.user-menu')) userMenu = false;
+    }
 </script>
 
-<DotBackground />
+<svelte:window on:click={outside} on:keydown={(e) => e.key === 'Escape' && ((userMenu = false), (menuOpen = false))} />
 
-<div class="frame">
-    <header class="site-head" class:compact={!home}>
-        <a class="brand" href="/" aria-label="Robotics Research Centre - home">
-            <!-- One logo per theme: on light, the lettering is black instead of white -->
-            <img class="logo logo-dark" src="/rrc_logo_header.png" alt="" width="384" height="168" />
-            <img class="logo logo-light" src="/rrc_logo_header_light.png" alt="" width="384" height="168" />
-            <span class="titles">
-                <span class="site-title">Robotics Research Centre</span>
-                <span class="site-sub">Lab Equipment Management System</span>
-            </span>
-        </a>
-
-        <div class="actions">
+<div class="page">
+    <header class="navbar navbar-expand-lg d-print-none top-bar">
+        <div class="container-xl">
             <button
-                class="theme-toggle"
-                on:click={toggleTheme}
-                aria-label="Switch to {theme === 'dark' ? 'light' : 'dark'} mode"
-                title="Switch to {theme === 'dark' ? 'light' : 'dark'} mode"
+                class="navbar-toggler"
+                type="button"
+                aria-controls="site-menu"
+                aria-expanded={menuOpen}
+                aria-label="Toggle navigation"
+                on:click={() => (menuOpen = !menuOpen)}
             >
-                <Icon name={theme === 'dark' ? 'moon' : 'sun'} size={16} />
-                <span>{theme === 'dark' ? 'Dark' : 'Light'}</span>
+                {#if menuOpen}<IconX size={22} />{:else}<IconMenu size={22} />{/if}
             </button>
 
-            {#if user}
-                <NotificationBell />
-                {#if isAdmin}
-                    <a class="head-btn" class:active={path.startsWith('/admin')} href="/admin" title="Admin">
-                        <Icon name="shield" size={16} />
-                        <span class="hide-sm">Admin</span>
-                    </a>
-                {/if}
-                <a class="head-btn me" class:active={path.startsWith('/account')} href="/account" title="Your account">
-                    <span class="avatar">{initial}</span>
-                    <span class="hide-sm">{firstName}</span>
-                </a>
-            {:else if path !== '/login' && path !== '/register'}
-                <button class="head-btn" on:click={goLogin}>
-                    <Icon name="login" size={16} />
-                    <span>Log in</span>
+            <a class="navbar-brand brand me-auto me-lg-0 pe-0 pe-lg-3" href="/" aria-label="Robotics Research Centre - home">
+                <img class="logo hide-theme-light" src="/rrc_logo_header.png" alt="" width="384" height="168" />
+                <img class="logo hide-theme-dark" src="/rrc_logo_header_light.png" alt="" width="384" height="168" />
+                <span class="brand-text">
+                    <span class="brand-title">Robotics Research Centre</span>
+                    <span class="brand-sub">Lab Equipment Management</span>
+                </span>
+            </a>
+
+            <div class="navbar-nav flex-row order-lg-last align-items-center gap-1 ms-auto">
+                <button
+                    class="btn btn-ghost-secondary btn-icon"
+                    type="button"
+                    on:click={toggleTheme}
+                    aria-label="Switch to {theme === 'dark' ? 'light' : 'dark'} mode"
+                    title="Switch to {theme === 'dark' ? 'light' : 'dark'} mode"
+                >
+                    {#if theme === 'dark'}<IconSun size={20} />{:else}<IconMoon size={20} />{/if}
                 </button>
-            {/if}
+
+                {#if user}
+                    <NotificationBell />
+                    <div class="nav-item dropdown user-menu">
+                        <button
+                            class="nav-link d-flex lh-1 p-0 px-2 btn btn-link text-reset"
+                            type="button"
+                            aria-expanded={userMenu}
+                            aria-label="Account menu"
+                            on:click={() => (userMenu = !userMenu)}
+                        >
+                            <span class="avatar avatar-sm bg-primary-lt">{initial}</span>
+                            <span class="d-none d-xl-block ps-2 text-start">
+                                <span class="d-block fw-medium">{firstName}</span>
+                                <span class="d-block small text-secondary mt-1">{user.group || 'Account'}</span>
+                            </span>
+                        </button>
+                        <div class="dropdown-menu dropdown-menu-end dropdown-menu-arrow" class:show={userMenu}>
+                            <span class="dropdown-header">{user.name}</span>
+                            <a class="dropdown-item" href="/account"><IconUser size={18} class="icon dropdown-item-icon" />Your account</a>
+                            {#if isAdmin}
+                                <a class="dropdown-item" href="/admin"><IconShield size={18} class="icon dropdown-item-icon" />Admin</a>
+                            {/if}
+                            <div class="dropdown-divider"></div>
+                            <button class="dropdown-item text-danger" type="button" on:click={logout}>
+                                <IconLogout size={18} class="icon dropdown-item-icon" />Log out
+                            </button>
+                        </div>
+                    </div>
+                {:else if path !== '/login' && path !== '/register'}
+                    <button class="btn btn-primary ms-1" type="button" on:click={goLogin}>
+                        <IconLogin size={18} class="icon" />
+                        <span class="d-none d-sm-inline">Log in</span>
+                    </button>
+                {/if}
+            </div>
         </div>
     </header>
 
-    {#if !home}
-        <nav class="crumbs" aria-label="Breadcrumb">
-            <a href="/">← Back to Home</a>
-        </nav>
-    {/if}
+    <header class="navbar-expand-lg d-print-none">
+        <div class="collapse navbar-collapse" class:show={menuOpen} id="site-menu">
+            <div class="navbar menu-bar">
+                <div class="container-xl">
+                    <ul class="navbar-nav">
+                        {#each links as link (link.href)}
+                            <li class="nav-item" class:active={link.active}>
+                                <a class="nav-link" href={link.href} aria-current={link.active ? 'page' : undefined}>
+                                    <span class="nav-link-icon d-md-none d-lg-inline-block">
+                                        <svelte:component this={link.icon} size={20} class="icon" />
+                                    </span>
+                                    <span class="nav-link-title">{link.label}</span>
+                                </a>
+                            </li>
+                        {/each}
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </header>
 
-    <main class="content" class:home><slot /></main>
-
+    <div class="page-wrapper">
+        <div class="page-body">
+            <div class="container-xl">
+                <slot />
+            </div>
+        </div>
+    </div>
 </div>
 
 <style>
-    .frame {
-        position: relative;
-        z-index: 1;
-        display: flex;
-        flex-direction: column;
-        min-height: 100vh;
-        min-height: 100dvh;
+    .top-bar {
+        border-bottom: 1px solid var(--tblr-border-color);
     }
 
-    /* --- header ---------------------------------------------------------- */
-
-    .site-head {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        flex-wrap: wrap;
-        gap: 14px 20px;
-        width: 100%;
-        max-width: var(--page-max);
-        margin: 0 auto;
-        padding: clamp(14px, 2.2vw, 36px) var(--gutter) clamp(6px, 1vw, 14px);
-        box-sizing: border-box;
+    .menu-bar {
+        border-bottom: 1px solid var(--tblr-border-color);
+        background: var(--tblr-bg-surface);
+        min-height: 3rem;
     }
 
-    /* Logo and name share one frosted, semi-transparent box, so the name
-       stays readable over the live background without hiding it */
     .brand {
         display: flex;
         align-items: center;
-        gap: clamp(12px, 2.5vw, 18px);
+        gap: 0.75rem;
         min-width: 0;
-        padding: clamp(5px, 0.6vw, 8px) clamp(14px, 1.6vw, 22px) clamp(5px, 0.6vw, 8px) clamp(5px, 0.6vw, 8px);
-        border: 1px solid var(--line);
-        border-radius: clamp(14px, 1.4vw, 20px);
-        background: color-mix(in srgb, color-mix(in srgb, var(--card) 60%, transparent) 55%, transparent);
-        -webkit-backdrop-filter: blur(10px) saturate(1.15);
-        backdrop-filter: blur(10px) saturate(1.15);
-        box-shadow: var(--shadow-sm);
         color: inherit;
         text-decoration: none;
     }
 
-    /* The dark-theme logo's lettering is white on transparent, so it sits on
-       a dark Rosé Pine plate. The light theme swaps in a copy with black
-       lettering (same blue badge), which needs no plate. */
     .logo {
-        height: clamp(52px, min(4.6vw, 8vh), 88px);
+        height: 40px;
         width: auto;
-        padding: 3px 6px 3px 3px;
-        border-radius: 12px;
-        /* Semi-transparent dark plate: the white lettering still reads, and
-           the frosted box shows through around it */
-        background: color-mix(in srgb, #191724 55%, transparent);
-        transition: transform var(--normal) var(--ease), box-shadow var(--normal) var(--ease);
     }
 
-    .logo-light {
-        display: none;
-    }
-
-    :global(:root[data-theme='light']) .logo-dark {
-        display: none;
-    }
-
-    :global(:root[data-theme='light']) .logo-light {
-        display: block;
-        background: transparent;
-        box-shadow: none;
-    }
-
-    .brand:hover .logo {
-        transform: scale(1.04);
-        box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 30%, transparent);
-    }
-
-    .titles {
+    /* The dark logo's lettering is white on transparent, which needs no
+       plate on the dark theme; light swaps in the black-lettered copy. */
+    .brand-text {
         display: flex;
         flex-direction: column;
-        gap: 2px;
+        line-height: 1.2;
         min-width: 0;
     }
 
-    .site-title {
-        font-size: clamp(1.35rem, 2.4vw, 2.6rem);
+    .brand-title {
+        font-size: 1rem;
         font-weight: 600;
-        letter-spacing: -0.025em;
-        line-height: 1.15;
-        color: var(--rp-text);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
 
-    .site-sub {
-        font-size: clamp(0.85rem, 1.1vw, 1.1rem);
-        color: var(--muted);
-        letter-spacing: 0.005em;
+    .brand-sub {
+        font-size: 0.75rem;
+        font-weight: 400;
+        color: var(--tblr-secondary-color);
     }
 
-    /* Inner pages: the same header, smaller, so the page itself leads */
-    .site-head.compact .logo {
-        height: clamp(40px, 3.6vw, 60px);
+    .user-menu {
+        position: relative;
     }
 
-    .site-head.compact .site-title {
-        font-size: clamp(1.1rem, 1.6vw, 1.6rem);
+    .user-menu .dropdown-menu {
+        position: absolute;
+        right: 0;
+        left: auto;
+        top: calc(100% + 0.5rem);
     }
 
-    .site-head.compact .site-sub {
-        font-size: 0.85rem;
-    }
-
-    .actions {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        margin-left: auto;
-    }
-
-    .theme-toggle,
-    .head-btn {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        min-height: clamp(40px, 2.2vw, 48px);
-        padding: 0 14px;
-        border: 1px solid var(--line-strong);
-        border-radius: var(--radius-pill);
-        background: var(--glass);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-        color: var(--rp-text);
-        font: inherit;
-        font-size: 0.9rem;
-        font-weight: 550;
-        text-decoration: none;
-        cursor: pointer;
-        transition:
-            border-color var(--fast) var(--ease),
-            background var(--fast) var(--ease),
-            transform var(--fast) var(--ease);
-    }
-
-    .theme-toggle:active,
-    .head-btn:active {
-        transform: scale(0.97);
-    }
-
-    .theme-toggle :global(svg) {
-        color: var(--rp-gold);
-    }
-
-    :global(:root[data-theme='dark']) .theme-toggle :global(svg) {
-        color: var(--rp-iris);
-    }
-
-    .theme-toggle:hover,
-    .head-btn:hover,
-    .head-btn.active {
-        border-color: color-mix(in srgb, var(--accent) 55%, var(--line-strong));
-        background: var(--accent-soft);
-    }
-
-    .me {
-        padding-left: 5px;
-    }
-
-    .avatar {
-        display: grid;
-        place-items: center;
-        width: 30px;
-        height: 30px;
-        border-radius: 50%;
-        background: var(--accent);
-        color: var(--accent-ink);
-        font-weight: 700;
-        font-size: 0.85rem;
-    }
-
-    /* The bell is its own component; give it the same round outline */
-    .actions :global(.bell-btn) {
-        border: 1px solid var(--line-strong);
-        border-radius: var(--radius-pill);
-        background: var(--glass);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    /* --- back link ------------------------------------------------------- */
-
-    .crumbs {
-        width: 100%;
-        max-width: var(--page-max);
-        margin: 0 auto;
-        padding: 6px var(--gutter) 0;
-        box-sizing: border-box;
-    }
-
-    .crumbs a {
-        display: inline-flex;
-        align-items: center;
-        min-height: 36px;
-        padding: 0 14px;
-        margin-left: -2px;
-        border: 1px solid var(--line);
-        border-radius: var(--radius-pill);
-        background: var(--glass);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-        color: var(--link);
-        text-decoration: none;
-        font-size: 0.92rem;
-        font-weight: 500;
-        transition: border-color var(--fast) var(--ease), background var(--fast) var(--ease);
-    }
-
-    .crumbs a:hover {
-        border-color: color-mix(in srgb, var(--link) 45%, var(--line-strong));
-        background: color-mix(in srgb, var(--link) 10%, var(--glass));
-    }
-
-    /* --- page and footer ------------------------------------------------- */
-
-    .content {
-        flex: 1;
-        width: 100%;
-    }
-
-    /* The home page stretches to fill the screen, so its tiles can sit
-       balanced between the header and the footer */
-    .content.home {
-        display: flex;
-        flex-direction: column;
-    }
-
-    .content.home > :global(.page) {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        width: 100%;
-    }
-
-
-
-
-    /* --- phones ---------------------------------------------------------- */
-
-    @media (max-width: 640px) {
-        /* Logo and name on one line, the buttons on the line below */
-        .site-head {
-            gap: 12px;
-        }
-
-        .actions {
-            width: 100%;
-            margin-left: 0;
-            justify-content: flex-end;
-        }
-
-        .site-head:not(.compact) .brand {
-            width: 100%;
-        }
-
-        .hide-sm {
+    @media (max-width: 575.98px) {
+        .brand-sub {
             display: none;
         }
 
-        .logo,
-        .site-head.compact .logo {
-            height: 44px;
+        .brand-title {
+            font-size: 0.9rem;
         }
 
-        .site-title,
-        .site-head.compact .site-title {
-            font-size: 1.15rem;
+        .logo {
+            height: 32px;
         }
 
-        .site-sub,
-        .site-head.compact .site-sub {
-            font-size: 0.8rem;
+        .brand {
+            gap: 0.5rem;
         }
+    }
 
-        .head-btn.me {
-            padding: 0 5px;
+    @media (max-width: 380px) {
+        .brand-text {
+            display: none;
         }
     }
 </style>
