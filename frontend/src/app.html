@@ -19,8 +19,15 @@
 				box-sizing: border-box;
 			}
 			html {
-				font-size: 16px;
+				/* Type grows gently with the screen: 16px on phones and laptops
+				   (never smaller, so iOS does not zoom into inputs), up to 18px on
+				   large monitors. Everything sized in rem follows. */
+				font-size: clamp(16px, 0.3vw + 12.2px, 18px);
 				line-height: 1.5;
+				background-color: #191724;
+			}
+			html[data-theme='light'] {
+				background-color: #faf4ed;
 			}
 		</style>
 		%sveltekit.head%
