@@ -1121,10 +1121,19 @@
                     <p class="section-intro">Do this once on your laptop. Next time, skip straight to step 2.</p>
                     <ol class="steps">
                         <li>
-                            <strong>Install Bambu Studio.</strong>
+                            <strong>Install a slicer.</strong>
                             It turns your 3D model into instructions the printer understands
-                            ("slicing"). Download it from
-                            <a href="https://bambulab.com/en/download/studio" target="_blank" rel="noopener noreferrer">bambulab.com</a>.
+                            ("slicing"). Either one works with our printers:
+                            <ul>
+                                <li>
+                                    <strong>Bambu Studio</strong> (recommended - the RRC presets below are made for it):
+                                    <a href="https://bambulab.com/en/download/studio" target="_blank" rel="noopener noreferrer">download from bambulab.com</a>
+                                </li>
+                                <li>
+                                    <strong>OrcaSlicer</strong>:
+                                    <a href="https://www.orcaslicer.com/download/" target="_blank" rel="noopener noreferrer">download from orcaslicer.com</a>
+                                </li>
+                            </ul>
                         </li>
                         <li>
                             <strong>Download the RRC presets</strong> and import them.

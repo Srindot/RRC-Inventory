@@ -456,7 +456,7 @@ func main() {
 	}
 
 	log.Println("Running database migrations...")
-	if err := db.AutoMigrate(&Item{}, &Loan{}, &Admin{}, &Booking{}, &PrinterCredential{}, &PrintJob{},
+	if err := db.AutoMigrate(&Item{}, &Loan{}, &Admin{}, &Booking{}, &PrinterCredential{}, &PrintJob{}, &PrintUpload{},
 		&User{}, &Group{}, &GroupPermission{}, &UserPermission{}, &Session{},
 		&Resource{}, &Notification{}, &Thread{}, &ThreadMember{}, &ThreadResource{}); err != nil {
 		log.Fatalf("database migration failed: %v", err)
@@ -641,10 +641,12 @@ func newRouter(db *gorm.DB, printers *PrinterManager, sessions *sessionStore, lo
 			}
 
 			log.Printf("printer %s: received upload %s", c.Param("id"), name)
+			// So the sender hears how the print goes (see print_notify.go)
+			recordPrintUpload(db, c.Param("id"), name, currentUser(c).ID)
 
 			c.JSON(200, gin.H{
 				"message": fmt.Sprintf(
-					"%s sent. Start it from the printer's screen.", name),
+					"%s sent. Start it from the printer's screen - you'll get a notification when it finishes.", name),
 				"file_name": name,
 			})
 		})

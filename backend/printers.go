@@ -962,6 +962,8 @@ func (p *printer) flushJobEvents() {
 		if err := p.jobs.Save(p.dbJob).Error; err != nil {
 			log.Printf("printer %s: could not record the end of %s: %v",
 				p.cfg.Name, p.dbJob.FileName, err)
+		} else {
+			announcePrintEnd(p.jobs, *p.dbJob)
 		}
 		p.dbJob = nil
 	}
