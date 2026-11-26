@@ -6,6 +6,7 @@
     let password = '';
     let error = '';
     let busy = false;
+    let showPassword = false;
     let next = '/';
 
     onMount(() => {
@@ -49,56 +50,192 @@
 
 <svelte:head><title>Log in · RRC</title></svelte:head>
 
-<main class="account-page auth">
+<div class="auth">
+    <div class="auth-head">
+        <h1>🔐 Log in</h1>
+        <p class="subtitle">One account for borrowing, bookings and prints</p>
+    </div>
 
-    <form class="account-card" on:submit|preventDefault={login}>
-        <h1>Log in</h1>
-        <p class="lead">Robotics Research Centre</p>
-        <label>
-            Email
-            <input type="text" bind:value={email} required autocomplete="username" />
-        </label>
-        <label>
-            Password
-            <input type="password" bind:value={password} required autocomplete="current-password" />
-        </label>
-        {#if error}<p class="error" role="alert">{error}</p>{/if}
-        <button type="submit" disabled={busy}>{busy ? 'Logging in…' : 'Log in'}</button>
+    <form class="login-form" on:submit|preventDefault={login}>
+        <div class="form-group">
+            <label for="login-email">Email</label>
+            <input id="login-email" type="text" bind:value={email} required autocomplete="username" placeholder="you@research.iiit.ac.in" />
+        </div>
+        <div class="form-group">
+            <label for="login-password">Password</label>
+            <div class="pw-row">
+                <input id="login-password" type={showPassword ? 'text' : 'password'} bind:value={password} required autocomplete="current-password" />
+                <button type="button" class="ghost-btn" on:click={() => (showPassword = !showPassword)} aria-pressed={showPassword}>
+                    {showPassword ? 'Hide' : 'Show'}
+                </button>
+            </div>
+        </div>
+        {#if error}<p class="form-error" role="alert">{error}</p>{/if}
+        <button class="submit-btn" type="submit" disabled={busy}>{busy ? 'Logging in…' : 'Log in'}</button>
     </form>
 
-    <p class="foot">No account yet? <a href="/register">Sign up</a>. Forgot your password? Ask a server admin to reset it.</p>
-</main>
+    <p class="foot">No account yet? <a href="/register">Sign up</a></p>
+    <p class="foot">Forgot your password? Ask a server admin to reset it.</p>
+    <p class="no-account">📦 Just borrowing something? <a href="/?view=borrow">Borrow without an account</a>. An account adds one-tap returns, lab and robot bookings, and notifications.</p>
+</div>
 
 <style>
-    /* Login and sign-up render without the shell: centred on desktop, top-aligned on phones */
     .auth {
-        max-width: 400px;
-        min-height: 100vh;
+        max-width: 450px;
+        margin: clamp(10px, 5vh, 60px) auto 40px;
+        padding: 0 16px;
         box-sizing: border-box;
+    }
+
+    .auth-head {
+        text-align: center;
+        margin-bottom: 20px;
+    }
+
+    h1 {
+        margin: 0;
+        font-size: clamp(1.6rem, 4vw, 2.1rem);
+        font-weight: 600;
+        color: var(--rp-iris);
+    }
+
+    .subtitle {
+        margin: 4px 0 0;
+        color: var(--ctp-subtext0);
+        font-size: 0.95rem;
+    }
+
+    .login-form {
+        background:
+            linear-gradient(180deg, color-mix(in srgb, var(--rp-text) 4%, transparent), transparent 60%),
+            var(--card);
+        padding: clamp(22px, 5vw, 40px);
+        border-radius: var(--radius-lg);
+        border: 1px solid var(--ctp-surface0);
+        box-shadow: var(--shadow-lg);
+        margin-bottom: 18px;
+    }
+
+    .form-group {
+        margin-bottom: 20px;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: 600;
+        color: var(--ctp-text);
+        font-size: 0.95rem;
+    }
+
+    .form-group input {
+        width: 100%;
+        min-height: 46px;
+        padding: 10px 14px;
+        border: 2px solid var(--ctp-surface0);
+        border-radius: 8px;
+        background: var(--bg);
+        color: var(--ctp-text);
+        font: inherit;
+        box-sizing: border-box;
+        transition: border-color var(--fast) var(--ease), box-shadow var(--fast) var(--ease);
+    }
+
+    .form-group input:focus {
+        border-color: var(--rp-rose);
+        outline: none;
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--rp-rose) 25%, transparent);
+    }
+
+    .pw-row {
         display: flex;
-        flex-direction: column;
-        justify-content: center;
+        gap: 8px;
     }
 
-    .auth h1 {
-        font-size: 1.35rem;
+    .pw-row input {
+        flex: 1;
+        min-width: 0;
     }
 
+    .ghost-btn {
+        min-height: 46px;
+        padding: 0 14px;
+        border: 1px solid var(--ctp-surface1);
+        border-radius: 8px;
+        background: var(--ctp-surface0);
+        color: var(--ctp-text);
+        font: inherit;
+        cursor: pointer;
+    }
+
+    .ghost-btn:hover {
+        background: var(--ctp-surface1);
+    }
+
+    .submit-btn {
+        width: 100%;
+        min-height: 48px;
+        padding: 12px 20px;
+        border: none;
+        border-radius: 8px;
+        background: linear-gradient(135deg, var(--rp-rose), var(--rp-love));
+        color: var(--accent-ink);
+        font: inherit;
+        font-size: 1.05rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform var(--fast) var(--ease), box-shadow var(--fast) var(--ease);
+    }
+
+    .submit-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px color-mix(in srgb, var(--rp-rose) 30%, transparent);
+    }
+
+    .submit-btn:disabled {
+        background: var(--ctp-surface0);
+        color: var(--ctp-subtext0);
+        cursor: wait;
+        transform: none;
+        box-shadow: none;
+    }
+
+    .form-error {
+        margin: 0 0 14px;
+        padding: 10px 14px;
+        border-radius: 8px;
+        border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+        background: color-mix(in srgb, var(--danger) 12%, transparent);
+        color: var(--danger);
+        text-align: center;
+        font-weight: 500;
+    }
 
     .foot {
-        margin: 0;
+        margin: 6px 0 0;
+        text-align: center;
         font-size: 0.9rem;
-        color: var(--muted);
+        color: var(--ctp-subtext0);
     }
 
     .foot a {
-        color: var(--accent);
+        color: var(--link);
+        font-weight: 600;
     }
 
-    @media (max-width: 700px) {
-        .auth {
-            justify-content: flex-start;
-            padding-top: 32px;
-        }
+    .no-account {
+        margin: 18px 0 0;
+        padding: 12px 14px;
+        border-radius: 8px;
+        border: 1px dashed var(--ctp-surface1);
+        font-size: 0.88rem;
+        line-height: 1.45;
+        color: var(--ctp-subtext0);
+        text-align: center;
+    }
+
+    .no-account a {
+        color: var(--link);
+        font-weight: 600;
     }
 </style>
