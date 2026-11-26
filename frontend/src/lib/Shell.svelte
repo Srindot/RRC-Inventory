@@ -95,7 +95,7 @@
     <header class="navbar navbar-expand-lg d-print-none top-bar">
         <div class="container-xl">
             <button
-                class="navbar-toggler"
+                class="btn btn-ghost-secondary btn-icon d-lg-none me-2"
                 type="button"
                 aria-controls="site-menu"
                 aria-expanded={menuOpen}
@@ -114,7 +114,7 @@
                 </span>
             </a>
 
-            <div class="navbar-nav flex-row order-lg-last align-items-center gap-1 ms-auto">
+            <div class="navbar-nav flex-row flex-nowrap order-lg-last align-items-center gap-1 ms-auto">
                 <button
                     class="btn btn-ghost-secondary btn-icon"
                     type="button"
@@ -270,9 +270,15 @@
         }
     }
 
-    @media (max-width: 380px) {
+    /* The logo already spells out the centre's name, so phones show only
+       the logo and keep the buttons on the same line */
+    @media (max-width: 575.98px) {
         .brand-text {
             display: none;
         }
+    }
+
+    .top-bar > .container-xl {
+        flex-wrap: nowrap;
     }
 </style>

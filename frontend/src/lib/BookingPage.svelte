@@ -921,15 +921,18 @@
                         </div>
                     {/if}
 
-                    {#if myUpcoming.length > 0}
+                    {#if user || myUpcoming.length > 0}
                         <div class="card">
                             <div class="card-header">
                                 <h3 class="card-title d-flex align-items-center gap-2">
                                     <IconList size={18} class="icon" />Your upcoming bookings
-                                    <span class="badge bg-primary-lt">{myUpcoming.length}</span>
+                                    {#if myUpcoming.length}<span class="badge bg-primary-lt">{myUpcoming.length}</span>{/if}
                                 </h3>
                             </div>
                             <div class="list-group list-group-flush">
+                                {#if myUpcoming.length === 0}
+                                    <div class="list-group-item text-secondary">Nothing booked yet. Tap a free hour on the calendar to book it.</div>
+                                {/if}
                                 {#each myUpcoming as b (b.ID)}
                                     <div class="list-group-item">
                                         <div class="d-flex align-items-center gap-2">

@@ -175,8 +175,8 @@ body {
     color: var(--rp-on-accent) !important;
 }
 
-/* Page width: one container for every page */
-.page-body > .container-xl {
+/* Page width: the header, the menu and every page share one width */
+.container-xl {
     max-width: 1440px;
 }
 
