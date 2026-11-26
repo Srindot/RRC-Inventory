@@ -5,6 +5,19 @@
     import { onMount } from 'svelte';
     import { api, can, getUser, loginUrl, refreshUser } from '$lib/auth.js';
     import { LAB } from '$lib/palette.js';
+    import IconBorrow from '@tabler/icons-svelte-runes/icons/package-export';
+    import IconOut from '@tabler/icons-svelte-runes/icons/arrow-up-right';
+    import IconHourglass from '@tabler/icons-svelte-runes/icons/hourglass';
+    import IconSearch from '@tabler/icons-svelte-runes/icons/search';
+    import IconX from '@tabler/icons-svelte-runes/icons/x';
+    import IconCheck from '@tabler/icons-svelte-runes/icons/check';
+    import IconAlert from '@tabler/icons-svelte-runes/icons/alert-triangle';
+    import IconFlag from '@tabler/icons-svelte-runes/icons/flag';
+    import IconBox from '@tabler/icons-svelte-runes/icons/box';
+    import IconLock from '@tabler/icons-svelte-runes/icons/lock';
+    import IconHome from '@tabler/icons-svelte-runes/icons/home';
+    import IconHand from '@tabler/icons-svelte-runes/icons/hand-stop';
+    import IconHandoff from '@tabler/icons-svelte-runes/icons/arrows-exchange';
 
     let user = null;
     let items = [];
@@ -133,638 +146,343 @@
 
 <svelte:head><title>What's in the Lab · RRC</title></svelte:head>
 
-<div class="container">
-    <div class="page-header">
-        <div>
-            <h1>🧰 What's in the Lab</h1>
-            <p class="subtitle">Every item, who has it right now, and any reported problem</p>
+{#snippet labDot(lab)}
+    <span class="status-dot flex-shrink-0" style="background: {LAB[lab] || 'var(--tblr-tertiary-color)'}"></span>
+{/snippet}
+
+{#snippet availability(item)}
+    {@const outCount = outOf(item)}
+    {@const free = Math.max((item.total_quantity || 0) - outCount, 0)}
+    {#if item.total_quantity}
+        <span class="badge text-nowrap {free > 0 ? 'bg-success-lt' : 'bg-danger-lt'}">{free} of {item.total_quantity} free</span>
+    {:else}
+        <span class="badge text-nowrap {outCount ? 'bg-danger-lt' : 'bg-success-lt'}">{outCount ? `${outCount} out` : 'In the lab'}</span>
+    {/if}
+{/snippet}
+
+{#snippet tags(item)}
+    {#if item.tracked || item.lab_only || item.needs_approval}
+        <div class="d-flex flex-wrap gap-1 mt-1">
+            {#if item.tracked}<span class="badge bg-primary-lt"><IconLock size={12} class="icon me-1" />Tracked</span>{/if}
+            {#if item.lab_only}<span class="badge bg-warning-lt"><IconHome size={12} class="icon me-1" />Lab only</span>{/if}
+            {#if item.needs_approval}<span class="badge bg-pink-lt"><IconHand size={12} class="icon me-1" />Needs approval</span>{/if}
         </div>
-        <a class="ghost-btn" href="/?view=borrow">📦 Borrow something</a>
+    {/if}
+{/snippet}
+
+{#snippet issueBlock(item)}
+    {#if item.issue}
+        <div class="alert alert-warning py-2 px-3 mb-0 mt-2">
+            <div class="d-flex align-items-start gap-2">
+                <IconAlert size={18} class="icon alert-icon flex-shrink-0 mt-1" />
+                <div class="flex-fill min-w-0">
+                    <div class="fw-bold small">Reported problem</div>
+                    <div class="small text-break">{item.issue} <span class="text-secondary">· {item.issue_reported_by}</span></div>
+                </div>
+                {#if user}
+                    <button
+                        class="btn btn-sm btn-outline-secondary flex-shrink-0"
+                        type="button"
+                        on:click={() => confirm(`Mark the problem with ${item.name} as fixed?`) && saveIssue(item, '')}
+                    >Fixed</button>
+                {/if}
+            </div>
+        </div>
+    {/if}
+{/snippet}
+
+{#snippet holders(item)}
+    {#each item.out as loan (loan.ID)}
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 py-1">
+            <div class="min-w-0">
+                <div class="d-flex flex-wrap align-items-center gap-1">
+                    <strong>{loan.borrower_name || 'Someone'}</strong>
+                    {#if loan.quantity_borrowed > 1}<span class="tabular text-secondary">({loan.quantity_borrowed})</span>{/if}
+                    {#if loan.status === 'pending'}<span class="badge bg-warning-lt">Pending</span>{/if}
+                    {#if loan.overdue}<span class="badge bg-danger">Overdue{loan.days_overdue ? ` ${loan.days_overdue}d` : ''}</span>{/if}
+                </div>
+                <div class="small text-secondary tabular">since {since(loan.CreatedAt)}, due {loan.expected_return_date}</div>
+            </div>
+            {#if loan.status === 'active' && (!user || loan.user_id !== user.id)}
+                <button class="btn btn-sm btn-outline-secondary" type="button" on:click={() => takeOver(item, loan)}>
+                    <IconHandoff size={16} class="icon" /> I have this now
+                </button>
+            {/if}
+        </div>
+    {/each}
+{/snippet}
+
+{#snippet actions(item)}
+    {#if issueFor === item.ID}
+        <form class="d-flex flex-wrap gap-2" on:submit|preventDefault={() => saveIssue(item, issueText)}>
+            <input
+                class="form-control flex-fill issue-input"
+                bind:value={issueText}
+                maxlength="300"
+                placeholder="What's wrong? e.g. USB port loose"
+                required
+                aria-label="Describe the problem"
+            />
+            <div class="btn-list flex-nowrap">
+                <button class="btn btn-primary" type="submit">Report</button>
+                <button class="btn btn-outline-secondary" type="button" on:click={() => (issueFor = null)}>Cancel</button>
+            </div>
+        </form>
+    {:else}
+        <div class="btn-list flex-nowrap justify-content-md-end">
+            <a class="btn btn-primary" href="/?borrow={encodeURIComponent(item.name)}">
+                <IconBorrow size={18} class="icon" /> Borrow
+            </a>
+            <button class="btn btn-outline-secondary" type="button" on:click={() => { issueFor = item.ID; issueText = ''; }}>
+                <IconFlag size={18} class="icon" /> Report a problem
+            </button>
+        </div>
+    {/if}
+{/snippet}
+
+<div class="page-header d-print-none mt-0 mb-3">
+    <div class="row g-2 align-items-center">
+        <div class="col">
+            <div class="page-pretitle">Inventory</div>
+            <h1 class="page-title">What's in the Lab</h1>
+            <div class="text-secondary mt-1">Every item, who has it right now, and any reported problem</div>
+        </div>
+        <div class="col-12 col-sm-auto ms-auto">
+            <a class="btn btn-primary w-100" href="/?view=borrow">
+                <IconBorrow size={18} class="icon" /> Borrow something
+            </a>
+        </div>
     </div>
+</div>
 
-    {#if message}<div class="message {messageType}" role="status">{message}</div>{/if}
+{#if message}<div class="toast-msg {messageType}" role="status">{message}</div>{/if}
 
-    {#if pendingLoans.length}
-        <section class="panel approvals">
-            <h3 class="section-title">⏳ Waiting for your approval <span class="count">{pendingLoans.length}</span></h3>
+{#if pendingLoans.length}
+    <section class="card mb-3">
+        <div class="card-status-top bg-warning"></div>
+        <div class="card-header">
+            <h3 class="card-title d-flex align-items-center gap-2">
+                <IconHourglass size={18} class="icon text-warning" /> Waiting for your approval
+            </h3>
+            <div class="card-actions"><span class="badge bg-warning-lt">{pendingLoans.length}</span></div>
+        </div>
+        <div class="list-group list-group-flush">
             {#each pendingLoans as loan (loan.ID)}
-                <div class="list-row">
-                    <span><strong>{loan.borrower_name || 'Someone'}</strong> <span class="muted">wants</span> <span class="mono">{loan.quantity_borrowed} ×</span> {loan.item_name} <span class="muted">until</span> <span class="mono">{loan.expected_return_date}</span></span>
-                    <span class="buttons">
-                        {#if loan.user_id !== user?.id}
-                            <button class="submit-btn small" on:click={() => decide(loan, 'approve')}>Approve</button>
-                        {/if}
-                        <button class="ghost-btn" on:click={() => decide(loan, 'reject')}>Decline</button>
-                    </span>
+                <div class="list-group-item">
+                    <div class="row g-2 align-items-center">
+                        <div class="col-12 col-md">
+                            <strong>{loan.borrower_name || 'Someone'}</strong>
+                            <span class="text-secondary">wants</span>
+                            <span class="tabular">{loan.quantity_borrowed} ×</span>
+                            {loan.item_name}
+                            <span class="text-secondary">until</span>
+                            <span class="tabular">{loan.expected_return_date}</span>
+                        </div>
+                        <div class="col-12 col-md-auto">
+                            <div class="btn-list">
+                                {#if loan.user_id !== user?.id}
+                                    <button class="btn btn-success" type="button" on:click={() => decide(loan, 'approve')}>Approve</button>
+                                {/if}
+                                <button class="btn btn-outline-danger" type="button" on:click={() => decide(loan, 'reject')}>Decline</button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             {/each}
-        </section>
-    {/if}
-
-    <section class="panel toolbar">
-        <div class="search-input-group">
-            <input type="search" bind:value={query} placeholder="🔍 Search items, labs, notes or people" aria-label="Search" />
-            {#if query}<button class="clear-search-btn" on:click={() => (query = '')} aria-label="Clear search">×</button>{/if}
         </div>
-        <div class="filter-rows">
-            <div class="chip-row" role="group" aria-label="Show">
-                <button class="chip" class:selected={show_ === 'all'} on:click={() => (show_ = 'all')}>All <span class="mono">{counts.all}</span></button>
-                <button class="chip" class:selected={show_ === 'free'} on:click={() => (show_ = 'free')}>✅ Available <span class="mono">{counts.free}</span></button>
-                <button class="chip" class:selected={show_ === 'out'} on:click={() => (show_ = 'out')}>📤 Borrowed <span class="mono">{counts.out}</span></button>
-                <button class="chip" class:selected={show_ === 'issues'} on:click={() => (show_ = 'issues')}>⚠️ Problems <span class="mono">{counts.issues}</span></button>
+    </section>
+{/if}
+
+<div class="card">
+    <div class="card-header flex-column align-items-stretch gap-3">
+        <div class="input-icon">
+            <span class="input-icon-addon"><IconSearch size={18} class="icon" /></span>
+            <input
+                type="search"
+                class="form-control"
+                bind:value={query}
+                placeholder="Search items, labs, notes or people"
+                aria-label="Search"
+            />
+            {#if query}
+                <button class="input-icon-addon clear-btn btn btn-link p-0" type="button" on:click={() => (query = '')} aria-label="Clear search">
+                    <IconX size={18} class="icon" />
+                </button>
+            {/if}
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <div class="filter-scroll">
+                <div class="nav nav-segmented" role="group" aria-label="Show">
+                    <button class="nav-link" class:active={show_ === 'all'} aria-pressed={show_ === 'all'} type="button" on:click={() => (show_ = 'all')}>
+                        All <span class="badge bg-secondary-lt ms-1 tabular">{counts.all}</span>
+                    </button>
+                    <button class="nav-link" class:active={show_ === 'free'} aria-pressed={show_ === 'free'} type="button" on:click={() => (show_ = 'free')}>
+                        <IconCheck size={16} class="icon me-1 text-success" />Available <span class="badge bg-secondary-lt ms-1 tabular">{counts.free}</span>
+                    </button>
+                    <button class="nav-link" class:active={show_ === 'out'} aria-pressed={show_ === 'out'} type="button" on:click={() => (show_ = 'out')}>
+                        <IconOut size={16} class="icon me-1 text-info" />Borrowed <span class="badge bg-secondary-lt ms-1 tabular">{counts.out}</span>
+                    </button>
+                    <button class="nav-link" class:active={show_ === 'issues'} aria-pressed={show_ === 'issues'} type="button" on:click={() => (show_ = 'issues')}>
+                        <IconAlert size={16} class="icon me-1 text-warning" />Problems <span class="badge bg-secondary-lt ms-1 tabular">{counts.issues}</span>
+                    </button>
+                </div>
             </div>
             {#if labs.length > 1}
-                <div class="chip-row" role="group" aria-label="Lab">
-                    <button class="chip" class:selected={labFilter === ''} on:click={() => (labFilter = '')}>Every lab</button>
-                    {#each labs as lab}
-                        <button class="chip lab-chip" class:selected={labFilter === lab} style="--hue: {LAB[lab] || 'var(--faint)'}" on:click={() => (labFilter = labFilter === lab ? '' : lab)}>
-                            <span class="dot"></span>{lab}
-                        </button>
-                    {/each}
+                <div class="filter-scroll">
+                    <div class="nav nav-segmented" role="group" aria-label="Lab">
+                        <button class="nav-link" class:active={labFilter === ''} aria-pressed={labFilter === ''} type="button" on:click={() => (labFilter = '')}>Every lab</button>
+                        {#each labs as lab}
+                            <button
+                                class="nav-link gap-2"
+                                class:active={labFilter === lab}
+                                aria-pressed={labFilter === lab}
+                                type="button"
+                                on:click={() => (labFilter = labFilter === lab ? '' : lab)}
+                            >
+                                {@render labDot(lab)}{lab}
+                            </button>
+                        {/each}
+                    </div>
                 </div>
             {/if}
         </div>
-    </section>
+    </div>
 
     {#if loading}
-        <p class="note">Loading…</p>
+        <div class="card-body text-secondary">Loading…</div>
     {:else if items.length === 0}
-        <p class="note">Nothing yet. Items appear here as people borrow them.</p>
+        <div class="card-body">
+            <div class="empty">
+                <div class="empty-icon"><IconBox size={48} class="icon" /></div>
+                <p class="empty-title">Nothing yet</p>
+                <p class="empty-subtitle text-secondary">Items appear here as people borrow them.</p>
+            </div>
+        </div>
     {:else if shown.length === 0}
-        <p class="note">No items match. <button class="link-btn" on:click={clearFilters}>Clear filters</button></p>
+        <div class="card-body">
+            <div class="empty">
+                <div class="empty-icon"><IconSearch size={48} class="icon" /></div>
+                <p class="empty-title">No items match</p>
+                <p class="empty-subtitle text-secondary">Try another search or filter.</p>
+                <div class="empty-action">
+                    <button class="btn btn-outline-primary" type="button" on:click={clearFilters}>Clear filters</button>
+                </div>
+            </div>
+        </div>
     {:else}
         {#if filtered}
-            <p class="result-count">Showing {shown.length} of {items.length} items · <button class="link-btn" on:click={clearFilters}>Clear filters</button></p>
+            <div class="card-body border-bottom py-2 small text-secondary">
+                Showing {shown.length} of {items.length} items ·
+                <button class="btn btn-link btn-sm p-0 align-baseline" type="button" on:click={clearFilters}>Clear filters</button>
+            </div>
         {/if}
-        <ul class="items-grid">
-            {#each shown as item (item.ID)}
-                {@const outCount = outOf(item)}
-                {@const free = Math.max((item.total_quantity || 0) - outCount, 0)}
-                <li class="item-card" class:has-issue={item.issue}>
-                    <div class="item-head">
-                        <h3>{item.name}</h3>
-                        {#if item.total_quantity}
-                            <span class="status-badge" class:ok={free > 0} class:none={free === 0}>{free} of {item.total_quantity} free</span>
-                        {:else}
-                            <span class="status-badge" class:ok={!outCount} class:none={outCount}>{outCount ? `${outCount} out` : 'In the lab'}</span>
-                        {/if}
-                    </div>
-                    <p class="lab"><span class="dot" style="--hue: {LAB[item.home_lab] || 'var(--faint)'}"></span>{item.home_lab || 'Lab unknown'}</p>
-                    {#if item.tracked || item.lab_only || item.needs_approval}
-                        <p class="tags">
-                            {#if item.tracked}<span class="tag" style="--hue: var(--rp-iris)">🔒 Tracked</span>{/if}
-                            {#if item.lab_only}<span class="tag" style="--hue: var(--rp-gold)">🏠 Lab only</span>{/if}
-                            {#if item.needs_approval}<span class="tag" style="--hue: var(--rp-rose)">✋ Needs approval</span>{/if}
-                        </p>
-                    {/if}
-                    {#if item.notes}<p class="notes">{item.notes}</p>{/if}
-                    {#if item.issue}
-                        <div class="issue">
-                            <div>
-                                <p class="issue-label">⚠️ Reported problem</p>
-                                <p class="issue-text">{item.issue} <span class="muted">· {item.issue_reported_by}</span></p>
-                            </div>
-                            {#if user}<button class="ghost-btn" on:click={() => confirm(`Mark the problem with ${item.name} as fixed?`) && saveIssue(item, '')}>Fixed</button>{/if}
-                        </div>
-                    {/if}
-                    {#if item.out.length}
-                        <div class="holders">
-                            <p class="holders-label">Who has it</p>
-                            {#each item.out as loan (loan.ID)}
-                                <div class="holder">
-                                    <span class="holder-text">
-                                        <strong>{loan.borrower_name || 'Someone'}</strong>
-                                        {#if loan.quantity_borrowed > 1}<span class="mono">({loan.quantity_borrowed})</span>{/if}
-                                        {#if loan.status === 'pending'}<span class="status-badge warn">Pending</span>{/if}
-                                        {#if loan.overdue}<span class="status-badge overdue">Overdue{loan.days_overdue ? ` ${loan.days_overdue}d` : ''}</span>{/if}
-                                        <span class="when mono">since {since(loan.CreatedAt)}, due {loan.expected_return_date}</span>
-                                    </span>
-                                    {#if loan.status === 'active' && (!user || loan.user_id !== user.id)}
-                                        <button class="ghost-btn" on:click={() => takeOver(item, loan)}>🤝 I have this now</button>
-                                    {/if}
+
+        <!-- Desktop: one table row per item -->
+        <div class="table-responsive d-none d-md-block">
+            <table class="table table-vcenter card-table">
+                <thead>
+                    <tr>
+                        <th>Item</th>
+                        <th>Available</th>
+                        <th>Who has it</th>
+                        <th class="w-1"><span class="visually-hidden">Actions</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {#each shown as item (item.ID)}
+                        <tr class="align-top">
+                            <td class="item-col">
+                                <div class="fw-medium text-break">{item.name}</div>
+                                <div class="d-flex align-items-center gap-2 small text-secondary mt-1">
+                                    {@render labDot(item.home_lab)}{item.home_lab || 'Lab unknown'}
                                 </div>
-                            {/each}
-                        </div>
-                    {/if}
-                    <div class="actions">
+                                {@render tags(item)}
+                                {#if item.notes}<div class="small text-secondary mt-1 text-break">{item.notes}</div>{/if}
+                                {@render issueBlock(item)}
+                            </td>
+                            <td>{@render availability(item)}</td>
+                            <td class="holders-col">
+                                {#if item.out.length}
+                                    {@render holders(item)}
+                                {:else}
+                                    <span class="text-secondary">-</span>
+                                {/if}
+                            </td>
+                            <td class="text-end">
+                                {#if issueFor !== item.ID}{@render actions(item)}{/if}
+                            </td>
+                        </tr>
                         {#if issueFor === item.ID}
-                            <form class="issue-form" on:submit|preventDefault={() => saveIssue(item, issueText)}>
-                                <input bind:value={issueText} maxlength="300" placeholder="What's wrong? e.g. USB port loose" required aria-label="Describe the problem" />
-                                <span class="buttons">
-                                    <button class="submit-btn small" type="submit">Report</button>
-                                    <button class="ghost-btn" type="button" on:click={() => (issueFor = null)}>Cancel</button>
-                                </span>
-                            </form>
-                        {:else}
-                            <a class="submit-btn small" href="/?borrow={encodeURIComponent(item.name)}">📦 Borrow</a>
-                            <button class="ghost-btn" on:click={() => { issueFor = item.ID; issueText = ''; }}>⚠️ Report a problem</button>
+                            <tr>
+                                <td colspan="4" class="bg-surface-secondary">{@render actions(item)}</td>
+                            </tr>
                         {/if}
+                    {/each}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Phones: one stacked card per item -->
+        <div class="list-group list-group-flush d-md-none">
+            {#each shown as item (item.ID)}
+                <div class="list-group-item">
+                    <div class="d-flex align-items-start justify-content-between gap-2">
+                        <div class="fw-medium text-break">{item.name}</div>
+                        {@render availability(item)}
                     </div>
-                </li>
+                    <div class="d-flex align-items-center gap-2 small text-secondary mt-1">
+                        {@render labDot(item.home_lab)}{item.home_lab || 'Lab unknown'}
+                    </div>
+                    {@render tags(item)}
+                    {#if item.notes}<div class="small text-secondary mt-1 text-break">{item.notes}</div>{/if}
+                    {@render issueBlock(item)}
+                    {#if item.out.length}
+                        <div class="subheader mt-3 mb-1">Who has it</div>
+                        {@render holders(item)}
+                    {/if}
+                    <div class="mt-3 phone-actions">{@render actions(item)}</div>
+                </div>
             {/each}
-        </ul>
+        </div>
     {/if}
 </div>
 
 <style>
-    .container {
-        max-width: var(--page-max);
-        margin: 0 auto;
-        padding: clamp(10px, 2vw, 20px) var(--gutter) 40px;
-        box-sizing: border-box;
+    /* Segmented filters scroll sideways on narrow phones instead of the page */
+    .filter-scroll {
+        max-width: 100%;
+        overflow-x: auto;
     }
 
-    .page-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 12px;
-        flex-wrap: wrap;
-        border-bottom: 1px solid var(--ctp-surface0);
-        padding-bottom: 12px;
-        margin-bottom: 18px;
-    }
-
-    h1 {
-        margin: 0;
-        font-size: clamp(1.3rem, 3vw, 1.8rem);
-        font-weight: 600;
-        color: var(--rp-foam);
-    }
-
-    .subtitle {
-        margin: 2px 0 0;
-        font-size: 0.9rem;
-        color: var(--ctp-subtext0);
-    }
-
-    .panel {
-        background:
-            linear-gradient(180deg, color-mix(in srgb, var(--rp-text) 4%, transparent), transparent 60%),
-            color-mix(in srgb, var(--card) 60%, transparent);
-        border: 1px solid var(--ctp-surface0);
-        border-radius: var(--radius-lg);
-        padding: clamp(14px, 2.5vw, 20px);
-        margin-bottom: 16px;
-        box-shadow: var(--shadow-sm);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .section-title {
-        margin: 0 0 10px;
-        font-size: 1.05rem;
-        color: var(--ctp-text);
-        border-left: 4px solid var(--rp-gold);
-        padding-left: 12px;
-    }
-
-    .count {
-        display: inline-block;
-        margin-left: 6px;
-        padding: 2px 8px;
-        border-radius: 12px;
-        background: var(--rp-love);
-        color: var(--accent-ink);
-        font-size: 0.75rem;
-        vertical-align: 2px;
-    }
-
-    .list-row {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        flex-wrap: wrap;
-        gap: 10px;
-        padding: 10px 0;
-        border-top: 1px solid var(--ctp-surface0);
-    }
-
-    .buttons {
-        display: flex;
-        gap: 8px;
-        flex-wrap: wrap;
-    }
-
-    /* --- search and filters ------------------------------------------- */
-
-    .toolbar {
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-    }
-
-    .search-input-group {
-        position: relative;
-    }
-
-    .search-input-group input,
-    .issue-form input {
-        width: 100%;
-        min-height: 44px;
-        padding: 10px 14px;
-        border: 2px solid var(--ctp-surface0);
-        border-radius: 8px;
-        background: color-mix(in srgb, var(--bg) 60%, transparent);
-        color: var(--ctp-text);
-        font: inherit;
-        box-sizing: border-box;
-        transition: border-color var(--fast) var(--ease), box-shadow var(--fast) var(--ease);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .search-input-group input {
-        padding-right: 50px;
-    }
-
-    .search-input-group input:focus,
-    .issue-form input:focus {
-        border-color: var(--rp-rose);
-        outline: none;
-        box-shadow: 0 0 0 3px color-mix(in srgb, var(--rp-rose) 25%, transparent);
-    }
-
-    .clear-search-btn {
-        position: absolute;
-        right: 8px;
-        top: 50%;
-        transform: translateY(-50%);
-        width: 30px;
-        height: 30px;
-        border: none;
-        border-radius: 50%;
-        background: var(--rp-love);
-        color: var(--accent-ink);
-        font-size: 16px;
-        font-weight: bold;
-        cursor: pointer;
-    }
-
-    .filter-rows {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-    }
-
-    .chip-row {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-    }
-
-    .chip {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        min-height: 40px;
-        padding: 6px 14px;
-        border: 1px solid var(--ctp-surface1);
-        border-radius: 999px;
-        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
-        color: var(--ctp-text);
-        font: inherit;
-        font-size: 0.9rem;
-        cursor: pointer;
-        transition: background var(--fast) var(--ease);
-    }
-
-    .chip:hover {
-        background: color-mix(in srgb, var(--ctp-surface1) 60%, transparent);
-    }
-
-    .chip .mono {
-        opacity: 0.75;
-    }
-
-    .chip.selected {
-        background: var(--rp-rose);
-        border-color: var(--rp-rose);
-        color: var(--accent-ink);
-        font-weight: 600;
-    }
-
-    .chip.selected .dot {
-        background: var(--accent-ink);
-    }
-
-    .dot {
-        display: inline-block;
-        flex: none;
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        background: var(--hue, var(--faint));
-    }
-
-    .result-count {
-        margin: 0 0 4px;
-        font-size: 0.85rem;
-        color: var(--ctp-subtext0);
-    }
-
-    .link-btn {
-        background: none;
-        border: none;
-        padding: 0;
-        color: var(--link);
-        font: inherit;
-        text-decoration: underline;
-        cursor: pointer;
-    }
-
-    /* --- item cards ---------------------------------------------------- */
-
-    .items-grid {
-        list-style: none;
-        margin: 0;
-        padding: 0;
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
-        gap: clamp(12px, 2vw, 18px);
-        align-items: start;
-        margin-top: 12px;
-    }
-
-    .item-card {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-        min-width: 0;
-        padding: clamp(15px, 3vw, 20px);
-        border: 1px solid var(--ctp-surface0);
-        border-radius: 12px;
-        background:
-            linear-gradient(180deg, color-mix(in srgb, var(--rp-text) 4%, transparent), transparent 60%),
-            color-mix(in srgb, var(--card) 60%, transparent);
-        box-shadow: var(--shadow-sm);
-        transition: transform var(--normal) var(--ease), border-color var(--normal) var(--ease), box-shadow var(--normal) var(--ease);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .item-card:hover {
-        border-color: var(--rp-rose);
-        transform: translateY(-2px);
-        box-shadow: var(--shadow);
-    }
-
-    .item-card.has-issue {
-        border-left: 3px solid var(--warn);
-    }
-
-    .item-card p {
-        margin: 0;
-    }
-
-    .item-head {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        gap: 10px;
-    }
-
-    .item-head h3 {
-        margin: 0;
-        font-size: 1.08rem;
-        font-weight: 600;
-        color: var(--ctp-text);
-        overflow-wrap: anywhere;
-    }
-
-    .status-badge {
-        display: inline-block;
-        flex: none;
-        padding: 3px 10px;
-        border-radius: 20px;
-        font-size: 0.78rem;
-        font-weight: 700;
+    .filter-scroll .nav-link {
         white-space: nowrap;
-        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
-        color: var(--ctp-subtext0);
     }
 
-    .status-badge.ok {
-        background: var(--rp-foam);
-        color: var(--rp-base);
+    .clear-btn {
+        left: auto;
+        right: 0;
+        pointer-events: auto;
+        color: var(--tblr-secondary-color);
     }
 
-    .status-badge.none,
-    .status-badge.warn {
-        background: var(--rp-gold);
-        color: var(--rp-base);
+    .item-col {
+        min-width: 16rem;
     }
 
-    .status-badge.overdue {
-        background: var(--rp-love);
-        color: var(--accent-ink);
+    .holders-col {
+        min-width: 14rem;
     }
 
-    :root[data-theme='light'] .status-badge.ok {
-        background: color-mix(in srgb, var(--rp-foam) 22%, var(--card));
-        color: var(--rp-pine);
+    .issue-input {
+        min-width: 12rem;
     }
 
-    :root[data-theme='light'] .status-badge.none,
-    :root[data-theme='light'] .status-badge.warn {
-        background: color-mix(in srgb, var(--rp-gold) 25%, var(--card));
-        color: color-mix(in srgb, var(--rp-gold) 60%, var(--rp-text));
+    /* On phones the two buttons share the row */
+    .phone-actions :global(.btn-list) {
+        flex-wrap: wrap !important;
     }
 
-    .lab {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        font-size: 0.9rem;
-        color: var(--ctp-subtext0);
-    }
-
-    .tags {
-        display: flex;
-        gap: 6px;
-        flex-wrap: wrap;
-    }
-
-    .tag {
-        padding: 3px 10px;
-        border-radius: 999px;
-        font-size: 0.78rem;
-        font-weight: 600;
-        border: 1px solid color-mix(in srgb, var(--hue) 45%, transparent);
-        background: color-mix(in srgb, var(--hue) 12%, transparent);
-        color: var(--hue);
-    }
-
-    :root[data-theme='light'] .tag {
-        color: color-mix(in srgb, var(--hue) 75%, var(--rp-text));
-    }
-
-    .notes {
-        font-size: 0.88rem;
-        color: var(--ctp-subtext0);
-        line-height: 1.4;
-    }
-
-    .issue {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 10px;
-        padding: 10px 12px;
-        border-radius: 8px;
-        border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
-        background: color-mix(in srgb, var(--warn) 12%, transparent);
-    }
-
-    .issue-label {
-        font-size: 0.78rem;
-        font-weight: 600;
-        color: var(--ctp-subtext0);
-    }
-
-    .issue-text {
-        color: var(--warn);
-        font-size: 0.9rem;
-    }
-
-    :root[data-theme='light'] .issue-text {
-        color: color-mix(in srgb, var(--warn) 60%, var(--rp-text));
-    }
-
-    .holders {
-        border-top: 1px solid var(--ctp-surface0);
-        padding-top: 8px;
-    }
-
-    .holders-label {
-        font-size: 0.78rem;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        color: var(--ctp-overlay1);
-    }
-
-    .holder {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        flex-wrap: wrap;
-        gap: 8px;
-        padding: 8px 0;
-        font-size: 0.9rem;
-    }
-
-    .holder + .holder {
-        border-top: 1px dashed var(--ctp-surface0);
-    }
-
-    .holder-text {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        gap: 4px 8px;
-        min-width: 0;
-    }
-
-    .when {
-        width: 100%;
-        font-size: 0.8rem;
-        color: var(--ctp-subtext0);
-    }
-
-    .actions {
-        display: flex;
-        gap: 8px;
-        flex-wrap: wrap;
-        margin-top: 2px;
-    }
-
-    .issue-form {
-        display: flex;
-        gap: 8px;
-        flex: 1;
-        flex-wrap: wrap;
-    }
-
-    .issue-form input {
-        flex: 1;
-        min-width: 180px;
-    }
-
-    /* --- buttons -------------------------------------------------------- */
-
-    .submit-btn,
-    .ghost-btn {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 6px;
-        min-height: 40px;
-        padding: 8px 16px;
-        border-radius: 8px;
-        font: inherit;
-        font-size: 0.92rem;
-        font-weight: 600;
-        text-decoration: none;
-        cursor: pointer;
-        box-sizing: border-box;
-        transition: transform var(--fast) var(--ease), box-shadow var(--fast) var(--ease), background var(--fast) var(--ease);
-    }
-
-    .submit-btn {
-        border: none;
-        background: linear-gradient(135deg, var(--rp-rose), var(--rp-love));
-        color: var(--accent-ink);
-    }
-
-    .submit-btn:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 6px 18px color-mix(in srgb, var(--rp-rose) 30%, transparent);
-    }
-
-    .ghost-btn {
-        border: 1px solid var(--ctp-surface1);
-        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
-        color: var(--ctp-text);
-        font-weight: 500;
-    }
-
-    .ghost-btn:hover {
-        background: color-mix(in srgb, var(--ctp-surface1) 60%, transparent);
-        transform: translateY(-1px);
-    }
-
-    .muted {
-        color: var(--ctp-subtext0);
-    }
-
-    .mono {
-        font-family: var(--mono);
-        font-variant-numeric: tabular-nums;
-    }
-
-    .note {
-        color: var(--ctp-subtext0);
-        text-align: center;
-        padding: 30px 0;
-    }
-
-    /* Toast in the old message colours */
-    .message.success {
-        background: color-mix(in srgb, var(--rp-foam) 15%, color-mix(in srgb, var(--card) 60%, transparent));
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .message.error {
-        background: color-mix(in srgb, var(--rp-love) 15%, color-mix(in srgb, var(--card) 60%, transparent));
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    @media (max-width: 520px) {
-        .page-header .ghost-btn {
-            width: 100%;
-        }
+    .phone-actions :global(.btn-list .btn) {
+        flex: 1 1 auto;
     }
 </style>

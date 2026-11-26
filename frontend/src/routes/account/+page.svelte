@@ -2,6 +2,27 @@
     import { onMount } from 'svelte';
     import { api, clearSession, loginUrl, refreshUser } from '$lib/auth.js';
     import { hueFor } from '$lib/palette.js';
+    import IconPackage from '@tabler/icons-svelte-runes/icons/package';
+    import IconVideo from '@tabler/icons-svelte-runes/icons/video';
+    import IconRobot from '@tabler/icons-svelte-runes/icons/robot';
+    import IconCircleCheck from '@tabler/icons-svelte-runes/icons/circle-check';
+    import IconHand from '@tabler/icons-svelte-runes/icons/hand-stop';
+    import IconBolt from '@tabler/icons-svelte-runes/icons/bolt';
+    import IconFlask from '@tabler/icons-svelte-runes/icons/flask';
+    import IconPrinter from '@tabler/icons-svelte-runes/icons/printer';
+    import IconTools from '@tabler/icons-svelte-runes/icons/tools';
+    import IconCalendar from '@tabler/icons-svelte-runes/icons/calendar';
+    import IconShield from '@tabler/icons-svelte-runes/icons/shield';
+    import IconPoint from '@tabler/icons-svelte-runes/icons/point';
+    import IconLogout from '@tabler/icons-svelte-runes/icons/logout';
+    import IconDashboard from '@tabler/icons-svelte-runes/icons/layout-dashboard';
+    import IconItems from '@tabler/icons-svelte-runes/icons/list-search';
+    import IconAlarm from '@tabler/icons-svelte-runes/icons/alarm';
+    import IconLockCheck from '@tabler/icons-svelte-runes/icons/lock-check';
+    import IconReturn from '@tabler/icons-svelte-runes/icons/arrow-back-up';
+    import IconKey from '@tabler/icons-svelte-runes/icons/key';
+    import IconLock from '@tabler/icons-svelte-runes/icons/lock';
+    import IconArrowRight from '@tabler/icons-svelte-runes/icons/arrow-right';
 
     let user = null;
     let loans = [];
@@ -20,18 +41,18 @@
 
     // Plain-English names for the permission keys the server sends
     const PERMS = {
-        borrow_items: ['📦', 'Borrow equipment'],
-        book_mocap: ['🎥', 'Book the Motion Capture Lab'],
-        book_mech: ['🦾', 'Book Mech Lab robots'],
-        approve_mech_bookings: ['✅', 'Approve robot bookings and thread access'],
-        approve_loans: ['✋', 'Approve loans of restricted items'],
-        auto_approve: ['⚡', 'Own bookings and loans need no sign-off'],
-        create_threads: ['🧪', 'Create research threads'],
-        upload_prints: ['🖨️', 'Send prints to the 3D printers'],
-        manage_inventory: ['🧰', 'Manage the inventory'],
-        manage_printers: ['🖨️', 'Manage the printers'],
-        manage_bookings: ['📅', 'Manage bookings and robots'],
-        manage_users: ['🛡️', 'Manage user accounts']
+        borrow_items: [IconPackage, 'Borrow equipment'],
+        book_mocap: [IconVideo, 'Book the Motion Capture Lab'],
+        book_mech: [IconRobot, 'Book Mech Lab robots'],
+        approve_mech_bookings: [IconCircleCheck, 'Approve robot bookings and thread access'],
+        approve_loans: [IconHand, 'Approve loans of restricted items'],
+        auto_approve: [IconBolt, 'Own bookings and loans need no sign-off'],
+        create_threads: [IconFlask, 'Create research threads'],
+        upload_prints: [IconPrinter, 'Send prints to the 3D printers'],
+        manage_inventory: [IconTools, 'Manage the inventory'],
+        manage_printers: [IconPrinter, 'Manage the printers'],
+        manage_bookings: [IconCalendar, 'Manage bookings and robots'],
+        manage_users: [IconShield, 'Manage user accounts']
     };
 
     $: initial = (user?.name || '?').trim().charAt(0).toUpperCase();
@@ -135,688 +156,340 @@
 
 <svelte:head><title>My account · RRC</title></svelte:head>
 
-<div class="container">
-    {#if user}
-        <div class="page-header">
-            <div class="who">
-                <span class="avatar" aria-hidden="true">{initial}</span>
-                <div class="who-text">
-                    <h1>👤 {user.name}</h1>
-                    <p class="subtitle">{user.group || 'No group'} · {user.email}{#if user.phone}{' · '}<span class="mono">{user.phone}</span>{/if}</p>
+{#if user}
+    <div class="page-header d-print-none mt-0 mb-3">
+        <div class="row g-3 align-items-center">
+            <div class="col-auto">
+                <span class="avatar avatar-lg bg-primary-lt" aria-hidden="true">{initial}</span>
+            </div>
+            <div class="col min-w-0">
+                <div class="page-pretitle">Your account</div>
+                <h1 class="page-title text-break">{user.name}</h1>
+                <div class="text-secondary small mt-1 text-break">
+                    {user.group || 'No group'} · {user.email}{#if user.phone}{' · '}<span class="tabular">{user.phone}</span>{/if}
                 </div>
             </div>
-            <button class="danger-btn" on:click={logout}>🚪 Log out</button>
-        </div>
-
-        {#if notice}<p class="message {noticeError ? 'error' : 'success'}" role="status">{notice}</p>{/if}
-
-        <nav class="quick-links" aria-label="Shortcuts">
-            <a class="quick" style="--tile-accent: var(--rp-iris)" href="/dashboard"><span aria-hidden="true">📊</span> Dashboard</a>
-            <a class="quick" style="--tile-accent: var(--rp-foam)" href="/items"><span aria-hidden="true">🧰</span> What's in the Lab</a>
-            <a class="quick" style="--tile-accent: var(--rp-love)" href="/mechlab"><span aria-hidden="true">🦾</span> Book a robot</a>
-            <a class="quick" style="--tile-accent: var(--rp-rose)" href="/threads"><span aria-hidden="true">🧪</span> Research threads</a>
-        </nav>
-
-        {#if overdue.length || toVerify.length}
-            <div class="attention">
-                {#each overdue as loan (loan.ID)}
-                    <div class="panel alert">
-                        <p class="panel-label">⏰ Overdue</p>
-                        <h3>{loan.item_name} is {loan.days_overdue ? `${loan.days_overdue} day${loan.days_overdue === 1 ? '' : 's'} ` : ''}overdue</h3>
-                        <p class="muted">What happened? Your answer keeps the records right{loan.days_overdue >= 7 ? ' and lifts the pause on borrowing and booking' : ''}.</p>
-                        <div class="actions">
-                            <button class="ghost-btn" on:click={() => post(`/api/loans/${loan.ID}/overdue-answer`, { answer: 'extend' })}>Still using it (+7 days)</button>
-                            <button class="ghost-btn" on:click={() => post(`/api/loans/${loan.ID}/overdue-answer`, { answer: 'returned' })}>I returned it</button>
-                            <button class="ghost-btn" on:click={() => confirm('Mark it as lost? The inventory managers are told.') && post(`/api/loans/${loan.ID}/overdue-answer`, { answer: 'lost' })}>I lost it</button>
-                        </div>
-                    </div>
-                {/each}
-
-                {#each toVerify as item (item.ID)}
-                    <div class="panel check">
-                        <p class="panel-label">🔒 Monthly check</p>
-                        <h3>Is {item.name} where the system says?</h3>
-                        <p class="muted">You look after this tracked item. A quick check each month keeps it from going missing.{#if item.last_verified_at} Last confirmed {shortDate(item.last_verified_at)}.{/if}</p>
-                        <div class="actions">
-                            <button class="submit-btn" on:click={() => post(`/api/items/${item.ID}/verify`, { answer: 'yes' })}>Yes, it's there</button>
-                            <button class="ghost-btn" on:click={() => post(`/api/items/${item.ID}/verify`, { answer: 'no' })}>No, can't find it</button>
-                        </div>
-                    </div>
-                {/each}
+            <div class="col-12 col-sm-auto ms-auto">
+                <button class="btn btn-outline-danger w-100" type="button" on:click={logout}>
+                    <IconLogout size={18} class="icon" />
+                    Log out
+                </button>
             </div>
-        {/if}
+        </div>
+    </div>
 
-        <div class="columns">
-            <section class="panel">
-                <h3 class="section-title" style="--hue: var(--rp-foam)">📦 What you have <span class="count">{openLoans.length}</span></h3>
-                {#if !loaded}
-                    <p class="muted">Loading…</p>
-                {:else if openLoans.length === 0 && missing.length === 0}
-                    <p class="empty">Nothing borrowed. <a href="/items">Browse equipment</a></p>
-                {/if}
-                {#each openLoans as loan (loan.ID)}
-                    <div class="list-row">
-                        <div class="grow">
-                            <div class="item-name">{loan.item_name}{#if loan.quantity_borrowed > 1}<span class="mono">{` × ${loan.quantity_borrowed}`}</span>{/if}</div>
-                            <div class="sub">
-                                {#if loan.status === 'pending'}
-                                    <span class="status-badge warn">Waiting for approval</span>
-                                {:else if loan.overdue}
-                                    <span class="status-badge overdue">Overdue</span> was due <span class="mono">{loan.expected_return_date}</span>
-                                {:else}
-                                    Due <span class="mono">{loan.expected_return_date}</span>
-                                {/if}
-                                {#if loan.lab_location}{' · '}{loan.lab_location}{/if}
+    {#if notice}<div class="toast-msg {noticeError ? 'error' : 'success'}" role="status">{notice}</div>{/if}
+
+    <nav class="row g-2 mb-3" aria-label="Shortcuts">
+        <div class="col-6 col-md-3">
+            <a class="card card-link card-sm h-100" href="/dashboard">
+                <div class="card-body d-flex align-items-center gap-2">
+                    <span class="avatar avatar-sm bg-primary-lt"><IconDashboard size={18} class="icon" /></span>
+                    <span class="fw-medium">Dashboard</span>
+                </div>
+            </a>
+        </div>
+        <div class="col-6 col-md-3">
+            <a class="card card-link card-sm h-100" href="/items">
+                <div class="card-body d-flex align-items-center gap-2">
+                    <span class="avatar avatar-sm bg-info-lt"><IconItems size={18} class="icon" /></span>
+                    <span class="fw-medium">What's in the Lab</span>
+                </div>
+            </a>
+        </div>
+        <div class="col-6 col-md-3">
+            <a class="card card-link card-sm h-100" href="/mechlab">
+                <div class="card-body d-flex align-items-center gap-2">
+                    <span class="avatar avatar-sm bg-danger-lt"><IconRobot size={18} class="icon" /></span>
+                    <span class="fw-medium">Book a robot</span>
+                </div>
+            </a>
+        </div>
+        <div class="col-6 col-md-3">
+            <a class="card card-link card-sm h-100" href="/threads">
+                <div class="card-body d-flex align-items-center gap-2">
+                    <span class="avatar avatar-sm bg-warning-lt"><IconFlask size={18} class="icon" /></span>
+                    <span class="fw-medium">Research threads</span>
+                </div>
+            </a>
+        </div>
+    </nav>
+
+    {#if overdue.length || toVerify.length}
+        <div class="row row-cards g-3 mb-3">
+            {#each overdue as loan (loan.ID)}
+                <div class="col-12 col-lg-6">
+                    <div class="card h-100">
+                        <div class="card-status-start bg-warning"></div>
+                        <div class="card-body">
+                            <div class="d-flex align-items-center gap-2 text-warning small fw-bold text-uppercase mb-2">
+                                <IconAlarm size={16} class="icon" /> Overdue
+                            </div>
+                            <h3 class="card-title mb-1">
+                                {loan.item_name} is {loan.days_overdue ? `${loan.days_overdue} day${loan.days_overdue === 1 ? '' : 's'} ` : ''}overdue
+                            </h3>
+                            <p class="text-secondary">
+                                What happened? Your answer keeps the records right{loan.days_overdue >= 7 ? ' and lifts the pause on borrowing and booking' : ''}.
+                            </p>
+                            <div class="btn-list">
+                                <button class="btn btn-outline-secondary" type="button" on:click={() => post(`/api/loans/${loan.ID}/overdue-answer`, { answer: 'extend' })}>Still using it (+7 days)</button>
+                                <button class="btn btn-outline-secondary" type="button" on:click={() => post(`/api/loans/${loan.ID}/overdue-answer`, { answer: 'returned' })}>I returned it</button>
+                                <button
+                                    class="btn btn-outline-danger"
+                                    type="button"
+                                    on:click={() => confirm('Mark it as lost? The inventory managers are told.') && post(`/api/loans/${loan.ID}/overdue-answer`, { answer: 'lost' })}
+                                >I lost it</button>
                             </div>
                         </div>
-                        <button class="ghost-btn" on:click={() => (loan.status === 'pending' || confirm(`Mark ${loan.item_name} as returned?`)) && post(`/api/return/${loan.ID}`)}>{loan.status === 'pending' ? 'Cancel request' : '↩️ Returned'}</button>
                     </div>
-                {/each}
-                {#each missing as loan (loan.ID)}
-                    <div class="list-row">
-                        <div class="grow">
-                            <div class="item-name">{loan.item_name}</div>
-                            <div class="sub"><span class="status-badge overdue">Marked missing</span> An inventory manager will sort it out with you.</div>
+                </div>
+            {/each}
+
+            {#each toVerify as item (item.ID)}
+                <div class="col-12 col-lg-6">
+                    <div class="card h-100">
+                        <div class="card-status-start bg-primary"></div>
+                        <div class="card-body">
+                            <div class="d-flex align-items-center gap-2 text-primary small fw-bold text-uppercase mb-2">
+                                <IconLockCheck size={16} class="icon" /> Monthly check
+                            </div>
+                            <h3 class="card-title mb-1">Is {item.name} where the system says?</h3>
+                            <p class="text-secondary">
+                                You look after this tracked item. A quick check each month keeps it from going missing.{#if item.last_verified_at} Last confirmed {shortDate(item.last_verified_at)}.{/if}
+                            </p>
+                            <div class="btn-list">
+                                <button class="btn btn-primary" type="button" on:click={() => post(`/api/items/${item.ID}/verify`, { answer: 'yes' })}>Yes, it's there</button>
+                                <button class="btn btn-outline-secondary" type="button" on:click={() => post(`/api/items/${item.ID}/verify`, { answer: 'no' })}>No, can't find it</button>
+                            </div>
                         </div>
                     </div>
-                {/each}
-                {#if returned.length}
-                    <details class="history">
-                        <summary>Returned in the last 30 days <span class="mono">({returned.length})</span></summary>
-                        {#each returned as loan (loan.ID)}
-                            <div class="list-row small">
-                                <span>{loan.item_name}{#if loan.quantity_borrowed > 1}<span class="mono">{` × ${loan.quantity_borrowed}`}</span>{/if}</span>
-                                <span class="mono muted">{shortDate(loan.returned_at)}</span>
+                </div>
+            {/each}
+        </div>
+    {/if}
+
+    <div class="row row-cards g-3">
+        <div class="col-12 col-lg-6">
+            <section class="card h-100">
+                <div class="card-header">
+                    <h3 class="card-title d-flex align-items-center gap-2">
+                        <IconPackage size={18} class="icon text-info" /> What you have
+                    </h3>
+                    <div class="card-actions"><span class="badge bg-secondary-lt">{openLoans.length}</span></div>
+                </div>
+                {#if !loaded}
+                    <div class="card-body text-secondary">Loading…</div>
+                {:else if openLoans.length === 0 && missing.length === 0}
+                    <div class="card-body">
+                        <div class="empty py-3">
+                            <div class="empty-icon"><IconPackage size={40} class="icon" /></div>
+                            <p class="empty-title">Nothing borrowed</p>
+                            <div class="empty-action">
+                                <a class="btn btn-outline-primary" href="/items">Browse equipment <IconArrowRight size={18} class="icon ms-1" /></a>
+                            </div>
+                        </div>
+                    </div>
+                {/if}
+                {#if openLoans.length || missing.length}
+                    <div class="list-group list-group-flush">
+                        {#each openLoans as loan (loan.ID)}
+                            <div class="list-group-item">
+                                <div class="row g-2 align-items-center">
+                                    <div class="col min-w-0">
+                                        <div class="fw-medium text-break">
+                                            {loan.item_name}{#if loan.quantity_borrowed > 1}<span class="tabular text-secondary">{` × ${loan.quantity_borrowed}`}</span>{/if}
+                                        </div>
+                                        <div class="small text-secondary mt-1">
+                                            {#if loan.status === 'pending'}
+                                                <span class="badge bg-warning-lt">Waiting for approval</span>
+                                            {:else if loan.overdue}
+                                                <span class="badge bg-danger">Overdue</span> was due <span class="tabular">{loan.expected_return_date}</span>
+                                            {:else}
+                                                Due <span class="tabular">{loan.expected_return_date}</span>
+                                            {/if}
+                                            {#if loan.lab_location}{' · '}{loan.lab_location}{/if}
+                                        </div>
+                                    </div>
+                                    <div class="col-12 col-sm-auto">
+                                        <button
+                                            class="btn btn-outline-secondary w-100"
+                                            type="button"
+                                            on:click={() => (loan.status === 'pending' || confirm(`Mark ${loan.item_name} as returned?`)) && post(`/api/return/${loan.ID}`)}
+                                        >
+                                            {#if loan.status === 'pending'}
+                                                Cancel request
+                                            {:else}
+                                                <IconReturn size={18} class="icon" /> Returned
+                                            {/if}
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         {/each}
+                        {#each missing as loan (loan.ID)}
+                            <div class="list-group-item">
+                                <div class="fw-medium text-break">{loan.item_name}</div>
+                                <div class="small text-secondary mt-1">
+                                    <span class="badge bg-danger">Marked missing</span> An inventory manager will sort it out with you.
+                                </div>
+                            </div>
+                        {/each}
+                    </div>
+                {/if}
+                {#if returned.length}
+                    <details class="card-footer">
+                        <summary class="text-secondary">Returned in the last 30 days <span class="tabular">({returned.length})</span></summary>
+                        <div class="list-group list-group-flush mt-2">
+                            {#each returned as loan (loan.ID)}
+                                <div class="list-group-item px-0 py-2 d-flex justify-content-between gap-2 small">
+                                    <span class="text-break">{loan.item_name}{#if loan.quantity_borrowed > 1}<span class="tabular">{` × ${loan.quantity_borrowed}`}</span>{/if}</span>
+                                    <span class="tabular text-secondary text-nowrap">{shortDate(loan.returned_at)}</span>
+                                </div>
+                            {/each}
+                        </div>
                     </details>
                 {/if}
             </section>
+        </div>
 
-            <section class="panel">
-                <h3 class="section-title" style="--hue: var(--rp-gold)">📅 Your bookings <span class="count">{upcoming.length}</span></h3>
+        <div class="col-12 col-lg-6">
+            <section class="card h-100">
+                <div class="card-header">
+                    <h3 class="card-title d-flex align-items-center gap-2">
+                        <IconCalendar size={18} class="icon text-warning" /> Your bookings
+                    </h3>
+                    <div class="card-actions"><span class="badge bg-secondary-lt">{upcoming.length}</span></div>
+                </div>
                 {#if loaded && upcoming.length === 0}
-                    <p class="empty">No upcoming bookings. <a href="/mechlab">Book a robot</a> or <a href="/mocap">the MoCap lab</a>.</p>
-                {/if}
-                {#each upcoming as b (b.ID)}
-                    <div class="list-row">
-                        <div class="grow">
-                            <div class="item-name when">
-                                <span class="dot" style="--hue: {b.thread_id ? hueFor(b.thread_id) : 'var(--faint)'}"></span>
-                                {robots[b.resource_id]?.name || 'Booking'}
-                                {#if b.status === 'pending'}<span class="status-badge warn">Awaiting approval</span>{/if}
-                            </div>
-                            <div class="sub"><span class="mono">{when(b)}</span>{#if b.thread_name || b.purpose}{' · '}{b.thread_name || b.purpose}{/if}</div>
+                    <div class="card-body">
+                        <div class="empty py-3">
+                            <div class="empty-icon"><IconCalendar size={40} class="icon" /></div>
+                            <p class="empty-title">No upcoming bookings</p>
+                            <p class="empty-subtitle text-secondary">
+                                <a href="/mechlab">Book a robot</a> or <a href="/mocap">the MoCap lab</a>.
+                            </p>
                         </div>
-                        {#if new Date(b.start_time) > new Date()}
-                            <button class="ghost-btn" on:click={() => confirm('Cancel this booking?') && post(`/api/bookings/${b.ID}/cancel`)}>Cancel</button>
-                        {:else}
-                            <span class="status-badge ok">On now</span>
-                        {/if}
                     </div>
-                {/each}
-            </section>
-
-            <section class="panel">
-                <h3 class="section-title" style="--hue: var(--rp-iris)">🔑 Your access</h3>
-                <p class="muted access-lead">You're in the <strong class="group">{user.group || 'no'}</strong> group{user.status && user.status !== 'active' ? ` (${user.status})` : ''}. This is what your account can do:</p>
-                {#if user.permissions?.length}
-                    <ul class="perms">
-                        {#each user.permissions as perm}
-                            <li><span aria-hidden="true">{PERMS[perm]?.[0] || '•'}</span> {PERMS[perm]?.[1] || perm}</li>
+                {:else if upcoming.length}
+                    <div class="list-group list-group-flush">
+                        {#each upcoming as b (b.ID)}
+                            <div class="list-group-item">
+                                <div class="row g-2 align-items-center">
+                                    <div class="col min-w-0">
+                                        <div class="fw-medium d-flex align-items-center flex-wrap gap-2">
+                                            <span class="status-dot" style="background: {b.thread_id ? hueFor(b.thread_id) : 'var(--tblr-tertiary-color)'}"></span>
+                                            {robots[b.resource_id]?.name || 'Booking'}
+                                            {#if b.status === 'pending'}<span class="badge bg-warning-lt">Awaiting approval</span>{/if}
+                                        </div>
+                                        <div class="small text-secondary mt-1">
+                                            <span class="tabular">{when(b)}</span>{#if b.thread_name || b.purpose}{' · '}{b.thread_name || b.purpose}{/if}
+                                        </div>
+                                    </div>
+                                    <div class="col-12 col-sm-auto">
+                                        {#if new Date(b.start_time) > new Date()}
+                                            <button class="btn btn-outline-secondary w-100" type="button" on:click={() => confirm('Cancel this booking?') && post(`/api/bookings/${b.ID}/cancel`)}>Cancel</button>
+                                        {:else}
+                                            <span class="badge bg-success-lt">On now</span>
+                                        {/if}
+                                    </div>
+                                </div>
+                            </div>
                         {/each}
-                    </ul>
-                {:else}
-                    <p class="empty">No permissions yet. Ask a server admin.</p>
+                    </div>
                 {/if}
-                <p class="hint">Need something else? A server admin can change your group or permissions.</p>
-            </section>
-
-            <section class="panel">
-                <h3 class="section-title" style="--hue: var(--rp-rose)">🔐 Change password</h3>
-                <form on:submit|preventDefault={changePassword}>
-                    <div class="form-group">
-                        <label for="pw-old">Current password</label>
-                        <input id="pw-old" type={showPw ? 'text' : 'password'} bind:value={pw.old_password} required autocomplete="current-password" />
-                    </div>
-                    <div class="form-group">
-                        <label for="pw-new">New password <span class="hint-inline">at least 8 characters</span></label>
-                        <input id="pw-new" type={showPw ? 'text' : 'password'} bind:value={pw.new_password} required minlength="8" maxlength="72" autocomplete="new-password" />
-                    </div>
-                    <div class="form-group">
-                        <label for="pw-confirm">Confirm new password</label>
-                        <input id="pw-confirm" type={showPw ? 'text' : 'password'} bind:value={pw.confirm} required minlength="8" maxlength="72" autocomplete="new-password" />
-                        {#if pw.confirm && pw.confirm !== pw.new_password}<span class="field-note bad">The new passwords don't match yet</span>{/if}
-                    </div>
-                    <label class="check-row"><input type="checkbox" bind:checked={showPw} /> Show passwords</label>
-                    {#if pwMessage}<p class="form-msg" class:bad={pwError} role="status">{pwMessage}</p>{/if}
-                    <button class="submit-btn wide" type="submit" disabled={busy}>{busy ? 'Saving…' : 'Change password'}</button>
-                    <p class="hint">Changing it logs you out everywhere else.</p>
-                </form>
             </section>
         </div>
-    {:else}
-        <p class="empty center">Loading your account…</p>
-    {/if}
-</div>
 
-<style>
-    .container {
-        max-width: var(--page-max);
-        margin: 0 auto;
-        padding: clamp(10px, 2vw, 20px) var(--gutter) 40px;
-        box-sizing: border-box;
-    }
-
-    .page-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 12px;
-        flex-wrap: wrap;
-        border-bottom: 1px solid var(--ctp-surface0);
-        padding-bottom: 14px;
-        margin-bottom: 18px;
-    }
-
-    .who {
-        display: flex;
-        align-items: center;
-        gap: 14px;
-        min-width: 0;
-    }
-
-    .who-text {
-        min-width: 0;
-    }
-
-    .avatar {
-        display: grid;
-        place-items: center;
-        flex: none;
-        width: 52px;
-        height: 52px;
-        border-radius: 50%;
-        background: linear-gradient(135deg, var(--rp-iris), var(--rp-rose));
-        color: var(--accent-ink);
-        font-weight: 700;
-        font-size: 1.3rem;
-        box-shadow: var(--shadow-sm);
-    }
-
-    h1 {
-        margin: 0;
-        font-size: clamp(1.3rem, 3vw, 1.8rem);
-        font-weight: 600;
-        color: var(--rp-iris);
-        overflow-wrap: anywhere;
-    }
-
-    .subtitle {
-        margin: 2px 0 0;
-        font-size: 0.9rem;
-        color: var(--ctp-subtext0);
-        overflow-wrap: anywhere;
-    }
-
-    .quick-links {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
-        gap: 10px;
-        margin-bottom: 16px;
-    }
-
-    .quick {
-        position: relative;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        min-height: 48px;
-        padding: 10px 14px;
-        border: 1px solid var(--ctp-surface0);
-        border-radius: 12px;
-        background: color-mix(in srgb, var(--card) 60%, transparent);
-        color: var(--tile-accent);
-        font-weight: 600;
-        text-decoration: none;
-        overflow: hidden;
-        box-sizing: border-box;
-        transition: transform var(--normal) var(--ease), border-color var(--normal) var(--ease);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .quick::after {
-        content: '';
-        position: absolute;
-        left: 0;
-        top: 0;
-        bottom: 0;
-        width: 3px;
-        background: var(--tile-accent);
-        transform: scaleY(0.3);
-        transition: transform var(--normal) var(--ease);
-    }
-
-    .quick:hover {
-        transform: translateY(-2px);
-        border-color: color-mix(in srgb, var(--tile-accent) 55%, var(--ctp-surface1));
-    }
-
-    .quick:hover::after {
-        transform: scaleY(1);
-    }
-
-    :root[data-theme='light'] .quick {
-        color: color-mix(in srgb, var(--tile-accent) 80%, var(--rp-text));
-    }
-
-    .attention {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
-        gap: 14px;
-        margin-bottom: 16px;
-    }
-
-    .columns {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 16px;
-        align-items: start;
-    }
-
-    .panel {
-        background:
-            linear-gradient(180deg, color-mix(in srgb, var(--rp-text) 4%, transparent), transparent 60%),
-            color-mix(in srgb, var(--card) 60%, transparent);
-        border: 1px solid var(--ctp-surface0);
-        border-radius: var(--radius-lg);
-        padding: clamp(15px, 3vw, 22px);
-        box-shadow: var(--shadow-sm);
-        min-width: 0;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .panel.alert {
-        border-color: color-mix(in srgb, var(--warn) 55%, transparent);
-        background: color-mix(in srgb, var(--warn) 8%, color-mix(in srgb, var(--card) 60%, transparent));
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .panel.check {
-        border-color: color-mix(in srgb, var(--rp-iris) 45%, transparent);
-    }
-
-    .panel-label {
-        margin: 0 0 6px;
-        font-size: 0.8rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        color: var(--ctp-subtext0);
-    }
-
-    .panel h3:not(.section-title) {
-        margin: 0 0 6px;
-        font-size: 1.05rem;
-        color: var(--ctp-text);
-    }
-
-    .panel p {
-        margin-top: 0;
-    }
-
-    .section-title {
-        margin: 0 0 12px;
-        font-size: 1.1rem;
-        color: var(--ctp-text);
-        border-left: 4px solid var(--hue);
-        padding-left: 12px;
-    }
-
-    .count {
-        display: inline-block;
-        margin-left: 6px;
-        padding: 2px 8px;
-        border-radius: 12px;
-        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
-        color: var(--ctp-subtext0);
-        font-size: 0.75rem;
-        vertical-align: 2px;
-    }
-
-    .list-row {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 10px;
-        flex-wrap: wrap;
-        padding: 12px 0;
-        border-top: 1px solid var(--ctp-surface0);
-    }
-
-    .section-title + .list-row {
-        border-top: none;
-        padding-top: 4px;
-    }
-
-    .list-row.small {
-        padding: 8px 0;
-        font-size: 0.9rem;
-    }
-
-    .grow {
-        flex: 1;
-        min-width: 0;
-    }
-
-    .item-name {
-        font-weight: 600;
-        color: var(--ctp-text);
-    }
-
-    .when {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        flex-wrap: wrap;
-    }
-
-    .sub {
-        margin-top: 3px;
-        font-size: 0.85rem;
-        color: var(--ctp-subtext0);
-    }
-
-    .dot {
-        display: inline-block;
-        flex: none;
-        width: 9px;
-        height: 9px;
-        border-radius: 50%;
-        background: var(--hue);
-    }
-
-    .status-badge {
-        display: inline-block;
-        padding: 2px 9px;
-        border-radius: 20px;
-        font-size: 0.75rem;
-        font-weight: 700;
-        white-space: nowrap;
-    }
-
-    .status-badge.warn {
-        background: color-mix(in srgb, var(--rp-gold) 22%, transparent);
-        color: var(--rp-gold);
-    }
-
-    .status-badge.overdue {
-        background: var(--rp-love);
-        color: var(--accent-ink);
-    }
-
-    .status-badge.ok {
-        background: color-mix(in srgb, var(--rp-foam) 22%, transparent);
-        color: var(--rp-foam);
-    }
-
-    :root[data-theme='light'] .status-badge.warn {
-        color: color-mix(in srgb, var(--rp-gold) 60%, var(--rp-text));
-    }
-
-    :root[data-theme='light'] .status-badge.ok {
-        color: var(--rp-pine);
-    }
-
-    .history {
-        margin-top: 10px;
-        border-top: 1px solid var(--ctp-surface0);
-        padding-top: 10px;
-    }
-
-    .history summary {
-        cursor: pointer;
-        min-height: 32px;
-        font-size: 0.9rem;
-        color: var(--ctp-subtext0);
-    }
-
-    .access-lead {
-        margin: 0 0 10px;
-    }
-
-    .group {
-        color: var(--rp-iris);
-    }
-
-    .perms {
-        list-style: none;
-        margin: 0;
-        padding: 0;
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-    }
-
-    .perms li {
-        padding: 8px 12px;
-        border-radius: 8px;
-        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
-        font-size: 0.9rem;
-    }
-
-    .form-group {
-        margin-bottom: 14px;
-    }
-
-    .form-group label {
-        display: block;
-        margin-bottom: 6px;
-        font-weight: 600;
-        font-size: 0.92rem;
-        color: var(--ctp-text);
-    }
-
-    .form-group input {
-        width: 100%;
-        min-height: 44px;
-        padding: 10px 14px;
-        border: 2px solid var(--ctp-surface0);
-        border-radius: 8px;
-        background: color-mix(in srgb, var(--bg) 60%, transparent);
-        color: var(--ctp-text);
-        font: inherit;
-        box-sizing: border-box;
-        transition: border-color var(--fast) var(--ease), box-shadow var(--fast) var(--ease);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .form-group input:focus {
-        border-color: var(--rp-rose);
-        outline: none;
-        box-shadow: 0 0 0 3px color-mix(in srgb, var(--rp-rose) 25%, transparent);
-    }
-
-    .hint-inline {
-        font-weight: 400;
-        font-size: 0.8rem;
-        color: var(--ctp-overlay1);
-    }
-
-    .check-row {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        min-height: 40px;
-        margin-bottom: 8px;
-        font-size: 0.9rem;
-        color: var(--ctp-subtext0);
-        cursor: pointer;
-    }
-
-    .check-row input {
-        width: 18px;
-        height: 18px;
-        accent-color: var(--rp-rose);
-    }
-
-    .field-note {
-        display: block;
-        margin-top: 5px;
-        font-size: 0.82rem;
-    }
-
-    .bad {
-        color: var(--danger);
-    }
-
-    .form-msg {
-        margin: 0 0 12px;
-        padding: 10px 14px;
-        border-radius: 8px;
-        text-align: center;
-        font-weight: 500;
-        border: 1px solid color-mix(in srgb, var(--rp-foam) 40%, transparent);
-        background: color-mix(in srgb, var(--rp-foam) 12%, transparent);
-        color: var(--rp-foam);
-    }
-
-    :root[data-theme='light'] .form-msg {
-        color: var(--rp-pine);
-    }
-
-    .form-msg.bad {
-        border-color: color-mix(in srgb, var(--danger) 40%, transparent);
-        background: color-mix(in srgb, var(--danger) 12%, transparent);
-        color: var(--danger);
-    }
-
-    .hint {
-        margin: 10px 0 0;
-        font-size: 0.82rem;
-        color: var(--ctp-overlay1);
-    }
-
-    .actions {
-        display: flex;
-        gap: 8px;
-        flex-wrap: wrap;
-    }
-
-    .submit-btn,
-    .ghost-btn,
-    .danger-btn {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 6px;
-        min-height: 40px;
-        padding: 8px 16px;
-        border-radius: 8px;
-        font: inherit;
-        font-size: 0.92rem;
-        font-weight: 600;
-        cursor: pointer;
-        transition: transform var(--fast) var(--ease), box-shadow var(--fast) var(--ease), background var(--fast) var(--ease);
-    }
-
-    .submit-btn {
-        border: none;
-        background: linear-gradient(135deg, var(--rp-rose), var(--rp-love));
-        color: var(--accent-ink);
-    }
-
-    .submit-btn.wide {
-        width: 100%;
-        min-height: 46px;
-        font-size: 1rem;
-    }
-
-    .submit-btn:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 6px 18px color-mix(in srgb, var(--rp-rose) 30%, transparent);
-    }
-
-    .submit-btn:disabled {
-        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
-        color: var(--ctp-subtext0);
-        transform: none;
-        box-shadow: none;
-        cursor: wait;
-    }
-
-    .ghost-btn {
-        border: 1px solid var(--ctp-surface1);
-        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
-        color: var(--ctp-text);
-        font-weight: 500;
-    }
-
-    .ghost-btn:hover {
-        background: color-mix(in srgb, var(--ctp-surface1) 60%, transparent);
-        transform: translateY(-1px);
-    }
-
-    .danger-btn {
-        border: none;
-        background: linear-gradient(135deg, var(--rp-love), var(--rp-rose));
-        color: var(--accent-ink);
-    }
-
-    .danger-btn:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 4px 15px color-mix(in srgb, var(--rp-love) 30%, transparent);
-    }
-
-    .muted {
-        color: var(--ctp-subtext0);
-    }
-
-    .mono {
-        font-family: var(--mono);
-        font-variant-numeric: tabular-nums;
-    }
-
-    .empty {
-        margin: 0;
-        color: var(--ctp-subtext0);
-    }
-
-    .empty.center {
-        text-align: center;
-        padding: 40px 0;
-    }
-
-    .empty a {
-        color: var(--link);
-    }
-
-    .message.success {
-        background: color-mix(in srgb, var(--rp-foam) 15%, color-mix(in srgb, var(--card) 60%, transparent));
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .message.error {
-        background: color-mix(in srgb, var(--rp-love) 15%, color-mix(in srgb, var(--card) 60%, transparent));
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    @media (max-width: 860px) {
-        .columns {
-            grid-template-columns: minmax(0, 1fr);
-        }
-    }
-
-    @media (max-width: 520px) {
-        .danger-btn,
-        .list-row .ghost-btn {
-            width: 100%;
-        }
-    }
-</style>
+        <div class="col-12 col-lg-6">
+            <section class="card h-100">
+                <div class="card-header">
+                    <h3 class="card-title d-flex align-items-center gap-2">
+                        <IconKey size={18} class="icon text-primary" /> Your access
+                    </h3>
+                </div>
+                <div class="card-body">
+                    <p class="text-secondary">
+                        You're in the <strong class="text-primary">{user.group || 'no'}</strong> group{user.status && user.status !== 'active' ? ` (${user.status})` : ''}. This is what your account can do:
+                    </p>
+                    {#if user.permissions?.length}
+                        <div class="list-group">
+                            {#each user.permissions as perm}
+                                <div class="list-group-item d-flex align-items-center gap-2 py-2">
+                                    <svelte:component this={PERMS[perm]?.[0] || IconPoint} size={18} class="icon text-secondary flex-shrink-0" />
+                                    <span>{PERMS[perm]?.[1] || perm}</span>
+                                </div>
+                            {/each}
+                        </div>
+                    {:else}
+                        <div class="empty py-3">
+                            <p class="empty-title">No permissions yet</p>
+                            <p class="empty-subtitle text-secondary">Ask a server admin.</p>
+                        </div>
+                    {/if}
+                </div>
+                <div class="card-footer text-secondary small">Need something else? A server admin can change your group or permissions.</div>
+            </section>
+        </div>
+
+        <div class="col-12 col-lg-6">
+            <section class="card h-100">
+                <div class="card-header">
+                    <h3 class="card-title d-flex align-items-center gap-2">
+                        <IconLock size={18} class="icon text-danger" /> Change password
+                    </h3>
+                </div>
+                <div class="card-body">
+                    <form on:submit|preventDefault={changePassword}>
+                        <div class="mb-3">
+                            <label class="form-label" for="pw-old">Current password</label>
+                            <input id="pw-old" class="form-control" type={showPw ? 'text' : 'password'} bind:value={pw.old_password} required autocomplete="current-password" />
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label" for="pw-new">
+                                New password <span class="form-label-description">at least 8 characters</span>
+                            </label>
+                            <input
+                                id="pw-new"
+                                class="form-control"
+                                type={showPw ? 'text' : 'password'}
+                                bind:value={pw.new_password}
+                                required
+                                minlength="8"
+                                maxlength="72"
+                                autocomplete="new-password"
+                            />
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label" for="pw-confirm">Confirm new password</label>
+                            <input
+                                id="pw-confirm"
+                                class="form-control"
+                                class:is-invalid={pw.confirm && pw.confirm !== pw.new_password}
+                                type={showPw ? 'text' : 'password'}
+                                bind:value={pw.confirm}
+                                required
+                                minlength="8"
+                                maxlength="72"
+                                autocomplete="new-password"
+                            />
+                            {#if pw.confirm && pw.confirm !== pw.new_password}<div class="invalid-feedback">The new passwords don't match yet</div>{/if}
+                        </div>
+                        <label class="form-check">
+                            <input class="form-check-input" type="checkbox" bind:checked={showPw} />
+                            <span class="form-check-label">Show passwords</span>
+                        </label>
+                        {#if pwMessage}
+                            <div class="alert {pwError ? 'alert-danger' : 'alert-success'} py-2" role="status">{pwMessage}</div>
+                        {/if}
+                        <button class="btn btn-primary w-100" type="submit" disabled={busy}>{busy ? 'Saving…' : 'Change password'}</button>
+                        <div class="form-hint mt-2">Changing it logs you out everywhere else.</div>
+                    </form>
+                </div>
+            </section>
+        </div>
+    </div>
+{:else}
+    <div class="empty">
+        <p class="empty-title">Loading your account…</p>
+    </div>
+{/if}

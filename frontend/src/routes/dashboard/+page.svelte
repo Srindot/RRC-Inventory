@@ -4,6 +4,23 @@
     import { onMount } from 'svelte';
     import { api, getUser, loginUrl, refreshUser } from '$lib/auth.js';
     import { AREA, hueFor } from '$lib/palette.js';
+    import IconAlert from '@tabler/icons-svelte-runes/icons/alert-circle';
+    import IconReturn from '@tabler/icons-svelte-runes/icons/arrow-back-up';
+    import IconBorrow from '@tabler/icons-svelte-runes/icons/package-export';
+    import IconRobot from '@tabler/icons-svelte-runes/icons/robot';
+    import IconVideo from '@tabler/icons-svelte-runes/icons/video';
+    import IconPackage from '@tabler/icons-svelte-runes/icons/package';
+    import IconFlask from '@tabler/icons-svelte-runes/icons/flask';
+    import IconShield from '@tabler/icons-svelte-runes/icons/shield';
+    import IconPrinter from '@tabler/icons-svelte-runes/icons/printer';
+    import IconPin from '@tabler/icons-svelte-runes/icons/pin';
+    import IconBell from '@tabler/icons-svelte-runes/icons/bell';
+    import IconSparkles from '@tabler/icons-svelte-runes/icons/sparkles';
+    import IconCalendar from '@tabler/icons-svelte-runes/icons/calendar';
+    import IconArrowRight from '@tabler/icons-svelte-runes/icons/arrow-right';
+    import IconChevronRight from '@tabler/icons-svelte-runes/icons/chevron-right';
+    import IconChart from '@tabler/icons-svelte-runes/icons/chart-bar';
+    import IconBan from '@tabler/icons-svelte-runes/icons/ban';
 
     let user = null;
     let data = null;
@@ -75,826 +92,390 @@
     // single leading "/" (not "//" or "/\\", which browsers read as another site).
     const safeLink = (link) => (typeof link === 'string' && /^\/(?![\/\\])/.test(link) ? link : null);
 
-    // Each "needs you" item takes the colour and emoji of the area it links to.
+    // Each "needs you" item takes the colour and icon of the area it links to.
     function area(link) {
         link = safeLink(link) || '';
-        if (link.startsWith('/mechlab')) return [AREA.mech, '🦾'];
-        if (link.startsWith('/mocap')) return [AREA.mocap, '🎥'];
-        if (link.startsWith('/items') || link.startsWith('/account')) return [AREA.equipment, '📦'];
-        if (link.startsWith('/threads')) return [AREA.threads, '🧪'];
-        if (link.startsWith('/admin')) return [AREA.admin, '🛡️'];
-        if (link.startsWith('/printers')) return [AREA.printers, '🖨️'];
-        return [AREA.home, '📌'];
+        if (link.startsWith('/mechlab')) return [AREA.mech, IconRobot];
+        if (link.startsWith('/mocap')) return [AREA.mocap, IconVideo];
+        if (link.startsWith('/items') || link.startsWith('/account')) return [AREA.equipment, IconPackage];
+        if (link.startsWith('/threads')) return [AREA.threads, IconFlask];
+        if (link.startsWith('/admin')) return [AREA.admin, IconShield];
+        if (link.startsWith('/printers')) return [AREA.printers, IconPrinter];
+        return [AREA.home, IconPin];
     }
 
     const overdueText = (loan) => `${loan.days_overdue || ''} ${loan.days_overdue === 1 ? 'day' : 'days'} overdue`.trim();
 </script>
 
-
 <svelte:head><title>Dashboard · RRC</title></svelte:head>
 
-<div class="container">
-    <div class="page-header">
-        <div class="hello">
-            <span class="avatar" aria-hidden="true">{initial}</span>
-            <div>
-                <h1>📊 {greeting}{firstName ? `, ${firstName}` : ''}</h1>
-                <p class="subtitle">{today}</p>
-            </div>
+<div class="page-header d-print-none mt-0 mb-3">
+    <div class="row g-3 align-items-center">
+        <div class="col-auto">
+            <span class="avatar avatar-md bg-primary-lt" aria-hidden="true">{initial}</span>
         </div>
-        <span class="clock mono" aria-hidden="true">{clock}</span>
+        <div class="col min-w-0">
+            <div class="page-pretitle">{today}</div>
+            <h1 class="page-title">{greeting}{firstName ? `, ${firstName}` : ''}</h1>
+        </div>
+        <div class="col-auto ms-auto d-none d-sm-block">
+            <span class="h2 mb-0 tabular text-secondary" aria-hidden="true">{clock}</span>
+        </div>
     </div>
-
-    {#if error}
-        <div class="panel error-state" role="alert">
-            <p>⚠️ {error}</p>
-            <button class="ghost-btn" on:click={() => { error = ''; load(); }}>Try again</button>
-        </div>
-    {/if}
-
-    <nav class="quick-actions" aria-label="Quick actions">
-        <a class="quick" style="--tile-accent: var(--rp-foam)" href="/?view=return"><span aria-hidden="true">↩️</span> Return</a>
-        <a class="quick" style="--tile-accent: var(--rp-rose)" href="/?view=borrow"><span aria-hidden="true">📦</span> Borrow</a>
-        <a class="quick" style="--tile-accent: var(--rp-love)" href="/mechlab"><span aria-hidden="true">🦾</span> Book a robot</a>
-        <a class="quick" style="--tile-accent: var(--rp-iris)" href="/mocap"><span aria-hidden="true">🎥</span> MoCap lab</a>
-    </nav>
-
-    {#if !data && !error}
-        <p class="note">Loading…</p>
-    {:else if data}
-        <div class="overview-cards">
-            <section class="card stat-card" style="--hue: var(--rp-iris)">
-                <h3>🔔 Needs you</h3>
-                {#if data.needs_you.length}
-                    <div class="stat-number mono">{data.needs_you.length}</div>
-                    <p class="card-note">{data.needs_you.length === 1 ? 'thing to sort out' : 'things to sort out'} - see below</p>
-                {:else}
-                    <div class="stat-word">All clear ✨</div>
-                    <p class="card-note">Nothing is waiting on you</p>
-                {/if}
-            </section>
-
-            <section class="card stat-card" style="--hue: {nextHue}">
-                <h3>📅 Next booking</h3>
-                {#if next}
-                    {#if left}
-                        <div class="digits">
-                            {#each countdown as [value, unit]}
-                                <span><b class="mono">{pad(value)}</b><small>{unit}</small></span>
-                            {/each}
-                        </div>
-                    {:else}
-                        <div class="stat-word">Now</div>
-                    {/if}
-                    <p class="card-line">
-                        <strong>{robots[next.resource_id]?.name || 'Robot'}</strong>
-                        {#if next.status === 'pending'}<span class="status-badge warn">Pending</span>{/if}
-                    </p>
-                    <p class="card-note">
-                        <span class="mono">{day(next.start_time)}, {time(next.start_time)}–{time(next.end_time)}</span>
-                        {#if next.thread_name || next.purpose}<br />{next.thread_name || next.purpose}{/if}
-                    </p>
-                {:else}
-                    <div class="stat-word">Nothing booked</div>
-                    <a class="card-btn" href="/mechlab">Book a robot</a>
-                {/if}
-            </section>
-
-            <section class="card stat-card" style="--hue: var(--rp-foam)">
-                <h3>📦 You have</h3>
-                {#if openLoans.length}
-                    <div class="stat-number mono">{openLoans.length}</div>
-                    <div class="mini-list">
-                        {#each openLoans as loan (loan.ID)}
-                            <div class="mini-row">
-                                <span class="truncate">{loan.item_name}{#if loan.quantity_borrowed > 1}{` × ${loan.quantity_borrowed}`}{/if}</span>
-                                {#if loan.status === 'not_found'}
-                                    <span class="status-badge overdue">Missing</span>
-                                {:else if loan.overdue}
-                                    <span class="status-badge overdue">{overdueText(loan)}</span>
-                                {:else if loan.status === 'pending'}
-                                    <span class="status-badge warn">Waiting</span>
-                                {:else}
-                                    <span class="mono muted nowrap">{loan.expected_return_date}</span>
-                                {/if}
-                            </div>
-                        {/each}
-                    </div>
-                    <a class="card-link" href="/account">Manage in your account →</a>
-                {:else}
-                    <div class="stat-word">Nothing borrowed</div>
-                    <a class="card-btn" href="/items">See what's in the lab</a>
-                {/if}
-            </section>
-        </div>
-
-        {#if data.needs_you.length}
-            <section class="panel">
-                <h3 class="section-title" style="--hue: var(--rp-iris)">🔔 Needs you <span class="count">{data.needs_you.length}</span></h3>
-                <div class="needs">
-                    {#each data.needs_you as item}
-                        {@const [hue, emoji] = area(item.link)}
-                        {@const href = safeLink(item.link)}
-                        {#if href}
-                            <a class="need" {href} style="--hue: {hue}">
-                                <span class="need-icon" aria-hidden="true">{emoji}</span>
-                                <span class="grow">{item.text}</span>
-                                <span class="need-arrow" aria-hidden="true">→</span>
-                            </a>
-                        {:else}
-                            <div class="need" style="--hue: {hue}">
-                                <span class="need-icon" aria-hidden="true">{emoji}</span>
-                                <span class="grow">{item.text}</span>
-                            </div>
-                        {/if}
-                    {/each}
-                </div>
-            </section>
-        {/if}
-
-        <h2 class="group-title">🧪 Your research threads</h2>
-        {#if !data.threads.length}
-            <a class="panel join" href="/threads">
-                <span class="grow">
-                    <strong>{user?.permissions?.includes('create_threads') ? 'Start a research thread' : 'Join a research thread to book robots'}</strong>
-                    <span class="card-note">{user?.permissions?.includes('create_threads') ? 'Create one, add your students, and request robot access.' : 'Ask your prof to add you, or see who leads what.'}</span>
-                </span>
-                <span class="need-arrow" aria-hidden="true">→</span>
-            </a>
-        {:else}
-            <div class="threads">
-                {#each data.threads as thread (thread.ID)}
-                    <section class="thread-card" style="--hue: {hueFor(thread.ID)}">
-                        <div class="head">
-                            <h3>{thread.name}</h3>
-                            {#if thread.can_manage}<a class="small-link" href="/threads">Manage</a>{/if}
-                        </div>
-                        <p class="card-note left">
-                            Lead {thread.lead_name} · <span class="mono">{thread.members.length}</span>
-                            {thread.members.length === 1 ? 'member' : 'members'}
-                        </p>
-
-                        {#each thread.access as robot (robot.resource_id)}
-                            <div class="robot">
-                                <div class="split">
-                                    <span class="truncate">🦾 {robot.resource_name}</span>
-                                    {#if robot.status === 'pending'}
-                                        <span class="status-badge warn">Waiting for sign-off</span>
-                                    {:else if robot.hours_per_week}
-                                        <span class="mono muted nowrap">{hours(robot.used_this_week)} / {robot.hours_per_week} h</span>
-                                    {:else}
-                                        <span class="muted nowrap"><span class="mono">{hours(robot.used_this_week)}</span> this week</span>
-                                    {/if}
-                                </div>
-                                {#if robot.status === 'approved' && robot.hours_per_week}
-                                    <div class="bar" class:over={robot.used_this_week >= robot.hours_per_week}>
-                                        <span style="width: {pct(robot.used_this_week, robot.hours_per_week)}"></span>
-                                    </div>
-                                {/if}
-                            </div>
-                        {:else}
-                            <p class="card-note left">No robot access yet.</p>
-                        {/each}
-
-                        {#if thread.upcoming.length}
-                            <p class="sub-title">Coming up</p>
-                            {#each thread.upcoming.slice(0, 3) as b (b.ID)}
-                                <div class="mini-row">
-                                    <span class="truncate">
-                                        {robots[b.resource_id]?.name || thread.access.find((a) => a.resource_id === b.resource_id)?.resource_name || 'Robot'}
-                                        <span class="muted">· {b.booked_by}</span>
-                                    </span>
-                                    <span class="mono muted nowrap">{day(b.start_time)} {time(b.start_time)}{#if b.status === 'pending'}{' · pending'}{/if}</span>
-                                </div>
-                            {/each}
-                            {#if thread.upcoming.length > 3}<p class="card-note left">+{thread.upcoming.length - 3} more</p>{/if}
-                        {/if}
-
-                        {#if thread.gear.length}
-                            <p class="sub-title">Gear held</p>
-                            {#each thread.gear as loan (loan.ID)}
-                                <div class="mini-row">
-                                    <span class="truncate">{loan.item_name} <span class="muted">· {loan.borrower_name}</span></span>
-                                    {#if loan.overdue}
-                                        <span class="status-badge overdue">{overdueText(loan)}</span>
-                                    {:else}
-                                        <span class="mono muted nowrap">{loan.expected_return_date}</span>
-                                    {/if}
-                                </div>
-                            {/each}
-                        {/if}
-                    </section>
-                {/each}
-            </div>
-        {/if}
-
-        {#if data.usage}
-            {@const u = data.usage}
-            <h2 class="group-title">📈 How the lab is used</h2>
-            <div class="usage">
-                <section class="panel">
-                    <h3 class="section-title" style="--hue: var(--rp-love)">Robot hours, last 4 weeks</h3>
-                    {#each u.robot_hours as row, i (row.name)}
-                        <div class="hbar" style="--hue: {robotHue(row.name, i)}"><span class="truncate">{row.name}</span><div class="bar"><span style="width: {pct(row.hours, maxOf(u.robot_hours))}"></span></div><span class="mono muted">{hours(row.hours)}</span></div>
-                    {:else}<p class="muted">No bookings yet.</p>{/each}
-                </section>
-                <section class="panel">
-                    <h3 class="section-title" style="--hue: var(--rp-rose)">By thread</h3>
-                    {#each u.thread_hours as row, i (row.name)}
-                        <div class="hbar" style="--hue: {threadHue(row.name, i)}"><span class="truncate">{row.name}</span><div class="bar"><span style="width: {pct(row.hours, maxOf(u.thread_hours))}"></span></div><span class="mono muted">{hours(row.hours)}</span></div>
-                    {:else}<p class="muted">No thread bookings yet.</p>{/each}
-                </section>
-                <section class="panel">
-                    <h3 class="section-title" style="--hue: var(--rp-foam)">Most borrowed, 90 days</h3>
-                    {#each u.top_items as row (row.name)}
-                        <div class="mini-row"><span class="truncate">{row.name}</span><span class="mono muted">{row.loans}</span></div>
-                    {:else}<p class="muted">No loans yet.</p>{/each}
-                </section>
-                <section class="card stat-card" style="--hue: var(--rp-gold)">
-                    <h3>🚫 No-shows, last 4 weeks</h3>
-                    <div class="stat-number mono">{u.no_shows}</div>
-                </section>
-            </div>
-        {/if}
-
-        <p class="footer-note">Tip: return gear from the home page in one tap with <a href="/?view=return">Return Item</a>.</p>
-    {/if}
 </div>
 
+{#if error}
+    <div class="alert alert-danger" role="alert">
+        <div class="d-flex align-items-center flex-wrap gap-2">
+            <IconAlert size={20} class="icon alert-icon flex-shrink-0" />
+            <div class="flex-fill">{error}</div>
+            <button class="btn btn-sm btn-outline-danger" type="button" on:click={() => { error = ''; load(); }}>Try again</button>
+        </div>
+    </div>
+{/if}
+
+<nav class="row g-2 mb-3" aria-label="Quick actions">
+    <div class="col-6 col-md-3">
+        <a class="card card-link card-sm h-100" href="/?view=return">
+            <div class="card-body d-flex align-items-center gap-2">
+                <span class="avatar avatar-sm bg-info-lt"><IconReturn size={18} class="icon" /></span>
+                <span class="fw-medium">Return</span>
+            </div>
+        </a>
+    </div>
+    <div class="col-6 col-md-3">
+        <a class="card card-link card-sm h-100" href="/?view=borrow">
+            <div class="card-body d-flex align-items-center gap-2">
+                <span class="avatar avatar-sm bg-warning-lt"><IconBorrow size={18} class="icon" /></span>
+                <span class="fw-medium">Borrow</span>
+            </div>
+        </a>
+    </div>
+    <div class="col-6 col-md-3">
+        <a class="card card-link card-sm h-100" href="/mechlab">
+            <div class="card-body d-flex align-items-center gap-2">
+                <span class="avatar avatar-sm bg-danger-lt"><IconRobot size={18} class="icon" /></span>
+                <span class="fw-medium">Book a robot</span>
+            </div>
+        </a>
+    </div>
+    <div class="col-6 col-md-3">
+        <a class="card card-link card-sm h-100" href="/mocap">
+            <div class="card-body d-flex align-items-center gap-2">
+                <span class="avatar avatar-sm bg-primary-lt"><IconVideo size={18} class="icon" /></span>
+                <span class="fw-medium">MoCap lab</span>
+            </div>
+        </a>
+    </div>
+</nav>
+
+{#if !data && !error}
+    <div class="card">
+        <div class="card-body text-secondary">Loading…</div>
+    </div>
+{:else if data}
+    <div class="row row-cards g-3 mb-3">
+        <div class="col-12 col-md-4">
+            <section class="card h-100">
+                <div class="card-status-top" style="background: var(--rp-iris)"></div>
+                <div class="card-body">
+                    <div class="subheader d-flex align-items-center gap-1"><IconBell size={16} class="icon" /> Needs you</div>
+                    {#if data.needs_you.length}
+                        <div class="h1 mb-1 mt-2 tabular">{data.needs_you.length}</div>
+                        <div class="text-secondary">{data.needs_you.length === 1 ? 'thing to sort out' : 'things to sort out'}, see below</div>
+                    {:else}
+                        <div class="h2 mb-1 mt-2 d-flex align-items-center gap-2">
+                            All clear <IconSparkles size={22} class="icon text-success" />
+                        </div>
+                        <div class="text-secondary">Nothing is waiting on you</div>
+                    {/if}
+                </div>
+            </section>
+        </div>
+
+        <div class="col-12 col-md-4">
+            <section class="card h-100">
+                <div class="card-status-top" style="background: {nextHue}"></div>
+                <div class="card-body">
+                    <div class="subheader d-flex align-items-center gap-1"><IconCalendar size={16} class="icon" /> Next booking</div>
+                    {#if next}
+                        {#if left}
+                            <div class="d-flex gap-3 mt-2 mb-1">
+                                {#each countdown as [value, unit]}
+                                    <div>
+                                        <span class="h1 mb-0 tabular">{pad(value)}</span>
+                                        <span class="small text-secondary ms-1">{unit}</span>
+                                    </div>
+                                {/each}
+                            </div>
+                        {:else}
+                            <div class="h1 mb-1 mt-2">Now</div>
+                        {/if}
+                        <div class="d-flex align-items-center flex-wrap gap-2">
+                            <strong>{robots[next.resource_id]?.name || 'Robot'}</strong>
+                            {#if next.status === 'pending'}<span class="badge bg-warning-lt">Pending</span>{/if}
+                        </div>
+                        <div class="text-secondary small mt-1">
+                            <span class="tabular">{day(next.start_time)}, {time(next.start_time)}–{time(next.end_time)}</span>
+                            {#if next.thread_name || next.purpose}<br />{next.thread_name || next.purpose}{/if}
+                        </div>
+                    {:else}
+                        <div class="h2 mb-3 mt-2">Nothing booked</div>
+                        <a class="btn btn-outline-primary btn-sm" href="/mechlab">Book a robot</a>
+                    {/if}
+                </div>
+            </section>
+        </div>
+
+        <div class="col-12 col-md-4">
+            <section class="card h-100">
+                <div class="card-status-top" style="background: var(--rp-foam)"></div>
+                <div class="card-body">
+                    <div class="subheader d-flex align-items-center gap-1"><IconPackage size={16} class="icon" /> You have</div>
+                    {#if openLoans.length}
+                        <div class="h1 mb-2 mt-2 tabular">{openLoans.length}</div>
+                        <div class="list-group list-group-flush mb-2">
+                            {#each openLoans as loan (loan.ID)}
+                                <div class="list-group-item px-0 py-2 d-flex align-items-center justify-content-between gap-2">
+                                    <span class="text-truncate">{loan.item_name}{#if loan.quantity_borrowed > 1}{` × ${loan.quantity_borrowed}`}{/if}</span>
+                                    {#if loan.status === 'not_found'}
+                                        <span class="badge bg-danger">Missing</span>
+                                    {:else if loan.overdue}
+                                        <span class="badge bg-danger text-nowrap">{overdueText(loan)}</span>
+                                    {:else if loan.status === 'pending'}
+                                        <span class="badge bg-warning-lt">Waiting</span>
+                                    {:else}
+                                        <span class="tabular text-secondary small text-nowrap">{loan.expected_return_date}</span>
+                                    {/if}
+                                </div>
+                            {/each}
+                        </div>
+                        <a class="d-inline-flex align-items-center gap-1" href="/account">Manage in your account <IconArrowRight size={16} class="icon" /></a>
+                    {:else}
+                        <div class="h2 mb-3 mt-2">Nothing borrowed</div>
+                        <a class="btn btn-outline-primary btn-sm" href="/items">See what's in the lab</a>
+                    {/if}
+                </div>
+            </section>
+        </div>
+    </div>
+
+    {#if data.needs_you.length}
+        <section class="card mb-3">
+            <div class="card-header">
+                <h3 class="card-title d-flex align-items-center gap-2"><IconBell size={18} class="icon text-primary" /> Needs you</h3>
+                <div class="card-actions"><span class="badge bg-primary-lt">{data.needs_you.length}</span></div>
+            </div>
+            <div class="list-group list-group-flush">
+                {#each data.needs_you as item}
+                    {@const [hue, icon] = area(item.link)}
+                    {@const href = safeLink(item.link)}
+                    {#if href}
+                        <a class="list-group-item list-group-item-action d-flex align-items-center gap-3" {href}>
+                            <span class="avatar avatar-sm need-icon" style="--hue: {hue}"><svelte:component this={icon} size={18} class="icon" /></span>
+                            <span class="flex-fill min-w-0">{item.text}</span>
+                            <IconChevronRight size={18} class="icon text-secondary flex-shrink-0" />
+                        </a>
+                    {:else}
+                        <div class="list-group-item d-flex align-items-center gap-3">
+                            <span class="avatar avatar-sm need-icon" style="--hue: {hue}"><svelte:component this={icon} size={18} class="icon" /></span>
+                            <span class="flex-fill min-w-0">{item.text}</span>
+                        </div>
+                    {/if}
+                {/each}
+            </div>
+        </section>
+    {/if}
+
+    <h2 class="h3 mt-4 mb-3 d-flex align-items-center gap-2"><IconFlask size={20} class="icon text-success" /> Your research threads</h2>
+    {#if !data.threads.length}
+        <a class="card card-link mb-3" href="/threads">
+            <div class="card-body d-flex align-items-center gap-3">
+                <div class="flex-fill">
+                    <div class="fw-bold">{user?.permissions?.includes('create_threads') ? 'Start a research thread' : 'Join a research thread to book robots'}</div>
+                    <div class="text-secondary small">
+                        {user?.permissions?.includes('create_threads') ? 'Create one, add your students, and request robot access.' : 'Ask your prof to add you, or see who leads what.'}
+                    </div>
+                </div>
+                <IconChevronRight size={20} class="icon text-secondary flex-shrink-0" />
+            </div>
+        </a>
+    {:else}
+        <div class="row row-cards g-3 mb-3">
+            {#each data.threads as thread (thread.ID)}
+                <div class="col-12 col-md-6 col-xl-4">
+                    <section class="card h-100">
+                        <div class="card-status-top" style="background: {hueFor(thread.ID)}"></div>
+                        <div class="card-header">
+                            <div class="min-w-0">
+                                <h3 class="card-title text-break">{thread.name}</h3>
+                                <div class="card-subtitle small text-secondary mt-1">
+                                    Lead {thread.lead_name} · <span class="tabular">{thread.members.length}</span>
+                                    {thread.members.length === 1 ? 'member' : 'members'}
+                                </div>
+                            </div>
+                            {#if thread.can_manage}
+                                <div class="card-actions"><a class="btn btn-sm btn-ghost-primary" href="/threads">Manage</a></div>
+                            {/if}
+                        </div>
+                        <div class="card-body">
+                            {#each thread.access as robot (robot.resource_id)}
+                                <div class="mb-3">
+                                    <div class="d-flex align-items-center justify-content-between gap-2 mb-1">
+                                        <span class="text-truncate d-flex align-items-center gap-1">
+                                            <IconRobot size={16} class="icon text-secondary flex-shrink-0" />{robot.resource_name}
+                                        </span>
+                                        {#if robot.status === 'pending'}
+                                            <span class="badge bg-warning-lt text-nowrap">Waiting for sign-off</span>
+                                        {:else if robot.hours_per_week}
+                                            <span class="tabular text-secondary small text-nowrap">{hours(robot.used_this_week)} / {robot.hours_per_week} h</span>
+                                        {:else}
+                                            <span class="text-secondary small text-nowrap"><span class="tabular">{hours(robot.used_this_week)}</span> this week</span>
+                                        {/if}
+                                    </div>
+                                    {#if robot.status === 'approved' && robot.hours_per_week}
+                                        <div class="progress progress-sm">
+                                            <div
+                                                class="progress-bar"
+                                                class:bg-danger={robot.used_this_week >= robot.hours_per_week}
+                                                style="width: {pct(robot.used_this_week, robot.hours_per_week)}; {robot.used_this_week >= robot.hours_per_week ? '' : `background: ${hueFor(thread.ID)}`}"
+                                                role="progressbar"
+                                                aria-label="{robot.resource_name} hours used this week"
+                                                aria-valuenow={Math.round(robot.used_this_week * 10) / 10}
+                                                aria-valuemin="0"
+                                                aria-valuemax={robot.hours_per_week}
+                                            ></div>
+                                        </div>
+                                    {/if}
+                                </div>
+                            {:else}
+                                <p class="text-secondary small">No robot access yet.</p>
+                            {/each}
+
+                            {#if thread.upcoming.length}
+                                <div class="subheader mt-3 mb-1">Coming up</div>
+                                <div class="list-group list-group-flush">
+                                    {#each thread.upcoming.slice(0, 3) as b (b.ID)}
+                                        <div class="list-group-item px-0 py-2 d-flex justify-content-between gap-2 small">
+                                            <span class="text-truncate">
+                                                {robots[b.resource_id]?.name || thread.access.find((a) => a.resource_id === b.resource_id)?.resource_name || 'Robot'}
+                                                <span class="text-secondary">· {b.booked_by}</span>
+                                            </span>
+                                            <span class="tabular text-secondary text-nowrap">{day(b.start_time)} {time(b.start_time)}{#if b.status === 'pending'}{' · pending'}{/if}</span>
+                                        </div>
+                                    {/each}
+                                </div>
+                                {#if thread.upcoming.length > 3}<div class="text-secondary small">+{thread.upcoming.length - 3} more</div>{/if}
+                            {/if}
+
+                            {#if thread.gear.length}
+                                <div class="subheader mt-3 mb-1">Gear held</div>
+                                <div class="list-group list-group-flush">
+                                    {#each thread.gear as loan (loan.ID)}
+                                        <div class="list-group-item px-0 py-2 d-flex justify-content-between align-items-center gap-2 small">
+                                            <span class="text-truncate">{loan.item_name} <span class="text-secondary">· {loan.borrower_name}</span></span>
+                                            {#if loan.overdue}
+                                                <span class="badge bg-danger text-nowrap">{overdueText(loan)}</span>
+                                            {:else}
+                                                <span class="tabular text-secondary text-nowrap">{loan.expected_return_date}</span>
+                                            {/if}
+                                        </div>
+                                    {/each}
+                                </div>
+                            {/if}
+                        </div>
+                    </section>
+                </div>
+            {/each}
+        </div>
+    {/if}
+
+    {#if data.usage}
+        {@const u = data.usage}
+        <h2 class="h3 mt-4 mb-3 d-flex align-items-center gap-2"><IconChart size={20} class="icon text-info" /> How the lab is used</h2>
+        <div class="row row-cards g-3 mb-3">
+            <div class="col-12 col-md-6 col-xl-4">
+                <section class="card h-100">
+                    <div class="card-header"><h3 class="card-title">Robot hours, last 4 weeks</h3></div>
+                    <div class="card-body">
+                        {#each u.robot_hours as row, i (row.name)}
+                            <div class="mb-2">
+                                <div class="d-flex justify-content-between gap-2 small mb-1">
+                                    <span class="text-truncate">{row.name}</span>
+                                    <span class="tabular text-secondary text-nowrap">{hours(row.hours)}</span>
+                                </div>
+                                <div class="progress progress-sm">
+                                    <div class="progress-bar" style="width: {pct(row.hours, maxOf(u.robot_hours))}; background: {robotHue(row.name, i)}"></div>
+                                </div>
+                            </div>
+                        {:else}
+                            <div class="empty py-2"><p class="empty-subtitle text-secondary">No bookings yet.</p></div>
+                        {/each}
+                    </div>
+                </section>
+            </div>
+            <div class="col-12 col-md-6 col-xl-4">
+                <section class="card h-100">
+                    <div class="card-header"><h3 class="card-title">By thread</h3></div>
+                    <div class="card-body">
+                        {#each u.thread_hours as row, i (row.name)}
+                            <div class="mb-2">
+                                <div class="d-flex justify-content-between gap-2 small mb-1">
+                                    <span class="text-truncate">{row.name}</span>
+                                    <span class="tabular text-secondary text-nowrap">{hours(row.hours)}</span>
+                                </div>
+                                <div class="progress progress-sm">
+                                    <div class="progress-bar" style="width: {pct(row.hours, maxOf(u.thread_hours))}; background: {threadHue(row.name, i)}"></div>
+                                </div>
+                            </div>
+                        {:else}
+                            <div class="empty py-2"><p class="empty-subtitle text-secondary">No thread bookings yet.</p></div>
+                        {/each}
+                    </div>
+                </section>
+            </div>
+            <div class="col-12 col-md-6 col-xl-4">
+                <section class="card h-100">
+                    <div class="card-header"><h3 class="card-title">Most borrowed, 90 days</h3></div>
+                    {#if u.top_items.length}
+                        <div class="table-responsive">
+                            <table class="table table-vcenter card-table">
+                                <thead>
+                                    <tr><th>Item</th><th class="w-1 text-end">Loans</th></tr>
+                                </thead>
+                                <tbody>
+                                    {#each u.top_items as row (row.name)}
+                                        <tr><td class="text-break">{row.name}</td><td class="text-end tabular text-secondary">{row.loans}</td></tr>
+                                    {/each}
+                                </tbody>
+                            </table>
+                        </div>
+                    {:else}
+                        <div class="card-body"><div class="empty py-2"><p class="empty-subtitle text-secondary">No loans yet.</p></div></div>
+                    {/if}
+                </section>
+            </div>
+            <div class="col-12 col-md-6 col-xl-4">
+                <section class="card">
+                    <div class="card-status-top" style="background: var(--rp-gold)"></div>
+                    <div class="card-body">
+                        <div class="subheader d-flex align-items-center gap-1"><IconBan size={16} class="icon" /> No-shows, last 4 weeks</div>
+                        <div class="h1 mb-0 mt-2 tabular">{u.no_shows}</div>
+                    </div>
+                </section>
+            </div>
+        </div>
+    {/if}
+
+    <p class="text-secondary small mt-4">
+        Tip: return gear from the home page in one tap with <a href="/?view=return">Return Item</a>.
+    </p>
+{/if}
+
 <style>
-    .container {
-        max-width: var(--page-max);
-        margin: 0 auto;
-        padding: clamp(10px, 2vw, 20px) var(--gutter) 40px;
-        box-sizing: border-box;
-    }
-
-    .page-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 12px;
-        flex-wrap: wrap;
-        border-bottom: 1px solid var(--ctp-surface0);
-        padding-bottom: 12px;
-        margin-bottom: 18px;
-    }
-
-    .hello {
-        display: flex;
-        align-items: center;
-        gap: 14px;
-        min-width: 0;
-    }
-
-    .avatar {
-        display: grid;
-        place-items: center;
-        flex: none;
-        width: 48px;
-        height: 48px;
-        border-radius: 50%;
-        background: linear-gradient(135deg, var(--rp-iris), var(--rp-rose));
-        color: var(--accent-ink);
-        font-weight: 700;
-        font-size: 1.2rem;
-        box-shadow: var(--shadow-sm);
-    }
-
-    h1 {
-        margin: 0;
-        font-size: clamp(1.3rem, 3vw, 1.8rem);
-        font-weight: 600;
-        color: var(--rp-iris);
-    }
-
-    .subtitle {
-        margin: 2px 0 0;
-        font-size: 0.9rem;
-        color: var(--ctp-subtext0);
-    }
-
-    .clock {
-        font-size: 1.8rem;
-        color: var(--ctp-subtext0);
-    }
-
-    /* --- quick actions, in the style of the home tiles ------------------- */
-
-    .quick-actions {
-        display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 10px;
-        margin-bottom: 18px;
-    }
-
-    .quick {
-        position: relative;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        min-height: 48px;
-        padding: 10px 14px;
-        border: 1px solid var(--ctp-surface0);
-        border-radius: 12px;
-        background: color-mix(in srgb, var(--card) 60%, transparent);
-        color: var(--tile-accent);
-        font-weight: 600;
-        text-decoration: none;
-        overflow: hidden;
-        box-sizing: border-box;
-        transition: transform var(--normal) var(--ease), border-color var(--normal) var(--ease);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .quick::after {
-        content: '';
-        position: absolute;
-        left: 0;
-        top: 0;
-        bottom: 0;
-        width: 3px;
-        background: var(--tile-accent);
-        transform: scaleY(0.3);
-        transition: transform var(--normal) var(--ease);
-    }
-
-    .quick:hover {
-        transform: translateY(-2px);
-        border-color: color-mix(in srgb, var(--tile-accent) 55%, var(--ctp-surface1));
-    }
-
-    .quick:hover::after {
-        transform: scaleY(1);
-    }
-
-    :root[data-theme='light'] .quick {
-        color: color-mix(in srgb, var(--tile-accent) 80%, var(--rp-text));
-    }
-
-    /* --- overview cards (old admin dashboard) ----------------------------- */
-
-    .overview-cards {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
-        gap: clamp(12px, 2vw, 18px);
-        margin-bottom: 18px;
-        align-items: start;
-    }
-
-    .card,
-    .panel,
-    .thread-card {
-        background:
-            linear-gradient(180deg, color-mix(in srgb, var(--rp-text) 4%, transparent), transparent 60%),
-            color-mix(in srgb, var(--card) 60%, transparent);
-        border: 1px solid var(--ctp-surface0);
-        border-radius: var(--radius-lg);
-        box-shadow: var(--shadow-sm);
-        min-width: 0;
-        box-sizing: border-box;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .card {
-        padding: clamp(18px, 3vw, 26px);
-        text-align: center;
-        transition: transform var(--normal) var(--ease), box-shadow var(--normal) var(--ease), border-color var(--normal) var(--ease);
-    }
-
-    .card:hover {
-        transform: translateY(-3px);
-        border-color: color-mix(in srgb, var(--hue) 45%, var(--ctp-surface1));
-        box-shadow: var(--shadow);
-    }
-
-    .card h3 {
-        margin: 0 0 6px;
-        font-size: 1.05rem;
-        color: var(--ctp-text);
-    }
-
-    .stat-number {
-        margin: 8px 0;
-        font-size: clamp(2.6rem, 7vw, 3.6rem);
-        font-weight: 700;
-        line-height: 1.1;
-        color: var(--hue);
-    }
-
-    .stat-word {
-        margin: 14px 0 10px;
-        font-size: 1.5rem;
-        font-weight: 650;
-        color: var(--hue);
-    }
-
-    :root[data-theme='light'] .stat-number,
-    :root[data-theme='light'] .stat-word {
-        color: color-mix(in srgb, var(--hue) 80%, var(--rp-text));
-    }
-
-    .card-line {
-        margin: 6px 0 0;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        gap: 8px;
-        flex-wrap: wrap;
-    }
-
-    .card-note {
-        display: block;
-        margin: 4px 0 0;
-        font-size: 0.88rem;
-        color: var(--ctp-subtext0);
-    }
-
-    .card-note.left {
-        text-align: left;
-    }
-
-    .card-btn {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        min-height: 40px;
-        padding: 8px 18px;
-        border-radius: 8px;
-        background: linear-gradient(135deg, var(--rp-rose), var(--rp-love));
-        color: var(--accent-ink);
-        font-weight: 600;
-        text-decoration: none;
-        transition: transform var(--fast) var(--ease), box-shadow var(--fast) var(--ease);
-    }
-
-    .card-btn:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 6px 18px color-mix(in srgb, var(--rp-rose) 30%, transparent);
-    }
-
-    .card-link,
-    .small-link {
-        display: inline-block;
-        margin-top: 10px;
-        color: var(--link);
-        font-size: 0.9rem;
-        text-decoration: none;
-    }
-
-    .card-link:hover,
-    .small-link:hover {
-        text-decoration: underline;
-    }
-
-    .digits {
-        display: flex;
-        justify-content: center;
-        gap: 8px;
-        margin: 10px 0 8px;
-    }
-
-    .digits span {
-        display: grid;
-        justify-items: center;
-        gap: 4px;
-    }
-
-    .digits b {
-        padding: 6px 10px;
-        border-radius: 8px;
-        background: color-mix(in srgb, var(--hue) 14%, transparent);
-        border: 1px solid color-mix(in srgb, var(--hue) 30%, transparent);
-        color: var(--hue);
-        font-size: 1.9rem;
-        font-weight: 600;
-    }
-
-    :root[data-theme='light'] .digits b {
-        color: color-mix(in srgb, var(--hue) 80%, var(--rp-text));
-    }
-
-    .digits small {
-        font-size: 0.75rem;
-        color: var(--ctp-subtext0);
-    }
-
-    .mini-list {
-        text-align: left;
-    }
-
-    .mini-row {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 10px;
-        padding: 8px 0;
-        border-top: 1px solid var(--ctp-surface0);
-        font-size: 0.92rem;
-        text-align: left;
-    }
-
-    /* --- panels ------------------------------------------------------------ */
-
-    .panel {
-        padding: clamp(15px, 3vw, 22px);
-        margin-bottom: 18px;
-    }
-
-    .section-title {
-        margin: 0 0 12px;
-        font-size: 1.05rem;
-        color: var(--ctp-text);
-        border-left: 4px solid var(--hue);
-        padding-left: 12px;
-    }
-
-    .count {
-        display: inline-block;
-        margin-left: 6px;
-        padding: 2px 8px;
-        border-radius: 12px;
-        background: var(--rp-love);
-        color: var(--accent-ink);
-        font-size: 0.75rem;
-        vertical-align: 2px;
-    }
-
-    .needs {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-    }
-
-    .need {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        min-height: 48px;
-        padding: 10px 14px;
-        border-radius: 10px;
-        border: 1px solid var(--ctp-surface0);
-        border-left: 3px solid var(--hue);
-        background: color-mix(in srgb, var(--hue) 6%, color-mix(in srgb, var(--card) 60%, transparent));
-        color: var(--ctp-text);
-        text-decoration: none;
-        box-sizing: border-box;
-        transition: transform var(--fast) var(--ease), background var(--fast) var(--ease);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    a.need:hover {
-        transform: translateX(3px);
-        background: color-mix(in srgb, var(--hue) 12%, color-mix(in srgb, var(--card) 60%, transparent));
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
+    /* Each "needs you" row takes the hue of the area it links to */
     .need-icon {
-        font-size: 1.3rem;
-        flex: none;
-    }
-
-    .need-arrow {
-        flex: none;
-        color: var(--ctp-overlay1);
-        font-size: 1.1rem;
-    }
-
-    a:hover .need-arrow {
-        color: var(--hue, var(--accent));
-    }
-
-    .grow {
-        flex: 1;
-        min-width: 0;
-    }
-
-    .group-title {
-        margin: 6px 0 12px;
-        font-size: 1.2rem;
-        font-weight: 600;
-        color: var(--ctp-text);
-    }
-
-    .join {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        color: var(--ctp-text);
-        text-decoration: none;
-        --hue: var(--rp-rose);
-    }
-
-    .join:hover {
-        border-color: var(--rp-rose);
-    }
-
-    /* --- threads ------------------------------------------------------------ */
-
-    .threads {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
-        gap: clamp(12px, 2vw, 18px);
-        align-items: start;
-        margin-bottom: 18px;
-    }
-
-    .thread-card {
-        position: relative;
-        overflow: hidden;
-        padding: clamp(15px, 3vw, 22px);
-        border-color: color-mix(in srgb, var(--hue) 30%, var(--ctp-surface0));
-    }
-
-    .thread-card::after {
-        content: '';
-        position: absolute;
-        left: 0;
-        top: 0;
-        bottom: 0;
-        width: 4px;
-        background: var(--hue);
-    }
-
-    .head,
-    .split {
-        display: flex;
-        align-items: baseline;
-        justify-content: space-between;
-        gap: 10px;
-    }
-
-    .head h3 {
-        margin: 0;
-        font-size: 1.15rem;
-        font-weight: 650;
         color: var(--hue);
-    }
-
-    :root[data-theme='light'] .head h3 {
-        color: color-mix(in srgb, var(--hue) 75%, var(--rp-text));
-    }
-
-    .head .small-link {
-        margin: 0;
-        min-height: 0;
-    }
-
-    .robot {
-        margin-top: 12px;
-    }
-
-    .bar {
-        margin-top: 8px;
-        height: 8px;
-        border-radius: 999px;
-        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
-        overflow: hidden;
-    }
-
-    .bar > span {
-        display: block;
-        height: 100%;
-        border-radius: inherit;
-        background: var(--hue, var(--accent));
-    }
-
-    .bar.over > span {
-        background: var(--warn);
-    }
-
-    .sub-title {
-        margin: 16px 0 4px;
-        font-size: 0.8rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        color: var(--ctp-overlay1);
-    }
-
-    /* --- usage ------------------------------------------------------------- */
-
-    .usage {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
-        gap: clamp(12px, 2vw, 18px);
-        align-items: start;
-    }
-
-    .usage .panel {
-        margin: 0;
-    }
-
-    .hbar {
-        display: grid;
-        grid-template-columns: minmax(0, 7em) 1fr auto;
-        align-items: center;
-        gap: 10px;
-        margin: 10px 0;
-        font-size: 0.92rem;
-    }
-
-    .hbar .bar {
-        margin: 0;
-    }
-
-    .status-badge {
-        display: inline-block;
-        flex: none;
-        padding: 2px 9px;
-        border-radius: 20px;
-        font-size: 0.75rem;
-        font-weight: 700;
-        white-space: nowrap;
-    }
-
-    .status-badge.warn {
-        background: color-mix(in srgb, var(--rp-gold) 22%, transparent);
-        color: var(--rp-gold);
-    }
-
-    .status-badge.overdue {
-        background: var(--rp-love);
-        color: var(--accent-ink);
-    }
-
-    :root[data-theme='light'] .status-badge.warn {
-        color: color-mix(in srgb, var(--rp-gold) 60%, var(--rp-text));
-    }
-
-    .error-state {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 12px;
-        flex-wrap: wrap;
-        border-color: color-mix(in srgb, var(--danger) 45%, transparent);
-        color: var(--danger);
-    }
-
-    .error-state p {
-        margin: 0;
-    }
-
-    .ghost-btn {
-        min-height: 40px;
-        padding: 8px 16px;
-        border: 1px solid var(--ctp-surface1);
-        border-radius: 8px;
-        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
-        color: var(--ctp-text);
-        font: inherit;
-        cursor: pointer;
-    }
-
-    .truncate {
-        min-width: 0;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-
-    .nowrap {
-        white-space: nowrap;
-    }
-
-    .muted {
-        color: var(--ctp-subtext0);
-    }
-
-    .mono {
-        font-family: var(--mono);
-        font-variant-numeric: tabular-nums;
-    }
-
-    .note {
-        color: var(--ctp-subtext0);
-        text-align: center;
-        padding: 30px 0;
-    }
-
-    .footer-note {
-        margin: 24px 0 0;
-        font-size: 0.85rem;
-        color: var(--ctp-subtext0);
-        text-align: center;
-    }
-
-    .footer-note a {
-        color: var(--link);
-    }
-
-    @media (max-width: 700px) {
-        .quick-actions {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-        }
-
-        .clock {
-            display: none;
-        }
+        background: color-mix(in srgb, var(--hue) 16%, transparent);
     }
 </style>
