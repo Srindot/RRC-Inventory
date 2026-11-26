@@ -746,32 +746,50 @@
         <header class="page-head">
             <div>
                 <h1>Printer guide</h1>
-                <p>How to use the Bambu Lab P1S printers.</p>
+                <p>How to print on the lab's Bambu Lab P1S printers, step by step.</p>
             </div>
             <button class="btn" on:click={goHome}>Back</button>
         </header>
 
         <article class="card guide">
-            <!-- How to print, in the order you actually do it -->
+            <!-- The one thing everyone must remember, before anything else -->
+            <div class="callout">
+                <strong>The one rule: put your name in the file name.</strong>
+                <p>
+                    Name every print <code>yourname_object</code>, for example
+                    <code>srinath_bracket.3mf</code>. The <a href="/printers">printer page</a> shows
+                    the file name, so everyone can see whose print is running. A print with no
+                    name on it may be stopped when someone else needs the printer.
+                </p>
+            </div>
+
             <section>
-                <h2>How to print</h2>
-
-                <div class="callout">
-                    <strong>The one rule: put your name in the file name.</strong>
-                    <p>
-                        Save your sliced file as <code>yourname_object.3mf</code> - for example
-                        <code>srinath_bracket.3mf</code>. The printer reports the file name, so the
-                        <a href="/printers">printer page</a> shows whose print is running on each
-                        machine. A print nobody can identify is a print that gets stopped when
-                        someone else needs the printer.
-                    </p>
-                </div>
-
+                <h2>1. First-time setup</h2>
+                <p>Do this once on your laptop. Next time, skip straight to step 2.</p>
                 <ol>
                     <li>
-                        <strong>Get on the printer network.</strong>
-                        The printers have their own network inside the lab - they are not
-                        reachable from wifi@iiith.
+                        <strong>Install Bambu Studio.</strong>
+                        It turns your 3D model into instructions the printer understands
+                        ("slicing"). Download it from
+                        <a href="https://bambulab.com/en/download/studio" target="_blank" rel="noopener noreferrer">bambulab.com</a>.
+                    </li>
+                    <li>
+                        <strong>Download the RRC presets</strong> and import them.
+                        They are the lab's tested settings for our printers and our filament.
+                        <a class="row link-row download" href="/downloads/RRC_Bambu_P1S_Preset.bbscfg" download>
+                            <span>
+                                <strong>RRC_Bambu_P1S_Preset.bbscfg</strong>
+                                <span class="hint">Printer, print and filament presets for the lab's P1S printers</span>
+                            </span>
+                            <Icon name="arrow" />
+                        </a>
+                        In Bambu Studio choose <em>File → Import → Import Configs…</em>, pick the
+                        file, and restart Bambu Studio if the presets do not show up.
+                    </li>
+                    <li>
+                        <strong>Join the printer network.</strong>
+                        The printers have their own network inside the lab. You cannot reach
+                        them from wifi@iiith.
                         <div class="wifi">
                             <div class="row">
                                 <span class="muted">Network</span>
@@ -789,27 +807,14 @@
                                     {/if}
                                 </span>
                             </div>
-                            <p class="hint">Lab members only. Do not post this in group chats or share it outside the lab.</p>
+                            <p class="hint">Lab members only. Do not post it in group chats or share it outside the lab.</p>
                         </div>
                     </li>
                     <li>
-                        <strong>Check a printer is actually free.</strong>
-                        Open the <a href="/printers">printer page</a>. It shows Free or In use,
-                        progress and time remaining for all three printers.
-                        <em>Look at the camera before you walk over</em> - a printer can say
-                        "Finished" while someone's finished print is still sitting on the plate.
-                        The plate must be empty and clean before you start.
-                    </li>
-                    <li>
-                        <strong>Install Bambu Studio.</strong>
-                        You need it to slice your model - it converts your STL into
-                        instructions the printer understands. Download it from
-                        <a href="https://bambulab.com/en/download/studio" target="_blank" rel="noopener noreferrer">bambulab.com</a>.
-                    </li>
-                    <li>
-                        <strong>Add the printer in Bambu Studio</strong> (first time only).
-                        Use LAN mode and enter the printer's IP and access code, both shown on
-                        the printer's own screen under Settings → Network.
+                        <strong>Add the printers in Bambu Studio</strong> (only if you want to
+                        send prints from Bambu Studio itself). Use <em>LAN mode</em> and enter the
+                        printer's IP address and access code. The access code is on the printer's
+                        screen under <em>Settings → Network</em>; it is not listed here on purpose.
                         <div class="table-wrap">
                             <table>
                                 <thead>
@@ -822,121 +827,239 @@
                                 </tbody>
                             </table>
                         </div>
-                        <span class="hint">
-                            Access codes are on each printer's screen. They are not listed here on
-                            purpose - if a code stops working, tell an admin.
-                        </span>
-                    </li>
-                    <li>
-                        <strong>Slice with the right printer and the right material.</strong>
-                        Select <em>Bambu Lab P1S</em>, and set the filament profile to the
-                        material that is <em>actually loaded</em> in that machine.
-                        <span class="note late">
-                            Printing PLA with PETG settings (or the other way round) melts at the
-                            wrong temperature and <strong>clogs the hotend</strong>. A clog takes
-                            the printer out of service and is a real repair job - check twice.
-                        </span>
-                    </li>
-                    <li>
-                        <strong>Get your settings checked.</strong>
-                        Before your first few prints, show your slicer settings to a lab admin.
-                        Thirty seconds of checking saves a failed 10 hour print and wasted
-                        filament.
-                    </li>
-                    <li>
-                        <strong>Check the plate and the filament before you start.</strong>
-                        The plate must be empty, clean and free of leftover plastic - anything
-                        stuck on it ruins the first layer. Confirm filament is loaded properly and
-                        is the material you sliced for, and that there is enough left on the spool
-                        for your print.
-                    </li>
-                    <li>
-                        <strong>Name the file with your name</strong> (see the rule above), then
-                        send it. Two ways:
-                        <ul>
-                            <li>
-                                <strong>From this website</strong> (easiest, no wifi switching):
-                                open <a href="/printers">3D printers</a>, pick the machine,
-                                <em>Send a file to print</em>, and drop your exported file in.
-                                Then walk over, check the plate, and start it from the printer's
-                                screen.
-                            </li>
-                            <li>
-                                <strong>From Bambu Studio</strong>, if you are already on the
-                                printer network.
-                            </li>
-                        </ul>
-                    </li>
-                    <li>
-                        <strong>Watch the first layer, then check in regularly.</strong>
-                        Stay until the first layer is down - most failures happen there. After
-                        that keep checking on it every so often from the
-                        <a href="/printers">printer page</a>; the camera shows you whether it is
-                        still printing properly. Do not start a print and forget about it.
-                    </li>
-                    <li>
-                        <strong>Collect your print promptly and clear the plate.</strong>
-                        The next person cannot start until the bed is empty. Take your waste
-                        (purge blobs, skirts, supports) with you.
                     </li>
                 </ol>
             </section>
 
             <section>
+                <h2>2. Pick the right presets</h2>
+                <p>
+                    In Bambu Studio, choose these three things before you slice. Getting them
+                    right is most of what makes a print work.
+                </p>
+
+                <h3>Printer</h3>
+                <p>Always <code>Bambu Lab P1S 0.4 nozzle</code>.</p>
+
+                <h3>Print settings (process)</h3>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr><th>Preset</th><th>Use it for</th><th>What it does</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>RRC Printing Default</strong></td>
+                                <td>Almost every print. Start here.</td>
+                                <td>0.2 mm layers, 20% gyroid infill, tree supports on, brim on the outside.</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Ironing</strong></td>
+                                <td>Parts with flat tops that should look smooth.</td>
+                                <td>Same as the default, plus a final pass that smooths the top surface. Takes longer.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p class="hint">
+                    Supports are switched on in both. If your model has no overhangs, turn
+                    supports off to save time and filament. The full preset names end in
+                    <em>@BBL X1C</em>; that is normal, the P1S uses the same print settings.
+                </p>
+
+                <h3>Filament</h3>
+                <p>
+                    Pick the preset for the filament that is <strong>actually loaded</strong> in
+                    the printer you will use. Check on the printer page or the printer's screen.
+                </p>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr><th>Loaded filament</th><th>Preset</th><th>Nozzle</th><th>Bed</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Numakers PLA+</td>
+                                <td><code>Numakers PLA +</code></td>
+                                <td>220 °C</td>
+                                <td>55 °C smooth plate, 65 °C textured plate</td>
+                            </tr>
+                            <tr>
+                                <td>Numakers PLA Silk</td>
+                                <td><code>Numakers PLA Silk</code></td>
+                                <td>230 °C</td>
+                                <td>55 °C</td>
+                            </tr>
+                            <tr>
+                                <td>Numakers ABS</td>
+                                <td><code>Numakers ABS ABS</code></td>
+                                <td>260 °C</td>
+                                <td>90 °C</td>
+                            </tr>
+                            <tr>
+                                <td>Numakers ABS, tall or thin parts</td>
+                                <td><code>Numakers ABS ABS … 0.8 Retract</code></td>
+                                <td>260 °C</td>
+                                <td>90 °C</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p class="hint">
+                    The temperatures are already in the presets; they are listed so you can
+                    check them. The "0.8 Retract" version lifts the nozzle 0.8 mm when it moves,
+                    so it does not knock over or scrape tall, thin ABS parts.
+                </p>
+                <p class="note late">
+                    Never print one material with another material's preset. The wrong
+                    temperature can <strong>clog the nozzle</strong>, and a clog takes the printer
+                    out of service until it is repaired.
+                </p>
+
+                <h3>Printing ABS</h3>
+                <ul>
+                    <li>Keep the printer's lid and door <strong>closed</strong> for the whole print. A draught makes ABS warp and lift off the bed.</li>
+                    <li>ABS gives off fumes. Keep the room ventilated and do not lean over the printer while it prints.</li>
+                    <li>Use a textured or engineering plate, not the smooth plate.</li>
+                </ul>
+            </section>
+
+            <section>
+                <h2>3. Slice and check</h2>
+                <ol>
+                    <li>
+                        <strong>Set the plate type</strong> in Bambu Studio to the plate that is
+                        on the printer (smooth or textured). The bed temperature depends on it.
+                    </li>
+                    <li>
+                        <strong>Slice</strong>, then look at the preview. Check the estimated
+                        time and how much filament it needs, and make sure there is enough left
+                        on the spool.
+                    </li>
+                    <li>
+                        <strong>First few prints?</strong> Show your settings to a lab admin before
+                        you start. A 30-second check can save a failed 10-hour print.
+                    </li>
+                    <li>
+                        <strong>Export</strong> the sliced file and name it
+                        <code>yourname_object</code>.
+                    </li>
+                </ol>
+            </section>
+
+            <section>
+                <h2>4. Send it to the printer</h2>
+                <ol>
+                    <li>
+                        <strong>Check the printer is free.</strong> Open the
+                        <a href="/printers">printer page</a>. Look at the <em>camera</em>, not only
+                        the status: a printer can say "Finished" while the last person's print is
+                        still on the plate.
+                    </li>
+                    <li>
+                        <strong>Send the file.</strong> Either:
+                        <ul>
+                            <li>
+                                <strong>From this website</strong> (easiest, no wifi switching):
+                                log in, open <a href="/printers">3D printers</a>, choose the
+                                printer, click <em>Send a file to print</em> and drop your file in.
+                            </li>
+                            <li>
+                                <strong>From Bambu Studio</strong>, if you are on the printer
+                                network and have added the printer (step 1).
+                            </li>
+                        </ul>
+                    </li>
+                    <li>
+                        <strong>Go to the printer and check it</strong> before you start: the
+                        plate is empty and clean, and the right filament is loaded with enough on
+                        the spool. Then start the print on the printer's screen.
+                    </li>
+                </ol>
+            </section>
+
+            <section>
+                <h2>5. During and after the print</h2>
+                <ol>
+                    <li>
+                        <strong>Watch the first layer.</strong> Stay until it is down: most
+                        failures happen there.
+                    </li>
+                    <li>
+                        <strong>Check in regularly</strong> on the <a href="/printers">printer
+                        page</a>. The camera shows whether it is still printing properly. Do not
+                        start a print and forget about it.
+                    </li>
+                    <li>
+                        <strong>Collect your print soon after it finishes</strong> and clear the
+                        plate, so the next person can start. Take your waste (purge blobs,
+                        supports, brim) with you.
+                    </li>
+                </ol>
+            </section>
+
+            <section>
+                <h2>When to stop a print</h2>
+                <p>
+                    Stop the print on the printer's screen <strong>straight away</strong> and tell
+                    a lab admin if you see any of these. Anyone may stop a print that is going
+                    wrong. It is always better to stop early than to damage the printer.
+                </p>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr><th>What you see</th><th>What to do</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>No plastic coming out of the nozzle</td>
+                                <td>Stop. The nozzle may be clogged. Do not try to clear it yourself.</td>
+                            </tr>
+                            <tr>
+                                <td>Tangled filament, or printing in mid-air ("spaghetti")</td>
+                                <td>Stop. Do not touch the hot nozzle or bed.</td>
+                            </tr>
+                            <tr>
+                                <td>Print came loose, or looks badly wrong</td>
+                                <td>Stop to save filament. Take a photo if you can.</td>
+                            </tr>
+                            <tr>
+                                <td>An error on the printer's screen</td>
+                                <td>Take a photo of the error <em>before</em> clearing it, then tell an admin.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p class="hint">If you stop someone else's print, tell them or a lab admin.</p>
+            </section>
+
+            <section>
                 <h2>Loading and unloading filament</h2>
                 <p>
-                    Always use the printer's own screen menu. Never pull filament out cold and
-                    never force it - that is how hotends get damaged.
+                    Always use the menu on the printer's screen. Never pull filament out cold or
+                    force it: that is how nozzles get damaged.
                 </p>
                 <div class="two-col">
                     <div>
                         <h3>Loading</h3>
                         <ol>
-                            <li>Put the spool on the holder so it feeds without tangling.</li>
-                            <li>Snip the end at an angle so it feeds in cleanly.</li>
-                            <li>Push it through the PTFE tube until it reaches the extruder.</li>
+                            <li>Put the spool on the holder so it unwinds without tangling.</li>
+                            <li>Cut the end at an angle so it feeds in cleanly.</li>
+                            <li>Push it through the tube until it reaches the extruder.</li>
                             <li>On the screen, choose <em>Filament → Load</em> and pick the material.</li>
-                            <li>Wait for the nozzle to heat and extrude, until the colour coming
-                                out is only your new filament.</li>
+                            <li>Wait until only the new colour comes out of the nozzle.</li>
                         </ol>
                     </div>
                     <div>
                         <h3>Unloading</h3>
                         <ol>
                             <li>On the screen, choose <em>Filament → Unload</em>.</li>
-                            <li>Wait for the nozzle to heat - this is not optional.</li>
-                            <li>Let the printer retract it, then pull gently. If it resists,
-                                stop and ask an admin.</li>
-                            <li>Clip the end and secure it on the spool so it does not tangle
-                                for the next person.</li>
+                            <li>Wait for the nozzle to heat up. Do not skip this.</li>
+                            <li>Let the printer pull it back, then pull gently. If it resists, stop and ask an admin.</li>
+                            <li>Clip the end into the spool so it does not unwind for the next person.</li>
                         </ol>
                     </div>
                 </div>
-                <p class="hint">Detailed official instructions are in the Bambu Lab documentation linked below.</p>
-            </section>
-
-            <section>
-                <h2>Questions about the printer page</h2>
-                <ul>
-                    <li>
-                        <strong>Your print is failing and you are not in the lab?</strong>
-                        Message a lab admin - admins can stop any print remotely from the
-                        <a href="/printers">printer page</a>. Faults themselves are covered in
-                        the safety section below.
-                    </li>
-                    <li>
-                        <strong>A printer shows Offline?</strong> It is switched off or off the
-                        network. Tell an admin.
-                    </li>
-                    <li>
-                        <strong>Your print stopped and you do not know why?</strong> An admin may
-                        have stopped it - the printer page shows who did. Ask them.
-                    </li>
-                    <li>
-                        <strong>A printer says "Access code changed"?</strong> Nothing you did.
-                        An admin needs to update it; tell them.
-                    </li>
-                </ul>
             </section>
 
             <section>
@@ -944,17 +1067,17 @@
                 <ul>
                     <li>
                         <strong>Be careful with the scraper.</strong> The blade is sharp and
-                        prints come loose suddenly. Scrape <em>away</em> from your hand, never
-                        towards it, and take the plate off the printer first. More people are
-                        hurt by the scraper than by anything else on these machines.
+                        prints come loose suddenly. Take the plate off the printer first and
+                        scrape <em>away</em> from your hand. The scraper hurts more people than
+                        anything else on these printers.
                     </li>
                     <li>
-                        <strong>The nozzle and bed are hot</strong> - well over 200 °C at the
-                        nozzle. Let things cool before reaching inside.
+                        <strong>The nozzle and bed are hot</strong>: the nozzle is over 200 °C.
+                        Let them cool before you reach inside.
                     </li>
                     <li>
-                        <strong>Keep the lid closed while printing</strong>, and do not reach in
-                        to "fix" something mid-print. Pause or stop it first.
+                        <strong>Keep the lid closed while printing.</strong> Never reach in to fix
+                        something mid-print. Pause or stop it first.
                     </li>
                 </ul>
             </section>
@@ -963,83 +1086,60 @@
                 <h2>Lab rules</h2>
                 <ul>
                     <li>Put your name in the file name. Every time.</li>
-                    <li>
-                        <strong>Filament that is not yours needs permission.</strong> Ask the
-                        owner or a lab admin before using someone else's spool. If you are
-                        unsure whose it is, ask - do not assume it is lab stock.
-                    </li>
+                    <li>Use the RRC presets. Do not change printer settings, calibration or firmware.</li>
+                    <li>Ask before using filament that is not yours. If you are not sure whose it is, ask; do not assume it is lab stock.</li>
+                    <li>Do not cancel or remove someone else's print unless it is failing (see above). Otherwise ask an admin.</li>
                     <li>Do not start a long print and disappear without telling anyone.</li>
-                    <li>Do not cancel or remove someone else's print. Ask an admin.</li>
-                    <li>Do not change printer settings, calibration or firmware.</li>
-                    <li>
-                        <strong>Keep the printer area clean.</strong> Clear away purge blobs,
-                        supports and offcuts, put tools back, and leave the bench tidy for the
-                        next person.
-                    </li>
+                    <li>Keep the printer area clean: clear purge blobs and supports, put tools back.</li>
                     <li>If you break something, say so. Hiding it costs the lab more.</li>
                 </ul>
             </section>
 
             <section>
-                <h2>Official documentation</h2>
-                <a class="row link-row" href="https://wiki.bambulab.com/en/p1/manual/loading-filament" target="_blank" rel="noopener noreferrer">
-                    <span><strong>Loading filament</strong><span class="hint">Step-by-step guide to load filament into the printer</span></span>
-                    <Icon name="arrow" />
-                </a>
-                <a class="row link-row" href="https://wiki.bambulab.com/en/p1/manual" target="_blank" rel="noopener noreferrer">
-                    <span><strong>Replacing filament</strong><span class="hint">How to change and replace filament during printing</span></span>
-                    <Icon name="arrow" />
-                </a>
-                <a class="row link-row" href="https://wiki.bambulab.com/en/p1/manual/print-from-bambu-studio" target="_blank" rel="noopener noreferrer">
-                    <span><strong>Sending print jobs</strong><span class="hint">How to send print jobs from Bambu Studio</span></span>
-                    <Icon name="arrow" />
-                </a>
-                <a class="row link-row" href="https://wiki.bambulab.com/en/general/filament-guide-material-table" target="_blank" rel="noopener noreferrer">
-                    <span><strong>Filament guide</strong><span class="hint">Complete material table and filament reference</span></span>
-                    <Icon name="arrow" />
-                </a>
+                <h2>Common questions</h2>
+                <ul>
+                    <li>
+                        <strong>A printer shows Offline?</strong> It is switched off or off the
+                        network. Tell an admin.
+                    </li>
+                    <li>
+                        <strong>Your print stopped and you do not know why?</strong> An admin may
+                        have stopped it; the printer page shows who. Ask them.
+                    </li>
+                    <li>
+                        <strong>A printer says "Access code changed"?</strong> Nothing you did.
+                        Tell an admin so they can update it.
+                    </li>
+                    <li>
+                        <strong>Your print is failing and you are not in the lab?</strong> Message
+                        a lab admin. Admins can stop any print from the printer page.
+                    </li>
+                </ul>
             </section>
 
             <section>
-                <h2>When to stop a print</h2>
-                <p>If you notice any of these during a print, <strong>stop the print immediately</strong> and tell lab staff.</p>
-
-                <h3>Nozzle blockage</h3>
-                <p>The nozzle appears blocked or no filament is extruding.</p>
-                <ul>
-                    <li>Stop the print immediately.</li>
-                    <li>Do not try to clear it yourself.</li>
-                    <li>Tell lab staff right away.</li>
-                </ul>
-
-                <h3>Tangled filament or printing in air</h3>
-                <p>The filament is tangled or the printer is printing in mid-air.</p>
-                <ul>
-                    <li>Stop the print immediately.</li>
-                    <li>Do not touch the hot nozzle or bed.</li>
-                    <li>Report the issue to lab staff.</li>
-                </ul>
-
-                <h3>Failed or messed up print</h3>
-                <p>The print quality is poor or the print is failing.</p>
-                <ul>
-                    <li>Stop the print to avoid wasting material.</li>
-                    <li>Take a photo of the issue if you can.</li>
-                    <li>Ask lab staff for help.</li>
-                </ul>
-
-                <h3>Anyone can stop a bad print</h3>
-                <ul>
-                    <li>If you notice a problem on any print, act on it.</li>
-                    <li>Keeping the equipment working is everyone's job.</li>
-                    <li>Tell lab staff about prints you stopped.</li>
-                    <li>Better to stop early than damage the printer.</li>
-                </ul>
+                <h2>Official Bambu Lab guides</h2>
+                <a class="row link-row" href="https://wiki.bambulab.com/en/p1/manual/loading-filament" target="_blank" rel="noopener noreferrer">
+                    <span><strong>Loading filament</strong><span class="hint">Step-by-step, with pictures</span></span>
+                    <Icon name="arrow" />
+                </a>
+                <a class="row link-row" href="https://wiki.bambulab.com/en/p1/manual/print-from-bambu-studio" target="_blank" rel="noopener noreferrer">
+                    <span><strong>Printing from Bambu Studio</strong><span class="hint">Sending a print over the network</span></span>
+                    <Icon name="arrow" />
+                </a>
+                <a class="row link-row" href="https://wiki.bambulab.com/en/p1/manual" target="_blank" rel="noopener noreferrer">
+                    <span><strong>P1S manual</strong><span class="hint">Everything else about the printer</span></span>
+                    <Icon name="arrow" />
+                </a>
+                <a class="row link-row" href="https://wiki.bambulab.com/en/general/filament-guide-material-table" target="_blank" rel="noopener noreferrer">
+                    <span><strong>Filament guide</strong><span class="hint">Which material to use for what</span></span>
+                    <Icon name="arrow" />
+                </a>
             </section>
 
             <section>
                 <h2>Need help?</h2>
-                <p>If something goes wrong or you have questions, contact lab staff. It is always better to stop a print and ask than to damage the equipment.</p>
+                <p>Ask a lab admin. It is always better to stop and ask than to damage a printer.</p>
             </section>
         </article>
     {/if}
@@ -1379,6 +1479,13 @@
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
         gap: 8px 24px;
+    }
+
+    /* The preset download sits inside a numbered step */
+    .guide .download {
+        margin: 8px 0;
+        border: 1px solid var(--line);
+        border-radius: var(--radius-sm);
     }
 
     .link-row {
