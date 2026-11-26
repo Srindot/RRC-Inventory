@@ -22,7 +22,7 @@
     $: shown = items.filter((i) => {
         const q = query.trim().toLowerCase();
         return !q || i.name.toLowerCase().includes(q) || i.home_lab.toLowerCase().includes(q) ||
-               i.out.some((l) => l.borrower_name.toLowerCase().includes(q));
+               i.out.some((l) => (l.borrower_name || '').toLowerCase().includes(q));
     });
 
     onMount(async () => {
@@ -74,9 +74,15 @@
     }
 
     function takeOver(item, loan) {
-        if (confirm(`Take ${item.name} over from ${loan.borrower_name}? It moves to your account and you're responsible for it.`)) {
-            post(`/api/loans/${loan.ID}/handover`, { accept: true }, load);
+        if (can(user, 'manage_inventory')) {
+            if (confirm(`Move ${item.name} from ${loan.borrower_name} to your account?`)) {
+                post(`/api/loans/${loan.ID}/handover`, { accept: true }, load);
+            }
+            return;
         }
+        // The holder's phone is the proof they handed it over, as for a return.
+        const phone = prompt(`Take ${item.name} over from ${loan.borrower_name}?\n\nIt moves to your account and you're responsible for it. Enter ${loan.borrower_name}'s phone number to confirm they gave it to you:`);
+        if (phone !== null) post(`/api/loans/${loan.ID}/handover`, { accept: true, phone }, load);
     }
 
     function saveIssue(item, text) {

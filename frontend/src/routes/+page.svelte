@@ -305,11 +305,18 @@
             location.href = loginUrl();
             return;
         }
-        if (!confirm(`Take ${loan.item_name} over from ${loan.borrower_name}? It moves to your account and you're responsible for it.`)) return;
+        let phone = '';
+        if (can(user, 'manage_inventory')) {
+            if (!confirm(`Move ${loan.item_name} from ${loan.borrower_name} to your account?`)) return;
+        } else {
+            // The holder's phone is the proof they handed it over, as for a return.
+            phone = prompt(`Take ${loan.item_name} over from ${loan.borrower_name}?\n\nIt moves to your account and you're responsible for it. Enter ${loan.borrower_name}'s phone number to confirm they gave it to you:`);
+            if (phone === null) return;
+        }
         const response = await api(`/api/loans/${loan.ID}/handover`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ accept: true })
+            body: JSON.stringify({ accept: true, phone })
         }).catch(() => null);
         if (!response) {
             showMessage('Network error. Please try again.', 'error');

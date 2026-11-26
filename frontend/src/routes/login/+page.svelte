@@ -14,7 +14,10 @@
         const target = new URLSearchParams(location.search).get('next') || '/';
         try {
             const url = new URL(target, location.origin);
-            next = url.origin === location.origin ? url.pathname + url.search + url.hash : '/';
+            // A path starting "//" (e.g. from "/.//evil.com") is read by the
+            // browser as a link to another site, so it is refused as well.
+            const local = url.origin === location.origin && !/^\/[\/\\]/.test(url.pathname);
+            next = local ? url.pathname + url.search + url.hash : '/';
         } catch {
             next = '/';
         }

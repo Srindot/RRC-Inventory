@@ -216,6 +216,29 @@ func savePhoto(c *gin.Context, files []*multipart.FileHeader) (string, error) {
 	return name, nil
 }
 
+// errHandoverPhone means the caller did not give the current holder's phone.
+var errHandoverPhone = errors.New("handover phone mismatch")
+
+// loanUserError is a refusal meant to be read by the person who asked, so it
+// goes back in the response as written. Anything else is logged instead,
+// because a database or lock error says nothing useful to them.
+type loanUserError string
+
+func (e loanUserError) Error() string { return string(e) }
+
+// checkHandover decides whether me may take previous over. The phone has to be
+// the current holder's, as for a return; staff who manage the inventory may
+// move a loan without it.
+func checkHandover(me authUser, phone string, previous Loan) error {
+	if previous.UserID != nil && *previous.UserID == me.ID {
+		return loanUserError("This is already yours")
+	}
+	if !me.can(PermManageInventory) && !phonesMatch(phone, previous.BorrowerPhone) {
+		return errHandoverPhone
+	}
+	return nil
+}
+
 func registerInventoryRoutes(api *gin.RouterGroup, db *gorm.DB, sessions *sessionStore, requireLogin gin.HandlerFunc) {
 	api = api.Group("", limitBody(defaultBodyLimit))
 
@@ -420,9 +443,14 @@ func registerInventoryRoutes(api *gin.RouterGroup, db *gorm.DB, sessions *sessio
 
 	// "I have this now": the gear went from one person to the next without
 	// going back to the shelf. Their loan closes and one opens for the caller.
+	//
+	// The caller must give the current holder's phone number, the same proof a
+	// return asks for - otherwise any account could close anyone's loan and
+	// claim the item. Staff who manage the inventory can move loans without it.
 	user.POST("/loans/:id/handover", requirePerm(PermBorrowItems), func(c *gin.Context) {
 		var req struct {
-			Accept bool `json:"accept"`
+			Accept bool   `json:"accept"`
+			Phone  string `json:"phone"`
 		}
 		c.ShouldBindJSON(&req)
 		me := currentUser(c)
@@ -439,17 +467,17 @@ func registerInventoryRoutes(api *gin.RouterGroup, db *gorm.DB, sessions *sessio
 			if previous.Status != LoanActive {
 				return errReturnNotActive
 			}
-			if previous.UserID != nil && *previous.UserID == me.ID {
-				return errors.New("this is already yours")
+			if err := checkHandover(me, req.Phone, previous); err != nil {
+				return err
 			}
 			if previous.ItemID != nil {
 				var item Item
 				if tx.First(&item, *previous.ItemID).Error == nil {
 					if item.NeedsApproval && !me.can(PermAutoApprove) {
-						return errors.New(item.Name + " needs approval - borrow it instead so a lab admin can approve it")
+						return loanUserError(item.Name + " needs approval - borrow it instead so a lab admin can approve it")
 					}
 					if item.Tracked && !req.Accept {
-						return errors.New(item.Name + " is a tracked item: confirm you take responsibility for it")
+						return loanUserError(item.Name + " is a tracked item: confirm you take responsibility for it")
 					}
 				}
 			}
@@ -479,8 +507,17 @@ func registerInventoryRoutes(api *gin.RouterGroup, db *gorm.DB, sessions *sessio
 		case errors.Is(err, errReturnNotActive):
 			c.JSON(409, gin.H{"error": "That loan is no longer open"})
 			return
+		case errors.Is(err, errHandoverPhone):
+			c.JSON(403, gin.H{"error": "That phone number does not match the person who has it"})
+			return
 		default:
-			c.JSON(400, gin.H{"error": err.Error()})
+			var userErr loanUserError
+			if errors.As(err, &userErr) {
+				c.JSON(400, gin.H{"error": string(userErr)})
+				return
+			}
+			log.Printf("handover of loan %s failed: %v", c.Param("id"), err)
+			c.JSON(500, gin.H{"error": "Could not hand the loan over"})
 			return
 		}
 		if previous.UserID != nil {

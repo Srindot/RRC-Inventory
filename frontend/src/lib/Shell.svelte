@@ -2,7 +2,7 @@
     // The frame around every page: a sidebar on desktop, and on phones a slim
     // top bar plus a bottom tab bar with the five things people do most.
     import { onMount } from 'svelte';
-    import { page } from '$app/state';
+    import { page } from '$app/stores';
     import { can, getUser, loginUrl, refreshUser } from '$lib/auth.js';
     import Icon from '$lib/Icon.svelte';
     import NotificationBell from '$lib/NotificationBell.svelte';
@@ -28,7 +28,7 @@
         { href: '/account', label: 'Me', icon: 'user', hue: AREA.account }
     ];
 
-    $: path = page.url.pathname;
+    $: path = $page.url.pathname;
     $: isAdmin = ['manage_users', 'manage_inventory', 'manage_printers', 'manage_bookings', 'approve_mech_bookings', 'approve_loans'].some((p) => can(user, p));
     $: initial = (user?.name || '?').trim().charAt(0).toUpperCase();
     $: bare = path === '/login' || path === '/register';

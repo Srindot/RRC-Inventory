@@ -435,6 +435,10 @@ func selfServiceGroups(db *gorm.DB) []Group {
 	return groups
 }
 
+// registerLimits caps sign-ups per client IP, with the same window and count
+// as failed logins.
+var registerLimits = newLoginLimiter()
+
 func registerAccountRoutes(api *gin.RouterGroup, db *gorm.DB, sessions *sessionStore, limits *loginLimiter, requireLogin gin.HandlerFunc) {
 	auth := api.Group("/auth", limitBody(defaultBodyLimit))
 
@@ -448,6 +452,16 @@ func registerAccountRoutes(api *gin.RouterGroup, db *gorm.DB, sessions *sessionS
 	})
 
 	auth.POST("/register", func(c *gin.Context) {
+		// Every attempt counts, successful or not: each one costs a bcrypt hash
+		// and a notification per server admin, so an unlimited form is an easy
+		// way to flood the approval queue.
+		ip, now := c.ClientIP(), time.Now()
+		if registerLimits.blocked(ip, now) {
+			c.JSON(429, gin.H{"error": "Too many sign-ups from this network. Try again in a few minutes."})
+			return
+		}
+		registerLimits.fail(ip, now)
+
 		var req registerRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(400, gin.H{"error": "Invalid sign-up data"})
