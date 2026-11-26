@@ -829,8 +829,9 @@
 
     .printer-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 460px));
-        justify-content: center;
+        /* Three printers side by side on a desktop, two on a tablet, one on a
+           phone - sharing the width rather than capping each card. */
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
         align-items: start;
         gap: 16px;
     }
