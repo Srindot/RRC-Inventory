@@ -7,7 +7,7 @@
     import { onMount } from 'svelte';
     import { page } from '$app/stores';
     import { can, getUser, loginUrl, refreshUser } from '$lib/auth.js';
-    import AsciiBackground from '$lib/AsciiBackground.svelte';
+    import DotBackground from '$lib/DotBackground.svelte';
     import Icon from '$lib/Icon.svelte';
     import NotificationBell from '$lib/NotificationBell.svelte';
 
@@ -44,7 +44,7 @@
     const goLogin = () => (location.href = loginUrl());
 </script>
 
-<AsciiBackground />
+<DotBackground />
 
 <div class="frame">
     <header class="site-head" class:compact={!home}>

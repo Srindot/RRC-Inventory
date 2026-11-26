@@ -1,14 +1,15 @@
 <script>
-    // A live ASCII "swell" behind every page: a fine grid of characters whose
-    // density rolls in slow, overlapping waves, quieter in the middle of the
-    // screen where the content sits. Coloured with a slowly drifting blend of
-    // Rosé Pine hues, read from the theme's --rp-* variables so it follows the
-    // dark/light toggle.
+    // A live dotted "swell" behind every page: a grid of dots whose size rolls
+    // in slow, overlapping waves, quieter in the middle of the screen where the
+    // content sits. Calm cells keep a faint pinpoint, so the grid always reads
+    // as a soft dot texture. Coloured with a slowly drifting blend of Rosé Pine
+    // hues, read from the theme's --rp-* variables so it follows the dark/light
+    // toggle.
     //
     // How it stays cheap:
-    //  - each row is drawn as one string with fillText (cells are "glyph +
-    //    space" in a monospace font), so a frame is one draw call per row,
-    //    and the wave maths is split into per-row and per-column parts;
+    //  - dots are grouped by size into one Path2D each, so a frame is a handful
+    //    of fills, and the wave maths is split into per-row and per-column
+    //    parts;
     //  - colour is a tiny low-resolution image (one pixel per few cells)
     //    stretched over the glyphs with 'source-in' compositing;
     //  - capped at FPS, paused while the tab is hidden, cells sized from the
@@ -19,8 +20,9 @@
     let wrap;
     let canvas;
 
-    // Density ramp, sparse to dense. Index 0 is blank.
-    const RAMP = [' ', '.', '·', ':', '-', '=', '+', '*', '#', '%'];
+    // Dot sizes, as a fraction of the largest dot. Level 0 is the faint
+    // pinpoint every calm cell keeps.
+    const LEVELS = 7;
     const HUES = ['--rp-iris', '--rp-foam', '--rp-pine', '--rp-rose', '--rp-gold', '--rp-love'];
     const FPS = 20; // the swell is slow; 20fps reads as smooth
     const FPS_SLOW = 12; // fallback when frames turn out expensive
@@ -33,16 +35,18 @@
         const reduceMq = matchMedia('(prefers-reduced-motion: reduce)');
         const fineMq = matchMedia('(hover: hover) and (pointer: fine)');
 
+        // The pinpoints never move, so they are drawn once per layout and
+        // copied in each frame; only the swelling dots are drawn live.
+        const gridCanvas = document.createElement('canvas');
+        const gridCtx = gridCanvas.getContext('2d');
         const colorCanvas = document.createElement('canvas');
         const colorCtx = colorCanvas.getContext('2d');
 
         let W = 0, H = 0, dpr = 1;
-        let fs = 11; // font size, CSS px
-        let adv = 6.6; // glyph advance; a cell is one glyph plus one space
-        let cw = 13, ch = 17; // cell size, CSS px
+        let cw = 14, ch = 14; // cell size, CSS px (square grid)
+        let maxR = 4; // radius of the largest dot, CSS px
         let cols = 0, rows = 0;
         let px, py, mask; // per-cell position (CSS px) and centre mask
-        let line; // per-row character buffer
         let colA, colBs, colBc, colG; // per-column wave terms
         let colorImg = null;
         let palette = [];
@@ -52,7 +56,7 @@
         let costMs = 0; // moving average of frame cost
         const t0 = performance.now();
         const stats = { frames: 0, ms: 0 };
-        window.__asciiStats = stats;
+        window.__dotStats = stats;
 
         // Pointer "lantern": cells near the cursor glow a little
         const ptr = { x: -9999, y: -9999, sx: -9999, sy: -9999, on: 0, son: 0 };
@@ -73,22 +77,18 @@
                 palette = palette.map((rgb) => rgb.map((v) => Math.round(v * 0.65)));
         }
 
-        const font = () => `500 ${fs}px ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace`;
-
         function layout() {
             W = wrap.clientWidth || innerWidth;
             H = wrap.clientHeight || innerHeight;
-            // Glyphs scale with the viewport: ~9px on phones, ~12px on big monitors
-            fs = Math.min(12, Math.max(9, W / 165));
+            // The grid scales with the viewport: 12px apart on phones, up to
+            // 18px on big monitors
+            cw = ch = Math.min(18, Math.max(12, W / 120));
+            maxR = cw * 0.3;
             // A faint background does not need full retina sharpness: cap the
             // ratio at 1.5 and the backing store at ~3M device pixels
             dpr = Math.min(window.devicePixelRatio || 1, 1.5);
             while (dpr > 1 && W * H * dpr * dpr > 3e6) dpr -= 0.25;
 
-            ctx.font = font();
-            adv = ctx.measureText('M').width || fs * 0.6;
-            cw = adv * 2;
-            ch = Math.round(fs * 1.5);
             cols = Math.ceil(W / cw) + 1;
             rows = Math.ceil(H / ch) + 1;
 
@@ -105,7 +105,7 @@
             const topBand = Math.min(260, Math.max(150, H * 0.2));
             for (let r = 0, i = 0; r < rows; r++) {
                 for (let c = 0; c < cols; c++, i++) {
-                    const x = c * cw, y = r * ch;
+                    const x = c * cw + cw / 2, y = r * ch + ch / 2;
                     px[i] = x;
                     py[i] = y;
                     // Elliptical distance from the centre: quiet in the middle
@@ -117,12 +117,23 @@
                     mask[i] = (0.42 + 0.58 * s * s * (3 - 2 * s)) * (0.3 + 0.7 * q * q * (3 - 2 * q));
                 }
             }
-            // Each cell is "glyph + space", so a row string is 2*cols long
+            gridCanvas.width = canvas.width;
+            gridCanvas.height = canvas.height;
+            gridCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            gridCtx.clearRect(0, 0, W, H);
+            gridCtx.fillStyle = '#fff';
+            const pin = new Path2D(), pr = Math.max(0.55, maxR * 0.14);
+            for (let i = 0; i < n; i++) {
+                pin.moveTo(px[i] + pr, py[i]);
+                pin.arc(px[i], py[i], pr, 0, Math.PI * 2);
+            }
+            gridCtx.globalAlpha = 0.45;
+            gridCtx.fill(pin);
+
             colA = new Float64Array(cols);
             colBs = new Float64Array(cols);
             colBc = new Float64Array(cols);
             colG = new Float64Array(cols);
-            line = new Array(cols * 2).fill(' ');
 
             colorCanvas.width = Math.ceil(cols / COLOR_STEP) + 2;
             colorCanvas.height = Math.ceil(rows / COLOR_STEP) + 2;
@@ -156,7 +167,6 @@
         function frame(now) {
             const start = performance.now();
             const t = (now - t0) / 1000;
-            const levels = RAMP.length - 1;
             const S = 1 / 190; // wave scale in CSS px, so waves look alike on any screen
 
             // Ease the lantern towards the pointer
@@ -169,10 +179,12 @@
             ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
             ctx.globalCompositeOperation = 'source-over';
             ctx.clearRect(0, 0, W, H);
-            ctx.font = font();
-            ctx.textBaseline = 'middle';
             ctx.fillStyle = '#fff';
             ctx.globalAlpha = 1;
+
+            // One path per dot size, filled once each at the end
+            const paths = Array.from({ length: LEVELS + 1 }, () => new Path2D());
+            const radius = Array.from({ length: LEVELS + 1 }, (_, k) => maxR * (0.22 + 0.78 * (k / LEVELS)));
 
             // Three rolling swells at different angles and speeds:
             //   a = sin(x + .32t + 1.6 sin(.8y - .21t))
@@ -181,7 +193,7 @@
             // split into per-column and per-row parts, so each cell costs
             // two sines instead of five.
             for (let c = 0; c < cols; c++) {
-                const x = c * cw * S;
+                const x = (c * cw + cw / 2) * S;
                 colA[c] = x + t * 0.32;
                 const p = 0.7425 * x - t * 0.47;
                 colBs[c] = Math.sin(p);
@@ -190,8 +202,7 @@
             }
 
             for (let r = 0, i = 0; r < rows; r++) {
-                let any = false;
-                const y = r * ch * S;
+                const y = (r * ch + ch / 2) * S;
                 const rowA = 1.6 * Math.sin(0.8 * y - t * 0.21);
                 const sq = Math.sin(1.2825 * y), cq = Math.cos(1.2825 * y);
                 const rowG = 1.26 * y;
@@ -207,16 +218,20 @@
                         const d2 = dx * dx + dy * dy;
                         if (d2 < lr2 * 4) v += 0.38 * ptr.son * Math.exp(-d2 / lr2);
                     }
-                    let k = (v * (levels + 0.6)) | 0;
-                    if (k > levels) k = levels;
-                    if (k > 0) {
-                        line[c * 2] = RAMP[k];
-                        any = true;
-                    } else line[c * 2] = ' ';
+                    let k = (v * (LEVELS + 0.6)) | 0;
+                    if (k > LEVELS) k = LEVELS;
+                    if (k < 1) continue; // a pinpoint, already in the grid image
+                    const rad = radius[k], path = paths[k];
+                    path.moveTo(px[i] + rad, py[i]);
+                    path.arc(px[i], py[i], rad, 0, Math.PI * 2);
                 }
-                const ty = r * ch + ch / 2;
-                if (any) ctx.fillText(line.join(''), 0, ty);
             }
+
+            // Faint pinpoints from the cached grid, then the swelling dots
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.drawImage(gridCanvas, 0, 0);
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            for (let k = 1; k <= LEVELS; k++) ctx.fill(paths[k]);
 
             // Tint everything drawn with the colour field
             paintColors(t);
@@ -293,11 +308,6 @@
         layout();
         lastW = W;
         start();
-        // System fonts can settle after first paint; measure again once ready
-        document.fonts?.ready?.then(() => {
-            layout();
-            if (!raf) frame(performance.now());
-        });
 
         addEventListener('resize', onResize);
         document.addEventListener('visibilitychange', onVisibility);
@@ -316,23 +326,23 @@
             reduceMq.removeEventListener?.('change', start);
             removeEventListener('pointermove', onMove);
             document.documentElement.removeEventListener('pointerleave', onLeave);
-            if (window.__asciiStats === stats) delete window.__asciiStats;
+            if (window.__dotStats === stats) delete window.__dotStats;
         };
     });
 </script>
 
-<div class="ascii-bg" aria-hidden="true" bind:this={wrap}>
+<div class="dot-bg" aria-hidden="true" bind:this={wrap}>
     <canvas bind:this={canvas}></canvas>
 </div>
 
 <style>
-    .ascii-bg {
+    .dot-bg {
         position: fixed;
         inset: 0;
         z-index: 0;
         overflow: hidden;
         pointer-events: none;
-        opacity: var(--ascii-opacity, 0.4);
+        opacity: var(--bg-opacity, 0.4);
         transition: opacity var(--slow, 420ms) ease;
     }
 

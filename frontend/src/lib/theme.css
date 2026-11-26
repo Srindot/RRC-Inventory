@@ -102,7 +102,7 @@
     --glass: color-mix(in srgb, var(--card) 72%, transparent);
     --glass-strong: color-mix(in srgb, var(--card) 88%, transparent);
     --glass-blur: saturate(140%) blur(14px);
-    --ascii-opacity: 0.42;
+    --bg-opacity: 0.42;
 
     --font: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
     --mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
@@ -141,7 +141,7 @@
     --shadow: 0 8px 24px rgba(87, 82, 121, 0.12);
     --shadow-lg: 0 18px 48px rgba(87, 82, 121, 0.18);
 
-    --ascii-opacity: 0.5;   /* Dawn hues are pale on cream; AsciiBackground also darkens them */
+    --bg-opacity: 0.5;   /* Dawn hues are pale on cream; DotBackground also darkens them */
 }
 
 html {
