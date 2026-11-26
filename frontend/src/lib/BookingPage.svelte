@@ -7,13 +7,35 @@
     import { onMount, tick } from 'svelte';
     import { api, can, getUser, loginUrl, refreshUser } from '$lib/auth.js';
     import { AREA, hueFor } from '$lib/palette.js';
+    import IconVideo from '@tabler/icons-svelte-runes/icons/video';
+    import IconRobot from '@tabler/icons-svelte-runes/icons/robot';
+    import IconChevronLeft from '@tabler/icons-svelte-runes/icons/chevron-left';
+    import IconChevronRight from '@tabler/icons-svelte-runes/icons/chevron-right';
+    import IconPlus from '@tabler/icons-svelte-runes/icons/plus';
+    import IconX from '@tabler/icons-svelte-runes/icons/x';
+    import IconCheck from '@tabler/icons-svelte-runes/icons/check';
+    import IconHourglass from '@tabler/icons-svelte-runes/icons/hourglass';
+    import IconAlert from '@tabler/icons-svelte-runes/icons/alert-triangle';
+    import IconRefresh from '@tabler/icons-svelte-runes/icons/refresh';
+    import IconLock from '@tabler/icons-svelte-runes/icons/lock';
+    import IconLogin from '@tabler/icons-svelte-runes/icons/login-2';
+    import IconBan from '@tabler/icons-svelte-runes/icons/ban';
+    import IconFlask from '@tabler/icons-svelte-runes/icons/flask';
+    import IconCircleCheck from '@tabler/icons-svelte-runes/icons/circle-check';
+    import IconClock from '@tabler/icons-svelte-runes/icons/clock';
+    import IconCalendar from '@tabler/icons-svelte-runes/icons/calendar-event';
+    import IconCalendarOff from '@tabler/icons-svelte-runes/icons/calendar-off';
+    import IconStar from '@tabler/icons-svelte-runes/icons/star-filled';
+    import IconList from '@tabler/icons-svelte-runes/icons/list-details';
+    import IconInfo from '@tabler/icons-svelte-runes/icons/info-circle';
+    import IconUserX from '@tabler/icons-svelte-runes/icons/user-x';
 
     export let lab; // 'mocap' | 'mech'
     export let title;
     export let subtitle = '';
     export let embedded = false; // inside the admin page: no page header
 
-    const EMOJI = { mocap: '🎥', mech: '🦾' };
+    const LAB_ICON = { mocap: IconVideo, mech: IconRobot };
 
     // Calendar shows this hour range, one row per hour
     const DAY_START = 8;
@@ -43,7 +65,8 @@
     let showForm = false;
     let formEl;
     let detailsEl;
-    let calendarEl;
+    // On a phone the calendar shows one day at a time: this one (0 = Monday)
+    let dayIdx = weekdayIndex(new Date());
     let bookingsRequest = 0; // newest loadBookings call; older replies are dropped
 
     let form = {
@@ -187,11 +210,14 @@
         scrollToToday();
     }
 
-    // On a phone the week is wider than the screen: start at today's column
+    // Monday = 0, matching the calendar's columns
+    function weekdayIndex(date) {
+        return (new Date(date).getDay() + 6) % 7;
+    }
+
+    // On a phone (one day on screen) start at today when it is in this week
     function scrollToToday() {
-        const today = calendarEl?.querySelector('.day-head.today');
-        if (!today || calendarEl.scrollWidth <= calendarEl.clientWidth) return;
-        calendarEl.scrollLeft = Math.max(0, today.offsetLeft - 40);
+        if (weekDays.some(isToday)) dayIdx = weekdayIndex(new Date());
     }
 
     function selectResource(r) {
@@ -289,6 +315,7 @@
             showForm = false;
             form = { ...form, purpose: '', on_behalf_name: '', on_behalf_phone: '' };
             weekStart = startOfWeek(start);
+            dayIdx = weekdayIndex(start);
             loadBookings();
             loadSidePanels();
         }
@@ -373,6 +400,7 @@
         const r = resources.find((x) => x.id === b.resource_id);
         if (r && r.id !== resource?.id) selectResource(r);
         weekStart = startOfWeek(new Date(b.start_time));
+        dayIdx = weekdayIndex(b.start_time);
         await loadBookings();
         showBooking(b);
     }
@@ -418,564 +446,593 @@
     }
 </script>
 
-<div class="container" class:embedded style="--hue: {labHue}">
+<div class="booking" style="--hue: {labHue}">
     {#if !embedded}
-        <div class="header">
-            <div class="logo-title">
-                <div>
-                    <h1>{EMOJI[lab] || ''} {title}</h1>
-                    {#if subtitle}<p class="subtitle">{subtitle}</p>{/if}
+        <div class="page-header d-print-none mb-3">
+            <div class="row g-3 align-items-center">
+                <div class="col-12 col-md">
+                    <div class="page-pretitle">Lab booking</div>
+                    <h2 class="page-title">
+                        <span class="lab-icon me-2"><svelte:component this={LAB_ICON[lab]} size={24} class="icon" /></span>
+                        {title}
+                    </h2>
+                    {#if subtitle}<div class="text-secondary mt-1">{subtitle}</div>{/if}
+                </div>
+                <div class="col-12 col-md-auto">
+                    <nav class="nav nav-segmented w-100" aria-label="Booking pages">
+                        <a class="nav-link" href="/mechlab" class:active={lab === 'mech'} aria-current={lab === 'mech' ? 'page' : undefined}>
+                            <IconRobot size={18} class="icon nav-link-icon" />Mech Lab
+                        </a>
+                        <a class="nav-link" href="/mocap" class:active={lab === 'mocap'} aria-current={lab === 'mocap' ? 'page' : undefined}>
+                            <IconVideo size={18} class="icon nav-link-icon" />MoCap Lab
+                        </a>
+                    </nav>
                 </div>
             </div>
-            <nav class="lab-switch" aria-label="Booking pages">
-                <a href="/mechlab" style="--hue: {AREA.mech}" class:active={lab === 'mech'} aria-current={lab === 'mech' ? 'page' : undefined}>🦾 Mech Lab</a>
-                <a href="/mocap" style="--hue: {AREA.mocap}" class:active={lab === 'mocap'} aria-current={lab === 'mocap' ? 'page' : undefined}>🎥 MoCap Lab</a>
-            </nav>
         </div>
     {:else}
-        <h2 class="embedded-title">{EMOJI[lab] || ''} {title}</h2>
+        <h3 class="d-flex align-items-center gap-2 mb-3">
+            <span class="lab-icon"><svelte:component this={LAB_ICON[lab]} size={20} class="icon" /></span>
+            {title}
+        </h3>
     {/if}
 
     {#if message}
-        <div class="msg {messageType}" role="status">{message}</div>
+        <div class="toast-msg {messageType}" role="status">{message}</div>
     {/if}
 
     {#if approvable.length > 0}
-        <div class="panel approvals">
-            <h3>⏳ Waiting for your approval</h3>
-            {#each approvable as b (b.ID)}
-                <div class="list-row">
-                    <span class="list-text">
-                        <span class="dot" style="--hue: {blockHue(b)}"></span>
-                        <strong>{b.booked_by}</strong> · {resourceName(b.resource_id)}{b.thread_name ? ` · ${b.thread_name}` : ''}
-                        <span class="when">{formatWhen(b)}</span>{b.purpose ? ` · ${b.purpose}` : ''}
-                    </span>
-                    <span class="row-actions">
-                        <button class="submit-btn" on:click={() => act(`/api/bookings/${b.ID}/approve`, 'Approved')}>✓ Approve</button>
-                        <button class="close-btn" on:click={() => act(`/api/bookings/${b.ID}/reject`, 'Declined')}>✕ Decline</button>
-                    </span>
-                </div>
-            {/each}
+        <div class="card mb-3">
+            <div class="card-header">
+                <h3 class="card-title d-flex align-items-center gap-2">
+                    <IconHourglass size={18} class="icon text-warning" />
+                    Waiting for your approval
+                    <span class="badge bg-warning-lt">{approvable.length}</span>
+                </h3>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-vcenter card-table">
+                    <thead>
+                        <tr>
+                            <th>Who</th>
+                            <th>{lab === 'mech' ? 'Robot' : 'Lab'}</th>
+                            <th>When</th>
+                            <th>Purpose</th>
+                            <th class="w-1"><span class="visually-hidden">Actions</span></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {#each approvable as b (b.ID)}
+                            <tr>
+                                <td>
+                                    <div class="d-flex align-items-center">
+                                        <span class="dot" style="--hue: {blockHue(b)}"></span>
+                                        <div>
+                                            <div class="fw-medium">{b.booked_by}</div>
+                                            {#if b.thread_name}<div class="small text-secondary">{b.thread_name}</div>{/if}
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>{resourceName(b.resource_id)}</td>
+                                <td class="text-secondary text-nowrap">{formatWhen(b)}</td>
+                                <td class="text-secondary">{b.purpose || ''}</td>
+                                <td>
+                                    <div class="btn-list flex-nowrap">
+                                        <button class="btn btn-success" type="button" on:click={() => act(`/api/bookings/${b.ID}/approve`, 'Approved')}>
+                                            <IconCheck size={18} class="icon" />Approve
+                                        </button>
+                                        <button class="btn btn-outline-danger" type="button" on:click={() => act(`/api/bookings/${b.ID}/reject`, 'Declined')}>
+                                            <IconX size={18} class="icon" />Decline
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        {/each}
+                    </tbody>
+                </table>
+            </div>
         </div>
     {/if}
 
     {#if resourcesState === 'error'}
-        <div class="panel state error-state">
-            <h3>⚠️ Couldn't load the booking calendar</h3>
-            <p>The server didn't answer. Check your connection and try again.</p>
-            <button class="close-btn" on:click={async () => { await loadResources(); loadSidePanels(); }}>↻ Try again</button>
+        <div class="card">
+            <div class="card-body">
+                <div class="empty">
+                    <div class="empty-icon text-danger"><IconAlert size={48} class="icon" /></div>
+                    <p class="empty-title">Couldn't load the booking calendar</p>
+                    <p class="empty-subtitle text-secondary">The server didn't answer. Check your connection and try again.</p>
+                    <div class="empty-action">
+                        <button class="btn btn-primary" type="button" on:click={async () => { await loadResources(); loadSidePanels(); }}>
+                            <IconRefresh size={18} class="icon" />Try again
+                        </button>
+                    </div>
+                </div>
+            </div>
         </div>
     {:else if resourcesState === 'loading'}
-        <p class="loading-note">Loading...</p>
+        <div class="card">
+            <div class="card-body d-flex align-items-center justify-content-center gap-2 text-secondary py-5">
+                <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>Loading...
+            </div>
+        </div>
     {:else if !resource}
-        <div class="panel state">
-            <h3>{lab === 'mech' ? '🦾 No robots yet' : '🎥 Not open for booking yet'}</h3>
-            <p>
-                {lab === 'mech'
-                    ? 'No robots have been added yet. A lab admin adds them from the admin page.'
-                    : "The Motion Capture Lab hasn't been set up for booking yet. A lab admin adds it from the admin page."}
-            </p>
+        <div class="card">
+            <div class="card-body">
+                <div class="empty">
+                    <div class="empty-icon"><svelte:component this={LAB_ICON[lab]} size={48} class="icon" /></div>
+                    <p class="empty-title">{lab === 'mech' ? 'No robots yet' : 'Not open for booking yet'}</p>
+                    <p class="empty-subtitle text-secondary">
+                        {lab === 'mech'
+                            ? 'No robots have been added yet. A lab admin adds them from the admin page.'
+                            : "The Motion Capture Lab hasn't been set up for booking yet. A lab admin adds it from the admin page."}
+                    </p>
+                </div>
+            </div>
         </div>
     {:else}
         {#if resources.length > 1}
-            <div class="robot-tabs" role="tablist" aria-label="Robots">
-                {#each resources as r (r.id)}
-                    <button role="tab" aria-selected={resource?.id === r.id} class:active={resource?.id === r.id} style="--hue: {hueFor(r.id)}" on:click={() => selectResource(r)}>
-                        <span class="dot"></span>{r.name}
-                    </button>
-                {/each}
+            <div class="mb-3 robot-tabs">
+                <div class="nav nav-segmented" role="tablist" aria-label="Robots">
+                    {#each resources as r (r.id)}
+                        <button
+                            type="button"
+                            role="tab"
+                            class="nav-link"
+                            aria-selected={resource?.id === r.id}
+                            class:active={resource?.id === r.id}
+                            on:click={() => selectResource(r)}
+                        >
+                            <span class="dot me-0" style="--hue: {hueFor(r.id)}"></span>{r.name}
+                        </button>
+                    {/each}
+                </div>
             </div>
-        {/if}
-
-        {#if resource.requires_approval || resource.requires_thread || resource.max_hours || resource.max_future_bookings}
-            <p class="rules">
-                {#if resource.requires_thread}<span>🧵 Booked by research threads with access</span>{/if}
-                {#if resource.requires_approval}<span>✅ Each booking is approved by a lab admin</span>{/if}
-                {#if resource.max_hours}<span>⏱ Up to {resource.max_hours} h per booking</span>{/if}
-                {#if resource.max_future_bookings}<span>📅 At most {resource.max_future_bookings} upcoming per person</span>{/if}
-            </p>
         {/if}
 
         {#if !user}
-            <div class="panel notice">
-                <p>🔒 Anyone can see the calendar. <strong>To book a slot, log in with your lab account</strong> - new here? <a href="/register">Create an account</a>.</p>
-                <a class="book-btn" href={loginUrl()}>🔑 Log in to Book</a>
+            <div class="alert alert-info mb-3" role="alert">
+                <div class="d-flex flex-wrap align-items-center gap-3">
+                    <div class="alert-icon"><IconLock size={24} class="icon" /></div>
+                    <div class="flex-fill">
+                        Anyone can see the calendar. <strong>To book a slot, log in with your lab account</strong> - new here? <a href="/register">Create an account</a>.
+                    </div>
+                    <a class="btn btn-primary" href={loginUrl()}><IconLogin size={18} class="icon" />Log in to book</a>
+                </div>
             </div>
         {:else if noPermission}
-            <div class="panel notice">
-                <p>🚫 Your account can't book {lab === 'mech' ? 'robots' : 'this lab'} yet - ask a lab admin to give your group access.</p>
+            <div class="alert alert-warning mb-3" role="alert">
+                <div class="d-flex">
+                    <div class="alert-icon"><IconBan size={24} class="icon" /></div>
+                    <div>Your account can't book {lab === 'mech' ? 'robots' : 'this lab'} yet - ask a lab admin to give your group access.</div>
+                </div>
             </div>
         {:else if noThread}
-            <div class="panel notice">
-                <p>🧵 None of your research threads can book <strong>{resource.name}</strong> yet.
-                    {#if can(user, 'create_threads')}
-                        Request access for your thread on the <a href="/threads">Threads page</a>.
-                    {:else}
-                        Robots are booked through research threads (a prof's project). Ask your prof to add you to theirs - see who leads what on the <a href="/threads">Threads page</a>.
-                    {/if}
-                </p>
-            </div>
-        {/if}
-
-        <div class="toolbar">
-            <div class="week-nav">
-                <button on:click={() => goToWeek(-1)} aria-label="Previous week">◀</button>
-                <button class="today-btn" on:click={goToday}>Today</button>
-                <button on:click={() => goToWeek(1)} aria-label="Next week">▶</button>
-                <span class="week-label">{weekLabel}</span>
-            </div>
-            {#if mayBook}
-                <button class="book-btn" on:click={() => { showForm = !showForm; selectedBooking = null; }}>
-                    {showForm ? '✕ Close' : '➕ Book a Slot'}
-                </button>
-            {/if}
-        </div>
-
-        {#if showForm}
-            <form class="booking-form" bind:this={formEl} on:submit|preventDefault={submitBooking}>
-                <p class="form-title">New booking · <strong>{resource.name}</strong></p>
-                <p class="form-note">Booking as <strong>{user?.name || user?.email}</strong>{user?.phone ? ` (${user.phone})` : ''}.</p>
-                <div class="form-row">
-                    <label>
-                        Date
-                        <input type="date" bind:value={form.date} required />
-                    </label>
-                    <label>
-                        From
-                        <input type="time" bind:value={form.start_hour} required step="900" />
-                    </label>
-                    <label>
-                        To
-                        <input type="time" bind:value={form.end_hour} required step="900" />
-                    </label>
-                </div>
-                <div class="durations" role="group" aria-label="Length">
-                    <span>Length:</span>
-                    {#each durations as h}
-                        <button type="button" class:active={formHours === h} on:click={() => setDuration(h)}>{h} h</button>
-                    {/each}
-                </div>
-                {#if tooLong}
-                    <p class="form-warn">⚠️ {resource.name} can be booked for at most {resource.max_hours} h at a time.</p>
-                {/if}
-                {#if clashes.length}
-                    <p class="form-warn">⚠️ Overlaps {clashes.map((b) => `${b.booked_by} (${formatTime(b.start_time)} - ${formatTime(b.end_time)}${b.status === 'pending' ? ', pending' : ''})`).join(', ')}.</p>
-                {/if}
-                <label>
-                    Purpose
-                    <input type="text" bind:value={form.purpose} placeholder="What are you using the {lab === 'mech' ? 'robot' : 'lab'} for? (optional)" />
-                </label>
-                {#if can(user, 'manage_bookings')}
-                    <div class="form-row">
-                        <label>
-                            Booking for someone else? Their name
-                            <input type="text" bind:value={form.on_behalf_name} placeholder="Leave empty to book for yourself" />
-                        </label>
-                        <label>
-                            Their phone
-                            <input type="tel" bind:value={form.on_behalf_phone} placeholder="Optional" />
-                        </label>
-                    </div>
-                {/if}
-                {#if resource.requires_thread || threadChoices.length}
-                    <label>
-                        Research thread
-                        <select bind:value={form.thread_id} required={resource.requires_thread}>
-                            <option value="">{resource.requires_thread ? 'Pick a thread' : 'None'}</option>
-                            {#each threadChoices as t (t.ID)}
-                                <option value={t.ID}>{t.name} — {allowance(t)}</option>
-                            {/each}
-                        </select>
-                        {#if pickedThread}
-                            <span class="picked"><span class="dot" style="--hue: {hueFor(pickedThread.ID)}"></span>{pickedThread.name}: {allowance(pickedThread)}</span>
+            <div class="alert alert-warning mb-3" role="alert">
+                <div class="d-flex">
+                    <div class="alert-icon"><IconFlask size={24} class="icon" /></div>
+                    <div>
+                        None of your research threads can book <strong>{resource.name}</strong> yet.
+                        {#if can(user, 'create_threads')}
+                            Request access for your thread on the <a href="/threads">Threads page</a>.
+                        {:else}
+                            Robots are booked through research threads (a prof's project). Ask your prof to add you to theirs - see who leads what on the <a href="/threads">Threads page</a>.
                         {/if}
-                    </label>
-                {/if}
-                {#if needsApproval}
-                    <p class="form-note">⏳ A lab admin approves this request. You'll get a notification.</p>
-                {/if}
-                <button type="submit" class="submit-btn" disabled={submitting}>
-                    {submitting ? 'Booking...' : needsApproval ? 'Request Booking' : 'Confirm Booking'}
-                </button>
-            </form>
-        {/if}
-
-        {#if selectedBooking}
-            <div class="booking-details" bind:this={detailsEl} style="--hue: {blockHue(selectedBooking)}">
-                <h3>{selectedBooking.purpose || 'Booking'}</h3>
-                <p><strong>Booked by:</strong> {selectedBooking.booked_by}{isMine(selectedBooking) ? ' (you)' : ''}</p>
-                {#if resources.length > 1}<p><strong>Robot:</strong> {resourceName(selectedBooking.resource_id)}</p>{/if}
-                {#if selectedBooking.thread_name}
-                    <p><strong>Thread:</strong> <span class="dot" style="--hue: {blockHue(selectedBooking)}"></span>{selectedBooking.thread_name}</p>
-                {/if}
-                <p><strong>When:</strong> {formatWhen(selectedBooking)}</p>
-                {#if selectedBooking.status === 'pending' || selectedBooking.no_show}
-                    <p class="chips">
-                        {#if selectedBooking.status === 'pending'}<span class="chip warn">⏳ Waiting for approval</span>{/if}
-                        {#if selectedBooking.no_show}<span class="chip noshow">🚫 Reported as a no-show</span>{/if}
-                    </p>
-                {/if}
-                <div class="details-actions">
-                    {#if mayCancel(selectedBooking)}
-                        <button class="cancel-btn" on:click={() => cancelBooking(selectedBooking)}>Cancel Booking</button>
-                    {/if}
-                    {#if selectedBooking.status === 'pending' && can(user, 'approve_mech_bookings') && !isMine(selectedBooking)}
-                        <button class="submit-btn" on:click={() => act(`/api/bookings/${selectedBooking.ID}/approve`, 'Approved')}>✓ Approve</button>
-                        <button class="close-btn" on:click={() => act(`/api/bookings/${selectedBooking.ID}/reject`, 'Declined')}>✕ Decline</button>
-                    {/if}
-                    {#if mayReportNoShow(selectedBooking)}
-                        <button class="close-btn" on:click={() => confirm(`Report that ${selectedBooking.booked_by} didn't turn up? Your name is recorded with the report.`) && act(`/api/bookings/${selectedBooking.ID}/no-show`, 'No-show recorded')}>They didn't turn up</button>
-                    {/if}
-                    {#if selectedBooking.no_show && can(user, 'manage_bookings')}
-                        <button class="close-btn" on:click={() => act(`/api/admin/bookings/${selectedBooking.ID}/clear-no-show`, 'No-show cleared')}>Clear no-show</button>
-                    {/if}
-                    {#if !user}
-                        <a class="close-btn" href={loginUrl()}>Log in to cancel your booking</a>
-                    {/if}
-                    <button class="close-btn" on:click={() => (selectedBooking = null)}>Close</button>
-                </div>
-            </div>
-        {/if}
-
-        <div class="calendar" bind:this={calendarEl}>
-            <div class="calendar-head">
-                <div class="time-gutter"></div>
-                {#each weekDays as day}
-                    <div class="day-head" class:today={isToday(day)}>
-                        <span class="day-name">{DAY_NAMES[day.getDay()]}</span>
-                        <span class="day-number">{day.getDate()}</span>
                     </div>
-                {/each}
-            </div>
-
-            <div class="calendar-body">
-                <div class="time-gutter">
-                    {#each HOURS as hour}
-                        <div class="time-label">{String(hour).padStart(2, '0')}:00</div>
-                    {/each}
                 </div>
+            </div>
+        {/if}
 
-                {#each columns as column}
-                    <div class="day-column" class:today={isToday(column.day)}>
-                        {#each HOURS as hour}
-                            <button
-                                class="hour-cell"
-                                class:past={isPast(column.day, hour, now)}
-                                disabled={isPast(column.day, hour, now)}
-                                on:click={() => openFormAt(column.day, hour)}
-                                title="{user ? 'Book' : 'Log in to book'} {String(hour).padStart(2, '0')}:00 on {column.day.toDateString()}"
-                                aria-label="{user ? 'Book' : 'Log in to book'} {String(hour).padStart(2, '0')}:00 on {column.day.toDateString()}"
-                            ></button>
-                        {/each}
-
-                        {#if isToday(column.day) && nowTop(now) !== null}
-                            <div class="now-line" style="top: {nowTop(now)}%" aria-hidden="true"></div>
-                        {/if}
-                        {#each column.blocks as booking (booking.ID)}
-                            <button
-                                class="booking-block"
-                                class:pending={booking.status === 'pending'}
-                                class:mine={isMine(booking)}
-                                class:noshow={booking.no_show}
-                                style="top: {booking.top}%; height: {booking.height}%; --hue: {blockHue(booking)};"
-                                on:click={() => showBooking(booking)}
-                            >
-                                <span class="block-time">{formatTime(booking.start)} - {formatTime(booking.end)}{booking.outside ? ` (${booking.outside})` : ''}</span>
-                                <span class="block-name">{isMine(booking) ? '★ ' : ''}{booking.booked_by}{booking.thread_name ? ` · ${booking.thread_name}` : ''}</span>
-                                {#if booking.status === 'pending'}<span class="block-status">⏳ Pending</span>{/if}
-                                {#if booking.no_show}<span class="block-status">🚫 No-show</span>{/if}
-                                <span class="block-purpose">{booking.purpose}</span>
+        <div class="row g-3">
+            <div class="col-12 col-xl-8">
+                <div class="card">
+                    <div class="card-header flex-wrap gap-2">
+                        <div class="d-flex align-items-center gap-2 flex-wrap me-auto">
+                            <div class="btn-group" role="group" aria-label="Week">
+                                <button class="btn btn-icon" type="button" on:click={() => goToWeek(-1)} aria-label="Previous week">
+                                    <IconChevronLeft size={18} class="icon" />
+                                </button>
+                                <button class="btn" type="button" on:click={goToday}>Today</button>
+                                <button class="btn btn-icon" type="button" on:click={() => goToWeek(1)} aria-label="Next week">
+                                    <IconChevronRight size={18} class="icon" />
+                                </button>
+                            </div>
+                            <span class="text-secondary week-label">{weekLabel}</span>
+                        </div>
+                        {#if mayBook}
+                            <button class="btn {showForm ? 'btn-outline-secondary' : 'btn-primary'}" type="button" on:click={() => { showForm = !showForm; selectedBooking = null; }}>
+                                {#if showForm}<IconX size={18} class="icon" />Close{:else}<IconPlus size={18} class="icon" />Book a slot{/if}
                             </button>
-                        {/each}
-                    </div>
-                {/each}
-            </div>
-        </div>
-
-        {#if loading}
-            <p class="loading-note">Loading bookings...</p>
-        {:else if bookingsError}
-            <p class="loading-note">Couldn't load this week's bookings. <button class="link-btn" on:click={loadBookings}>Try again</button></p>
-        {:else if bookings.length === 0}
-            <p class="loading-note">No bookings this week - the {lab === 'mech' ? 'robot' : 'lab'} is all yours.</p>
-        {/if}
-
-        <p class="legend">
-            <span><span class="swatch"></span>Booked</span>
-            <span><span class="swatch pending"></span>Pending approval</span>
-            {#if user}<span>★ Yours</span>{/if}
-            <span><span class="swatch past"></span>Past</span>
-            {#if mayBook || !user}<span>Tap a free hour to {user ? 'book it' : 'log in and book'}</span>{/if}
-        </p>
-
-        {#if myUpcoming.length > 0}
-            <div class="panel mine-panel">
-                <h3>📋 Your upcoming bookings</h3>
-                {#each myUpcoming as b (b.ID)}
-                    <div class="list-row">
-                        <button class="list-text link-row" on:click={() => jumpTo(b)} title="Show on the calendar">
-                            <span class="dot" style="--hue: {blockHue(b)}"></span>
-                            {#if resources.length > 1}<strong>{resourceName(b.resource_id)}</strong> · {/if}
-                            <span class="when">{formatWhen(b)}</span>{b.thread_name ? ` · ${b.thread_name}` : ''}{b.purpose ? ` · ${b.purpose}` : ''}
-                            {#if b.status === 'pending'}<span class="chip warn">⏳ Pending</span>{/if}
-                            {#if b.no_show}<span class="chip noshow">🚫 No-show</span>{/if}
-                        </button>
-                        {#if mayCancel(b)}
-                            <span class="row-actions">
-                                <button class="cancel-btn" on:click={() => cancelBooking(b)}>Cancel</button>
-                            </span>
                         {/if}
                     </div>
-                {/each}
+
+                    <!-- Phones: one day at a time, picked here -->
+                    <div class="d-md-none border-bottom p-2">
+                        <div class="nav nav-segmented w-100 day-strip" role="tablist" aria-label="Day">
+                            {#each columns as column, i}
+                                <button
+                                    type="button"
+                                    role="tab"
+                                    class="nav-link"
+                                    class:active={dayIdx === i}
+                                    class:is-today={isToday(column.day)}
+                                    aria-selected={dayIdx === i}
+                                    aria-label="{column.day.toDateString()}{column.blocks.length ? `, ${column.blocks.length} booked` : ''}"
+                                    on:click={() => (dayIdx = i)}
+                                >
+                                    <span class="strip-name">{DAY_NAMES[column.day.getDay()]}</span>
+                                    <span class="strip-num">{column.day.getDate()}</span>
+                                    <span class="strip-mark" class:has={column.blocks.length > 0}></span>
+                                </button>
+                            {/each}
+                        </div>
+                    </div>
+
+                    <div class="calendar">
+                        <div class="cal-grid cal-head">
+                            <div class="gutter"></div>
+                            {#each weekDays as day, i}
+                                <div class="day-head" class:today={isToday(day)} class:off={dayIdx !== i}>
+                                    <span class="day-name">{DAY_NAMES[day.getDay()]}</span>
+                                    <span class="day-number">{day.getDate()}</span>
+                                </div>
+                            {/each}
+                        </div>
+
+                        <div class="cal-grid cal-body">
+                            <div class="gutter">
+                                {#each HOURS as hour}
+                                    <div class="time-label">{String(hour).padStart(2, '0')}:00</div>
+                                {/each}
+                            </div>
+
+                            {#each columns as column, i}
+                                <div class="day-column" class:today={isToday(column.day)} class:off={dayIdx !== i}>
+                                    {#each HOURS as hour}
+                                        <button
+                                            type="button"
+                                            class="hour-cell"
+                                            class:past={isPast(column.day, hour, now)}
+                                            disabled={isPast(column.day, hour, now)}
+                                            on:click={() => openFormAt(column.day, hour)}
+                                            title="{user ? 'Book' : 'Log in to book'} {String(hour).padStart(2, '0')}:00 on {column.day.toDateString()}"
+                                            aria-label="{user ? 'Book' : 'Log in to book'} {String(hour).padStart(2, '0')}:00 on {column.day.toDateString()}"
+                                        ></button>
+                                    {/each}
+
+                                    {#if isToday(column.day) && nowTop(now) !== null}
+                                        <div class="now-line" style="top: {nowTop(now)}%" aria-hidden="true"></div>
+                                    {/if}
+                                    {#each column.blocks as booking (booking.ID)}
+                                        <button
+                                            type="button"
+                                            class="booking-block"
+                                            class:pending={booking.status === 'pending'}
+                                            class:mine={isMine(booking)}
+                                            class:noshow={booking.no_show}
+                                            style="top: {booking.top}%; height: {booking.height}%; --hue: {blockHue(booking)};"
+                                            on:click={() => showBooking(booking)}
+                                        >
+                                            <span class="block-time">{formatTime(booking.start)} - {formatTime(booking.end)}{booking.outside ? ` (${booking.outside})` : ''}</span>
+                                            <span class="block-name">{#if isMine(booking)}<span class="visually-hidden">Yours: </span><IconStar size={11} class="me-1" />{/if}{booking.booked_by}{booking.thread_name ? ` · ${booking.thread_name}` : ''}</span>
+                                            {#if booking.status === 'pending'}<span class="block-status">Pending</span>{/if}
+                                            {#if booking.no_show}<span class="block-status">No-show</span>{/if}
+                                            <span class="block-purpose">{booking.purpose}</span>
+                                        </button>
+                                    {/each}
+                                </div>
+                            {/each}
+                        </div>
+                    </div>
+
+                    <div class="card-footer">
+                        {#if loading}
+                            <div class="text-secondary small mb-2 d-flex align-items-center gap-2">
+                                <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>Loading bookings...
+                            </div>
+                        {:else if bookingsError}
+                            <div class="text-danger small mb-2">
+                                Couldn't load this week's bookings.
+                                <button class="btn btn-link btn-sm p-0 align-baseline" type="button" on:click={loadBookings}>Try again</button>
+                            </div>
+                        {:else if bookings.length === 0}
+                            <div class="text-secondary small mb-2">No bookings this week - the {lab === 'mech' ? 'robot' : 'lab'} is all yours.</div>
+                        {/if}
+                        <div class="legend small text-secondary">
+                            <span><span class="swatch"></span>Booked</span>
+                            <span><span class="swatch pending"></span>Pending approval</span>
+                            {#if user}<span><IconStar size={12} class="icon" />Yours</span>{/if}
+                            <span><span class="swatch past"></span>Past</span>
+                            {#if mayBook || !user}<span>Tap a free hour to {user ? 'book it' : 'log in and book'}</span>{/if}
+                        </div>
+                    </div>
+                </div>
             </div>
-        {/if}
+
+            <div class="col-12 col-xl-4">
+                <div class="d-flex flex-column gap-3">
+                    {#if showForm}
+                        <form class="card" bind:this={formEl} on:submit|preventDefault={submitBooking}>
+                            <div class="card-header">
+                                <h3 class="card-title d-flex align-items-center gap-2">
+                                    <IconCalendar size={18} class="icon" />New booking
+                                    <span class="text-secondary fw-normal">· {resource.name}</span>
+                                </h3>
+                            </div>
+                            <div class="card-body">
+                                <p class="text-secondary small mb-3">
+                                    Booking as <strong class="text-reset">{user?.name || user?.email}</strong>{user?.phone ? ` (${user.phone})` : ''}.
+                                </p>
+                                <div class="row g-2 mb-3">
+                                    <div class="col-12 col-sm-4 col-xl-12">
+                                        <label class="form-label" for="bk-date-{lab}">Date</label>
+                                        <input id="bk-date-{lab}" class="form-control" type="date" bind:value={form.date} required />
+                                    </div>
+                                    <div class="col-6 col-sm-4 col-xl-6">
+                                        <label class="form-label" for="bk-from-{lab}">From</label>
+                                        <input id="bk-from-{lab}" class="form-control" type="time" bind:value={form.start_hour} required step="900" />
+                                    </div>
+                                    <div class="col-6 col-sm-4 col-xl-6">
+                                        <label class="form-label" for="bk-to-{lab}">To</label>
+                                        <input id="bk-to-{lab}" class="form-control" type="time" bind:value={form.end_hour} required step="900" />
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <div class="form-label">Length</div>
+                                    <div class="btn-list" role="group" aria-label="Length">
+                                        {#each durations as h}
+                                            <button
+                                                type="button"
+                                                class="btn {formHours === h ? 'btn-primary' : 'btn-outline-secondary'} length-btn"
+                                                aria-pressed={formHours === h}
+                                                on:click={() => setDuration(h)}
+                                            >{h} h</button>
+                                        {/each}
+                                    </div>
+                                </div>
+                                {#if tooLong}
+                                    <div class="alert alert-warning py-2 mb-3" role="alert">
+                                        <div class="d-flex">
+                                            <div class="alert-icon"><IconAlert size={20} class="icon" /></div>
+                                            <div>{resource.name} can be booked for at most {resource.max_hours} h at a time.</div>
+                                        </div>
+                                    </div>
+                                {/if}
+                                {#if clashes.length}
+                                    <div class="alert alert-warning py-2 mb-3" role="alert">
+                                        <div class="d-flex">
+                                            <div class="alert-icon"><IconAlert size={20} class="icon" /></div>
+                                            <div>Overlaps {clashes.map((b) => `${b.booked_by} (${formatTime(b.start_time)} - ${formatTime(b.end_time)}${b.status === 'pending' ? ', pending' : ''})`).join(', ')}.</div>
+                                        </div>
+                                    </div>
+                                {/if}
+                                <div class="mb-3">
+                                    <label class="form-label" for="bk-purpose-{lab}">Purpose</label>
+                                    <input id="bk-purpose-{lab}" class="form-control" type="text" bind:value={form.purpose} placeholder="What are you using the {lab === 'mech' ? 'robot' : 'lab'} for? (optional)" />
+                                </div>
+                                {#if can(user, 'manage_bookings')}
+                                    <div class="row g-2 mb-3">
+                                        <div class="col-12 col-sm-7 col-xl-12">
+                                            <label class="form-label" for="bk-behalf-{lab}">Booking for someone else? Their name</label>
+                                            <input id="bk-behalf-{lab}" class="form-control" type="text" bind:value={form.on_behalf_name} placeholder="Leave empty to book for yourself" />
+                                        </div>
+                                        <div class="col-12 col-sm-5 col-xl-12">
+                                            <label class="form-label" for="bk-phone-{lab}">Their phone</label>
+                                            <input id="bk-phone-{lab}" class="form-control" type="tel" bind:value={form.on_behalf_phone} placeholder="Optional" />
+                                        </div>
+                                    </div>
+                                {/if}
+                                {#if resource.requires_thread || threadChoices.length}
+                                    <div class="mb-3">
+                                        <label class="form-label" for="bk-thread-{lab}">Research thread</label>
+                                        <select id="bk-thread-{lab}" class="form-select" bind:value={form.thread_id} required={resource.requires_thread}>
+                                            <option value="">{resource.requires_thread ? 'Pick a thread' : 'None'}</option>
+                                            {#each threadChoices as t (t.ID)}
+                                                <option value={t.ID}>{t.name} - {allowance(t)}</option>
+                                            {/each}
+                                        </select>
+                                        {#if pickedThread}
+                                            <div class="form-hint d-flex align-items-center">
+                                                <span class="dot" style="--hue: {hueFor(pickedThread.ID)}"></span>{pickedThread.name}: {allowance(pickedThread)}
+                                            </div>
+                                        {/if}
+                                    </div>
+                                {/if}
+                                {#if needsApproval}
+                                    <div class="form-hint d-flex align-items-center gap-1">
+                                        <IconHourglass size={16} class="icon" />A lab admin approves this request. You'll get a notification.
+                                    </div>
+                                {/if}
+                            </div>
+                            <div class="card-footer">
+                                <button type="submit" class="btn btn-primary w-100" disabled={submitting}>
+                                    {submitting ? 'Booking...' : needsApproval ? 'Request booking' : 'Confirm booking'}
+                                </button>
+                            </div>
+                        </form>
+                    {/if}
+
+                    {#if selectedBooking}
+                        <div class="card hue-edge" bind:this={detailsEl} style="--hue: {blockHue(selectedBooking)}">
+                            <div class="card-header">
+                                <h3 class="card-title">{selectedBooking.purpose || 'Booking'}</h3>
+                                <div class="card-actions">
+                                    <button class="btn btn-ghost-secondary btn-icon" type="button" aria-label="Close" on:click={() => (selectedBooking = null)}>
+                                        <IconX size={18} class="icon" />
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div class="datagrid">
+                                    <div class="datagrid-item">
+                                        <div class="datagrid-title">Booked by</div>
+                                        <div class="datagrid-content">{selectedBooking.booked_by}{isMine(selectedBooking) ? ' (you)' : ''}</div>
+                                    </div>
+                                    {#if resources.length > 1}
+                                        <div class="datagrid-item">
+                                            <div class="datagrid-title">Robot</div>
+                                            <div class="datagrid-content">{resourceName(selectedBooking.resource_id)}</div>
+                                        </div>
+                                    {/if}
+                                    {#if selectedBooking.thread_name}
+                                        <div class="datagrid-item">
+                                            <div class="datagrid-title">Thread</div>
+                                            <div class="datagrid-content d-flex align-items-center">
+                                                <span class="dot" style="--hue: {blockHue(selectedBooking)}"></span>{selectedBooking.thread_name}
+                                            </div>
+                                        </div>
+                                    {/if}
+                                    <div class="datagrid-item">
+                                        <div class="datagrid-title">When</div>
+                                        <div class="datagrid-content">{formatWhen(selectedBooking)}</div>
+                                    </div>
+                                </div>
+                                {#if selectedBooking.status === 'pending' || selectedBooking.no_show}
+                                    <div class="d-flex flex-wrap gap-2 mt-3">
+                                        {#if selectedBooking.status === 'pending'}<span class="badge bg-warning-lt"><IconHourglass size={14} class="icon me-1" />Waiting for approval</span>{/if}
+                                        {#if selectedBooking.no_show}<span class="badge bg-danger-lt"><IconUserX size={14} class="icon me-1" />Reported as a no-show</span>{/if}
+                                    </div>
+                                {/if}
+                            </div>
+                            <div class="card-footer">
+                                <div class="btn-list">
+                                    {#if mayCancel(selectedBooking)}
+                                        <button class="btn btn-danger" type="button" on:click={() => cancelBooking(selectedBooking)}>Cancel booking</button>
+                                    {/if}
+                                    {#if selectedBooking.status === 'pending' && can(user, 'approve_mech_bookings') && !isMine(selectedBooking)}
+                                        <button class="btn btn-success" type="button" on:click={() => act(`/api/bookings/${selectedBooking.ID}/approve`, 'Approved')}>
+                                            <IconCheck size={18} class="icon" />Approve
+                                        </button>
+                                        <button class="btn btn-outline-danger" type="button" on:click={() => act(`/api/bookings/${selectedBooking.ID}/reject`, 'Declined')}>
+                                            <IconX size={18} class="icon" />Decline
+                                        </button>
+                                    {/if}
+                                    {#if mayReportNoShow(selectedBooking)}
+                                        <button class="btn btn-outline-secondary" type="button" on:click={() => confirm(`Report that ${selectedBooking.booked_by} didn't turn up? Your name is recorded with the report.`) && act(`/api/bookings/${selectedBooking.ID}/no-show`, 'No-show recorded')}>They didn't turn up</button>
+                                    {/if}
+                                    {#if selectedBooking.no_show && can(user, 'manage_bookings')}
+                                        <button class="btn btn-outline-secondary" type="button" on:click={() => act(`/api/admin/bookings/${selectedBooking.ID}/clear-no-show`, 'No-show cleared')}>Clear no-show</button>
+                                    {/if}
+                                    {#if !user}
+                                        <a class="btn btn-outline-primary" href={loginUrl()}>Log in to cancel your booking</a>
+                                    {/if}
+                                    <button class="btn btn-ghost-secondary" type="button" on:click={() => (selectedBooking = null)}>Close</button>
+                                </div>
+                            </div>
+                        </div>
+                    {/if}
+
+                    {#if myUpcoming.length > 0}
+                        <div class="card">
+                            <div class="card-header">
+                                <h3 class="card-title d-flex align-items-center gap-2">
+                                    <IconList size={18} class="icon" />Your upcoming bookings
+                                    <span class="badge bg-primary-lt">{myUpcoming.length}</span>
+                                </h3>
+                            </div>
+                            <div class="list-group list-group-flush">
+                                {#each myUpcoming as b (b.ID)}
+                                    <div class="list-group-item">
+                                        <div class="d-flex align-items-center gap-2">
+                                            <button class="row-link flex-fill" type="button" on:click={() => jumpTo(b)} title="Show on the calendar">
+                                                <span class="d-flex align-items-center fw-medium">
+                                                    <span class="dot" style="--hue: {blockHue(b)}"></span>
+                                                    {#if resources.length > 1}{resourceName(b.resource_id)}{:else}{formatWhen(b)}{/if}
+                                                </span>
+                                                {#if resources.length > 1 || b.thread_name || b.purpose}
+                                                    <span class="d-block small text-secondary">
+                                                        {[resources.length > 1 ? formatWhen(b) : '', b.thread_name, b.purpose].filter(Boolean).join(' · ')}
+                                                    </span>
+                                                {/if}
+                                                {#if b.status === 'pending' || b.no_show}
+                                                    <span class="d-flex flex-wrap gap-1 mt-1">
+                                                        {#if b.status === 'pending'}<span class="badge bg-warning-lt">Pending</span>{/if}
+                                                        {#if b.no_show}<span class="badge bg-danger-lt">No-show</span>{/if}
+                                                    </span>
+                                                {/if}
+                                            </button>
+                                            {#if mayCancel(b)}
+                                                <button class="btn btn-outline-danger" type="button" on:click={() => cancelBooking(b)}>Cancel</button>
+                                            {/if}
+                                        </div>
+                                    </div>
+                                {/each}
+                            </div>
+                        </div>
+                    {/if}
+
+                    {#if resource.requires_approval || resource.requires_thread || resource.max_hours || resource.max_future_bookings}
+                        <div class="card">
+                            <div class="card-header">
+                                <h3 class="card-title d-flex align-items-center gap-2"><IconInfo size={18} class="icon" />How booking works here</h3>
+                            </div>
+                            <div class="list-group list-group-flush">
+                                {#if resource.requires_thread}
+                                    <div class="list-group-item d-flex align-items-center gap-2"><IconFlask size={18} class="icon text-secondary" />Booked by research threads with access</div>
+                                {/if}
+                                {#if resource.requires_approval}
+                                    <div class="list-group-item d-flex align-items-center gap-2"><IconCircleCheck size={18} class="icon text-secondary" />Each booking is approved by a lab admin</div>
+                                {/if}
+                                {#if resource.max_hours}
+                                    <div class="list-group-item d-flex align-items-center gap-2"><IconClock size={18} class="icon text-secondary" />Up to {resource.max_hours} h per booking</div>
+                                {/if}
+                                {#if resource.max_future_bookings}
+                                    <div class="list-group-item d-flex align-items-center gap-2"><IconCalendarOff size={18} class="icon text-secondary" />At most {resource.max_future_bookings} upcoming per person</div>
+                                {/if}
+                            </div>
+                        </div>
+                    {/if}
+                </div>
+            </div>
+        </div>
     {/if}
 </div>
 
 <style>
-    .container {
-        max-width: var(--page-max);
-        margin: 0 auto;
-        padding: 16px var(--gutter);
-        box-sizing: border-box;
-        min-width: 0;
-    }
-
-    .container.embedded {
-        padding: 0;
-    }
-
-    .header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 12px;
-        flex-wrap: wrap;
-        border-bottom: 1px solid var(--ctp-surface0);
-        padding-bottom: 12px;
-    }
-
-    .logo-title {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-    }
-
-    h1 {
-        margin: 0;
-        font-size: clamp(1.2rem, 3vw, 1.6rem);
-        color: var(--hue);
-    }
-
-    .subtitle {
-        margin: 2px 0 0;
-        font-size: 0.85rem;
-        color: var(--ctp-subtext0);
-    }
-
-    .embedded-title {
-        margin: 8px 0 14px;
-        font-size: 1.1rem;
-        color: var(--hue);
-    }
-
-    /* Lab switcher, where the old page had its back link */
-    .lab-switch {
-        display: flex;
-        gap: 6px;
-        flex-wrap: wrap;
-    }
-
-    .lab-switch a,
-    .robot-tabs button {
+    .lab-icon {
         display: inline-flex;
         align-items: center;
-        gap: 8px;
-        min-height: 40px;
-        box-sizing: border-box;
-        padding: 0 14px;
-        border: none;
-        border-radius: 6px;
-        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
-        color: var(--ctp-text);
-        font: inherit;
-        font-size: 0.9rem;
-        text-decoration: none;
-        cursor: pointer;
-        transition: background-color var(--fast) var(--ease), filter var(--fast) var(--ease);
-    }
-
-    .lab-switch a:hover,
-    .robot-tabs button:hover {
-        background: color-mix(in srgb, var(--ctp-surface1) 60%, transparent);
-    }
-
-    .lab-switch a.active,
-    .robot-tabs button.active {
-        background: var(--hue);
-        color: var(--rp-base);
-        font-weight: 650;
-    }
-
-    .robot-tabs {
-        display: flex;
-        gap: 8px;
-        flex-wrap: wrap;
-        margin: 14px 0 0;
-    }
-
-    .robot-tabs button.active .dot {
-        background: color-mix(in srgb, var(--rp-base) 60%, transparent);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .dot {
-        display: inline-block;
-        width: 9px;
-        height: 9px;
-        flex: none;
-        border-radius: 50%;
-        background: var(--hue);
-        margin-right: 6px;
+        justify-content: center;
+        width: 2.25rem;
+        height: 2.25rem;
+        border-radius: var(--tblr-border-radius);
+        background: color-mix(in srgb, var(--hue) 18%, transparent);
+        color: var(--tblr-body-color);
         vertical-align: middle;
     }
 
-    .robot-tabs .dot {
-        margin-right: 0;
+    /* A thread's or robot's colour, as on the Threads page */
+    .dot {
+        display: inline-block;
+        flex: none;
+        width: 0.6rem;
+        height: 0.6rem;
+        margin-right: 0.5rem;
+        border-radius: 50%;
+        background: var(--hue);
     }
 
-    /* Inline like the old page, but it sticks to the top while scrolled so a
-       message from a click deep in the calendar is still seen. */
-    .msg {
-        position: sticky;
-        top: 8px;
-        z-index: 20;
-        margin: 12px 0;
-        padding: 10px 14px;
-        border-radius: 8px;
-        font-size: 0.9rem;
-        box-shadow: var(--shadow-sm);
+    .robot-tabs .nav-segmented {
+        max-width: 100%;
     }
 
-    .msg.success {
-        background: color-mix(in srgb, var(--ctp-green) 14%, color-mix(in srgb, var(--card) 60%, transparent));
-        color: var(--ctp-green);
-        border: 1px solid var(--ctp-green);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
+    .week-label {
+        font-variant-numeric: tabular-nums;
     }
 
-    .msg.error {
-        background: color-mix(in srgb, var(--ctp-red) 14%, color-mix(in srgb, var(--card) 60%, transparent));
-        color: var(--ctp-red);
-        border: 1px solid var(--ctp-red);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
+    .length-btn {
+        min-width: 3.25rem;
     }
 
-    .rules {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px 16px;
-        margin: 12px 0 0;
-        font-size: 0.85rem;
-        color: var(--ctp-subtext0);
+    .hue-edge {
+        border-left: 4px solid var(--hue);
     }
 
-    /* Cards: the old form / details card look */
-    .panel,
-    .booking-form,
-    .booking-details {
-        background: color-mix(in srgb, var(--ctp-mantle) 60%, transparent);
-        border: 1px solid var(--ctp-surface0);
-        border-radius: var(--radius-lg);
-        padding: 16px;
-        margin: 14px 0 16px;
-        box-shadow: var(--shadow-sm);
-        animation: rise var(--normal) var(--ease) both;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .panel h3 {
-        margin: 0 0 8px;
-        font-size: 1rem;
-        color: var(--ctp-mauve);
-    }
-
-    .panel p {
-        margin: 0;
-        font-size: 0.9rem;
-        line-height: 1.5;
-    }
-
-    .panel a:not(.book-btn) {
-        color: var(--link);
-    }
-
-    .notice {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        flex-wrap: wrap;
-        border-color: color-mix(in srgb, var(--hue) 45%, transparent);
-        background: color-mix(in srgb, var(--hue) 8%, color-mix(in srgb, var(--ctp-mantle) 60%, transparent));
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .notice p {
-        flex: 1;
-        min-width: 220px;
-    }
-
-    .state {
-        text-align: center;
-        padding: 28px 16px;
-    }
-
-    .state p {
-        margin-bottom: 12px;
-        color: var(--ctp-subtext0);
-    }
-
-    .error-state {
-        border-color: var(--ctp-red);
-    }
-
-    .error-state h3 {
-        color: var(--ctp-red);
-    }
-
-    .list-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 8px 12px;
-        flex-wrap: wrap;
-        padding: 8px 0;
-        border-top: 1px solid var(--ctp-surface0);
-        font-size: 0.9rem;
-    }
-
-    .list-row:first-of-type {
-        border-top: none;
-    }
-
-    .list-text {
-        flex: 1;
+    .row-link {
+        display: block;
         min-width: 0;
-        line-height: 1.5;
-    }
-
-    .link-row {
-        min-height: 40px;
-        padding: 4px 6px;
-        margin: 0 -6px;
-        border: none;
-        border-radius: 6px;
+        min-height: 2.5rem;
+        padding: 0;
+        border: 0;
         background: none;
         color: inherit;
         font: inherit;
@@ -983,317 +1040,110 @@
         cursor: pointer;
     }
 
-    .link-row:hover {
-        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
+    .row-link:hover .fw-medium {
+        color: var(--tblr-primary);
     }
 
-    .when {
-        color: var(--ctp-subtext0);
+    /* --- phone day strip --- */
+    .day-strip {
+        flex-wrap: nowrap;
+        --tblr-nav-height: 3.5rem;
+        --tblr-nav-link-padding-x: 0.25rem;
     }
 
-    .row-actions {
-        display: flex;
-        gap: 8px;
-        flex-wrap: wrap;
-    }
-
-    .toolbar {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 12px;
-        flex-wrap: wrap;
-        margin: 14px 0;
-    }
-
-    .week-nav {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        flex-wrap: wrap;
-    }
-
-    .week-nav button {
-        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
-        color: var(--ctp-text);
-        border: none;
-        border-radius: 6px;
-        padding: 8px 12px;
-        min-width: 40px;
-        min-height: 40px;
-        cursor: pointer;
-    }
-
-    .week-nav button:hover {
-        background: color-mix(in srgb, var(--ctp-surface1) 60%, transparent);
-    }
-
-    .week-label {
-        color: var(--ctp-subtext0);
-        font-size: 0.9rem;
-        margin-left: 6px;
-    }
-
-    .book-btn {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        box-sizing: border-box;
-        background: linear-gradient(135deg, var(--ctp-mauve), var(--ctp-lavender));
-        color: var(--accent-ink);
-        border: none;
-        border-radius: var(--radius-sm);
-        padding: 10px 18px;
-        font: inherit;
-        font-weight: 650;
-        text-decoration: none;
-        cursor: pointer;
-        min-height: 42px;
-        box-shadow: var(--shadow-sm);
-        transition:
-            transform var(--fast) var(--ease),
-            box-shadow var(--fast) var(--ease),
-            filter var(--fast) var(--ease);
-    }
-
-    .book-btn:hover {
-        filter: brightness(1.06);
-        transform: translateY(-1px);
-        box-shadow: var(--shadow);
-    }
-
-    .book-btn:active {
-        transform: none;
-    }
-
-    .form-title {
-        margin: 0 0 6px;
-        color: var(--ctp-mauve);
-        font-size: 1rem;
-    }
-
-    .form-row {
-        display: flex;
-        gap: 12px;
-        flex-wrap: wrap;
-    }
-
-    .booking-form label {
-        display: flex;
+    .day-strip .nav-link {
+        flex: 1 1 0;
+        min-width: 0;
         flex-direction: column;
-        gap: 4px;
-        font-size: 0.85rem;
-        color: var(--ctp-subtext0);
-        flex: 1;
-        min-width: 140px;
-        margin-bottom: 10px;
+        gap: 0;
+        line-height: 1.1;
     }
 
-    .booking-form input,
-    .booking-form select {
-        background: color-mix(in srgb, var(--ctp-base) 60%, transparent);
-        border: 1px solid var(--ctp-surface1);
-        border-radius: 6px;
-        padding: 9px;
-        min-height: 40px;
-        box-sizing: border-box;
-        color: var(--ctp-text);
-        font-size: 0.95rem;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
+    .strip-name {
+        font-size: 0.7rem;
+        text-transform: uppercase;
     }
 
-    .picked {
-        display: flex;
-        align-items: center;
-        font-size: 0.8rem;
-        color: var(--ctp-subtext0);
-    }
-
-    .form-note {
-        font-size: 0.8rem;
-        color: var(--ctp-overlay0);
-        margin: 0 0 10px;
-    }
-
-    .form-note strong {
-        color: var(--ctp-text);
-    }
-
-    .submit-btn {
-        background: var(--ctp-green);
-        color: var(--rp-base);
-        border: none;
-        border-radius: 8px;
-        padding: 10px 18px;
-        min-height: 40px;
-        font: inherit;
-        font-weight: 600;
-        cursor: pointer;
-    }
-
-    .submit-btn:disabled {
-        opacity: 0.6;
-        cursor: not-allowed;
-    }
-
-    .booking-details {
-        border-left: 4px solid var(--hue);
-    }
-
-    .booking-details h3 {
-        margin: 0 0 8px;
-        color: var(--ctp-mauve);
-    }
-
-    .booking-details p {
-        margin: 4px 0;
-        font-size: 0.9rem;
-    }
-
-    .chips {
-        display: flex;
-        gap: 6px;
-        flex-wrap: wrap;
-    }
-
-    .chip {
-        display: inline-block;
-        margin-left: 6px;
-        padding: 2px 8px;
-        border-radius: var(--radius-pill);
-        border: 1px solid currentColor;
-        font-size: 0.75rem;
-        white-space: nowrap;
-    }
-
-    .chips .chip {
-        margin-left: 0;
-    }
-
-    .chip.warn {
-        color: var(--warn);
-    }
-
-    .chip.noshow {
-        color: var(--danger);
-    }
-
-    .details-actions {
-        display: flex;
-        gap: 8px;
-        flex-wrap: wrap;
-        margin-top: 12px;
-    }
-
-    .cancel-btn {
-        background: var(--ctp-red);
-        color: var(--rp-base);
-        border: none;
-        border-radius: 6px;
-        padding: 8px 14px;
-        min-height: 40px;
-        font: inherit;
-        cursor: pointer;
+    .strip-num {
         font-weight: 600;
     }
 
-    .close-btn {
-        display: inline-flex;
-        align-items: center;
-        box-sizing: border-box;
-        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
-        color: var(--ctp-text);
-        border: none;
-        border-radius: 6px;
-        padding: 8px 14px;
-        min-height: 40px;
-        font: inherit;
-        text-decoration: none;
-        cursor: pointer;
+    .day-strip .is-today .strip-num {
+        color: var(--tblr-primary);
     }
 
-    .close-btn:hover {
-        background: color-mix(in srgb, var(--ctp-surface1) 60%, transparent);
+    .strip-mark {
+        width: 4px;
+        height: 4px;
+        margin-top: 2px;
+        border-radius: 50%;
     }
 
-    .link-btn {
-        border: none;
-        background: none;
-        padding: 8px 4px;
-        color: var(--link);
-        font: inherit;
-        text-decoration: underline;
-        cursor: pointer;
+    .strip-mark.has {
+        background: var(--tblr-primary);
     }
 
     /* --- calendar --- */
-    .calendar {
-        border: 1px solid var(--ctp-surface0);
-        border-radius: var(--radius-lg);
-        overflow: hidden;
-        background: color-mix(in srgb, var(--ctp-mantle) 60%, transparent);
-        box-shadow: var(--shadow-sm);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .calendar-head,
-    .calendar-body {
+    .cal-grid {
         display: grid;
-        grid-template-columns: 56px repeat(7, 1fr);
+        grid-template-columns: 3.5rem repeat(7, minmax(0, 1fr));
     }
 
-    .calendar-head {
-        border-bottom: 1px solid var(--ctp-surface0);
+    .cal-head {
+        border-bottom: 1px solid var(--tblr-border-color);
     }
 
     .day-head {
-        text-align: center;
-        padding: 8px 2px;
-        border-left: 1px solid var(--ctp-surface0);
         display: flex;
         flex-direction: column;
+        align-items: center;
+        padding: 0.5rem 0.125rem;
+        border-left: 1px solid var(--tblr-border-color);
     }
 
     .day-name {
-        font-size: 0.75rem;
-        color: var(--ctp-subtext0);
+        font-size: 0.7rem;
+        color: var(--tblr-secondary-color);
         text-transform: uppercase;
     }
 
     .day-number {
-        font-size: 1.1rem;
+        width: 1.75rem;
+        height: 1.75rem;
+        line-height: 1.75rem;
+        text-align: center;
+        font-size: 1rem;
         font-weight: 600;
     }
 
     .day-head.today .day-number {
-        color: var(--rp-base);
-        background: var(--ctp-mauve);
         border-radius: 50%;
-        width: 28px;
-        height: 28px;
-        line-height: 28px;
-        margin: 2px auto 0;
+        background: var(--tblr-primary);
+        color: var(--tblr-primary-fg);
     }
 
-    .calendar-body {
+    .cal-body {
         position: relative;
         max-height: 60vh;
         overflow-y: auto;
     }
 
-    .time-gutter {
-        border-right: 1px solid var(--ctp-surface0);
+    .gutter {
+        border-right: 1px solid var(--tblr-border-color);
+    }
+
+    .cal-head .gutter {
+        border-right: 0;
     }
 
     .time-label {
-        height: 48px;
+        height: 3rem;
+        padding-right: 0.375rem;
         font-size: 0.7rem;
-        color: var(--ctp-overlay0);
+        color: var(--tblr-secondary-color);
         text-align: right;
-        padding-right: 6px;
-        transform: translateY(-6px);
+        font-variant-numeric: tabular-nums;
+        transform: translateY(-0.4rem);
     }
 
     /* The first label sits on the top edge; shifting it up would clip it */
@@ -1303,36 +1153,39 @@
 
     .day-column {
         position: relative;
-        border-left: 1px solid var(--ctp-surface0);
+        border-left: 1px solid var(--tblr-border-color);
+    }
+
+    .cal-body .gutter + .day-column {
+        border-left: 0;
     }
 
     .day-column.today {
-        background: color-mix(in srgb, var(--ctp-mauve) 6%, transparent);
+        background: color-mix(in srgb, var(--tblr-primary) 6%, transparent);
     }
 
     .hour-cell {
         display: block;
         width: 100%;
-        height: 48px;
-        border: none;
-        border-bottom: 1px solid var(--ctp-surface0);
+        height: 3rem;
+        padding: 0;
+        border: 0;
+        border-bottom: 1px solid var(--tblr-border-color);
         background: transparent;
         cursor: pointer;
-        padding: 0;
-        transition: background-color var(--fast) var(--ease);
+        transition: background-color 0.15s;
     }
 
-    .hour-cell:hover {
-        background: color-mix(in srgb, var(--ctp-mauve) 16%, transparent);
-        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ctp-mauve) 35%, transparent);
+    .hour-cell:hover,
+    .hour-cell:focus-visible {
+        background: color-mix(in srgb, var(--tblr-primary) 16%, transparent);
+        outline: none;
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tblr-primary) 40%, transparent);
     }
 
     .hour-cell.past {
         cursor: default;
-        background: repeating-linear-gradient(135deg, transparent 0 6px, var(--line) 6px 7px);
-    }
-
-    .hour-cell.past:hover {
+        background: repeating-linear-gradient(135deg, transparent 0 6px, var(--tblr-border-color) 6px 7px);
         box-shadow: none;
     }
 
@@ -1340,9 +1193,9 @@
         position: absolute;
         left: 0;
         right: 0;
-        height: 2px;
-        background: var(--danger);
         z-index: 3;
+        height: 2px;
+        background: var(--tblr-danger);
         pointer-events: none;
     }
 
@@ -1354,216 +1207,137 @@
         width: 8px;
         height: 8px;
         border-radius: 50%;
-        background: var(--danger);
+        background: var(--tblr-danger);
     }
 
-    .durations {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        flex-wrap: wrap;
-        margin-bottom: 10px;
-        font-size: 0.85rem;
-        color: var(--ctp-subtext0);
-    }
-
-    .durations button {
-        min-width: 44px;
-        min-height: 40px;
-        border: 1px solid var(--ctp-surface1);
-        border-radius: 6px;
-        background: color-mix(in srgb, var(--ctp-base) 60%, transparent);
-        color: var(--ctp-text);
-        font: inherit;
-        cursor: pointer;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .durations button.active {
-        background: var(--ctp-mauve);
-        border-color: var(--ctp-mauve);
-        color: var(--accent-ink);
-        font-weight: 600;
-    }
-
-    .form-warn {
-        margin: 0 0 10px;
-        font-size: 0.85rem;
-        color: var(--warn);
-    }
-
+    /* A booking in its thread's colour: dark ink on the pale Rosé Pine hues */
     .booking-block {
         position: absolute;
         left: 3px;
         right: 3px;
-        box-sizing: border-box;
-        box-shadow: var(--shadow-sm);
-        animation: fade var(--normal) var(--ease);
-        transition:
-            transform var(--fast) var(--ease),
-            filter var(--fast) var(--ease),
-            box-shadow var(--fast) var(--ease);
-        background: linear-gradient(135deg, color-mix(in srgb, var(--hue) 88%, var(--rp-text)), color-mix(in srgb, var(--hue) 68%, var(--rp-text)));
-        color: var(--rp-base);
-        border: none;
-        border-radius: 6px;
-        padding: 4px 6px;
-        text-align: left;
-        overflow: hidden;
-        cursor: pointer;
         display: flex;
         flex-direction: column;
         gap: 1px;
+        padding: 0.25rem 0.375rem;
+        overflow: hidden;
+        border: 0;
+        border-radius: var(--tblr-border-radius);
+        background: color-mix(in srgb, var(--hue) 82%, var(--tblr-body-color));
+        color: var(--rp-base);
         font: inherit;
         font-size: 0.7rem;
         line-height: 1.15;
+        text-align: left;
+        cursor: pointer;
+        box-shadow: var(--tblr-box-shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.1));
+        transition: filter 0.15s, transform 0.15s;
     }
 
-    .booking-block:hover {
-        filter: brightness(1.08);
-        transform: translateY(-1px);
-        box-shadow: var(--shadow);
+    .booking-block:hover,
+    .booking-block:focus-visible {
         z-index: 2;
+        filter: brightness(1.06);
+        transform: translateY(-1px);
     }
 
     /* Yours: a ring in the text colour */
     .booking-block.mine {
-        box-shadow: inset 0 0 0 2px var(--ctp-text), var(--shadow-sm);
+        box-shadow: inset 0 0 0 2px var(--tblr-body-color);
     }
 
     /* A request nobody has approved yet does not hold the slot */
     .booking-block.pending {
-        background: color-mix(in srgb, var(--hue) 14%, color-mix(in srgb, var(--ctp-mantle) 60%, transparent));
         border: 1px dashed var(--hue);
-        color: var(--ctp-text);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
+        background: color-mix(in srgb, var(--hue) 14%, var(--tblr-bg-surface));
+        color: var(--tblr-body-color);
     }
 
     .booking-block.noshow {
-        border-left: 4px solid var(--danger);
+        border-left: 4px solid var(--tblr-danger);
     }
 
     .block-time {
         font-weight: 700;
     }
 
-    .block-name {
-        font-weight: 600;
-    }
-
+    .block-name,
     .block-status {
         font-weight: 600;
     }
 
     .booking-block.pending .block-status {
-        color: var(--warn);
+        color: var(--tblr-warning);
     }
 
     .block-purpose {
-        opacity: 0.85;
         overflow: hidden;
-        text-overflow: ellipsis;
         white-space: nowrap;
+        text-overflow: ellipsis;
+        opacity: 0.85;
     }
 
-    .loading-note {
-        color: var(--ctp-overlay0);
-        font-size: 0.85rem;
-        text-align: center;
-        margin-top: 12px;
+    /* Rosé Pine Dawn: the hues are darker, so a lighter fill with body ink */
+    :global(:root[data-theme='light']) .booking-block:not(.pending) {
+        background: color-mix(in srgb, var(--hue) 45%, var(--tblr-bg-surface));
+        color: var(--tblr-body-color);
     }
 
     .legend {
         display: flex;
-        justify-content: center;
         flex-wrap: wrap;
-        gap: 6px 18px;
-        margin: 8px 0 0;
-        font-size: 0.8rem;
-        color: var(--ctp-subtext0);
+        gap: 0.375rem 1.25rem;
     }
 
     .legend > span {
         display: inline-flex;
         align-items: center;
-        gap: 6px;
+        gap: 0.375rem;
     }
 
     .swatch {
         width: 14px;
         height: 10px;
         border-radius: 3px;
-        background: linear-gradient(135deg, color-mix(in srgb, var(--hue) 88%, var(--rp-text)), color-mix(in srgb, var(--hue) 68%, var(--rp-text)));
-    }
-
-    .swatch.past {
-        background: repeating-linear-gradient(135deg, transparent 0 3px, var(--line-strong) 3px 4px);
-        border: 1px solid var(--line);
-        box-sizing: border-box;
-    }
-
-    .swatch.pending {
-        background: color-mix(in srgb, var(--hue) 14%, color-mix(in srgb, var(--ctp-mantle) 60%, transparent));
-        border: 1px dashed var(--hue);
-        box-sizing: border-box;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    /* Rosé Pine Dawn: dark text reads better on the lighter hues */
-    :global(:root[data-theme='light']) .booking-block:not(.pending) {
-        color: var(--ctp-text);
-        background: linear-gradient(135deg, color-mix(in srgb, var(--hue) 55%, color-mix(in srgb, var(--card) 60%, transparent)), color-mix(in srgb, var(--hue) 40%, color-mix(in srgb, var(--card) 60%, transparent)));
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
+        background: color-mix(in srgb, var(--hue) 82%, var(--tblr-body-color));
     }
 
     :global(:root[data-theme='light']) .swatch:not(.pending):not(.past) {
-        background: color-mix(in srgb, var(--hue) 50%, color-mix(in srgb, var(--card) 60%, transparent));
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
+        background: color-mix(in srgb, var(--hue) 45%, var(--tblr-bg-surface));
     }
 
-    :global(:root[data-theme='light']) .booking-block:not(.pending) .block-name,
-    :global(:root[data-theme='light']) .booking-block:not(.pending) .block-time {
-        color: var(--rp-text);
+    .swatch.pending {
+        border: 1px dashed var(--hue);
+        background: color-mix(in srgb, var(--hue) 14%, var(--tblr-bg-surface));
     }
 
-    @media (max-width: 700px) {
-        .calendar-head,
-        .calendar-body {
-            grid-template-columns: 40px repeat(7, minmax(70px, 1fr));
+    .swatch.past {
+        border: 1px solid var(--tblr-border-color);
+        background: repeating-linear-gradient(135deg, transparent 0 3px, var(--tblr-border-color) 3px 4px);
+    }
+
+    /* Phones: one day column, picked from the strip above */
+    @media (max-width: 767.98px) {
+        .cal-grid {
+            grid-template-columns: 3rem minmax(0, 1fr);
         }
 
-        /* One horizontal scroller for the whole week; the page scrolls
-           vertically, so the hour labels can stay pinned on the left. */
-        .calendar-head,
-        .calendar-body {
-            min-width: 530px;
+        .day-head.off,
+        .day-column.off {
+            display: none;
         }
 
-        .calendar-body {
+        .cal-body {
             max-height: none;
             overflow: visible;
         }
 
-        .time-gutter {
-            position: sticky;
-            left: 0;
-            z-index: 5;
-            background: color-mix(in srgb, var(--ctp-mantle) 60%, transparent);
-            -webkit-backdrop-filter: var(--glass-blur);
-            backdrop-filter: var(--glass-blur);
+        .day-column {
+            border-left: 0;
         }
 
-        .calendar {
-            overflow-x: auto;
-        }
-
-        .block-purpose {
-            display: none;
+        .booking-block {
+            font-size: 0.8rem;
+            padding: 0.375rem 0.5rem;
         }
     }
 </style>
