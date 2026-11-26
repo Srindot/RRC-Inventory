@@ -67,6 +67,10 @@
         function readTheme() {
             const cs = getComputedStyle(document.documentElement);
             palette = HUES.map((name) => hex(cs.getPropertyValue(name) || '#c4a7e7'));
+            // Light theme: the Dawn hues are pastel and wash out on the cream
+            // page, so draw them about a third darker.
+            if (document.documentElement.dataset.theme === 'light')
+                palette = palette.map((rgb) => rgb.map((v) => Math.round(v * 0.65)));
         }
 
         const font = () => `500 ${fs}px ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace`;
