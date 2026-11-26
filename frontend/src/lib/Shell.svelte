@@ -95,7 +95,6 @@
 
     <footer class="site-foot">
         <span>Created by <a href="https://github.com/srindot" target="_blank" rel="noopener noreferrer">Srinath</a></span>
-        <span>Theme: <a href="https://rosepinetheme.com" target="_blank" rel="noopener noreferrer">Rosé Pine</a></span>
     </footer>
 </div>
 
