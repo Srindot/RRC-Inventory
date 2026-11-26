@@ -1,7 +1,28 @@
 <script>
-    import { onMount, onDestroy, tick } from 'svelte';
+    import { onMount, onDestroy } from 'svelte';
     import { cameraFeed } from '$lib/camera.js';
     import { api, can, getToken, getUser, loginUrl, refreshUser } from '$lib/auth.js';
+    import IconBook from '@tabler/icons-svelte-runes/icons/book';
+    import IconAlert from '@tabler/icons-svelte-runes/icons/alert-triangle';
+    import IconLock from '@tabler/icons-svelte-runes/icons/lock';
+    import IconExternal from '@tabler/icons-svelte-runes/icons/external-link';
+    import IconBell from '@tabler/icons-svelte-runes/icons/bell';
+    import IconBellOff from '@tabler/icons-svelte-runes/icons/bell-off';
+    import IconBulb from '@tabler/icons-svelte-runes/icons/bulb';
+    import IconBulbOff from '@tabler/icons-svelte-runes/icons/bulb-off';
+    import IconPlay from '@tabler/icons-svelte-runes/icons/player-play';
+    import IconPause from '@tabler/icons-svelte-runes/icons/player-pause';
+    import IconStop from '@tabler/icons-svelte-runes/icons/player-stop';
+    import IconUpload from '@tabler/icons-svelte-runes/icons/cloud-upload';
+    import IconFolder from '@tabler/icons-svelte-runes/icons/folder';
+    import IconFile from '@tabler/icons-svelte-runes/icons/file-3d';
+    import IconTrash from '@tabler/icons-svelte-runes/icons/trash';
+    import IconRefresh from '@tabler/icons-svelte-runes/icons/refresh';
+    import IconLogin from '@tabler/icons-svelte-runes/icons/login-2';
+    import IconX from '@tabler/icons-svelte-runes/icons/x';
+    import IconDroplet from '@tabler/icons-svelte-runes/icons/droplet';
+    import IconTemp from '@tabler/icons-svelte-runes/icons/temperature';
+    import IconPrinter from '@tabler/icons-svelte-runes/icons/printer';
 
     const STATUS_INTERVAL = 5000;   // printers report every few seconds
     const CAMERA_INTERVAL = 2000;   // the camera itself only manages ~0.5 fps
@@ -73,6 +94,34 @@
     const ACTIVE_STATES = ['RUNNING', 'PREPARE', 'PAUSE'];
     let notifyOn = {};
     let lastSeen = {};
+    // Browsers only allow desktop notifications on HTTPS (or localhost); on
+    // plain http the in-page alert is all there is
+    let secure = true;
+
+    // The confirmation dialog: ask() opens it and resolves with the answer.
+    // { title, lines, ok, tone, resolve }
+    let confirmBox = null;
+
+    function ask(box) {
+        return new Promise((resolve) => {
+            confirmBox = { tone: 'danger', ...box, resolve };
+        });
+    }
+
+    function answer(value) {
+        const box = confirmBox;
+        confirmBox = null;
+        box?.resolve(value);
+    }
+
+    function onKey(e) {
+        if (e.key !== 'Escape') return;
+        if (confirmBox) answer(false);
+        else if (startFor) startFor = '';
+    }
+
+    // The printer whose start-print dialog is open
+    $: startPrinter = printers.find((p) => p.id === startFor);
 
     $: canUpload = can(user, 'upload_prints');
     $: canManage = can(user, 'manage_printers');
@@ -91,6 +140,7 @@
         // Permissions may have changed since login; a 401 ends the session
         refreshUser().then((fresh) => (user = fresh));
         notifyOn = loadNotify();
+        secure = window.isSecureContext !== false;
 
         loadPrinters();
         statusTimer = setInterval(loadPrinters, STATUS_INTERVAL);
@@ -305,7 +355,12 @@
 
     // Tidying files off a printer is for people who manage the printers
     async function deleteFile(printer, file) {
-        if (!confirm(`Delete ${file.name} from ${printer.name}? This cannot be undone.`)) return;
+        const ok = await ask({
+            title: `Delete ${file.name}?`,
+            lines: [`It will be removed from ${printer.name}. This cannot be undone.`],
+            ok: 'Delete'
+        });
+        if (!ok) return;
         await adminDelete(
             printer,
             `${printer.id}/${file.name}`,
@@ -316,7 +371,12 @@
 
     async function clearAllFiles(printer) {
         const count = printerFiles[printer.id]?.length || 0;
-        if (!confirm(`Delete all ${count} file(s) from ${printer.name}? This cannot be undone.`)) return;
+        const ok = await ask({
+            title: `Delete all ${count} file(s)?`,
+            lines: [`Every file on ${printer.name} will be removed. This cannot be undone.`],
+            ok: 'Delete all'
+        });
+        if (!ok) return;
         await adminDelete(printer, `${printer.id}/*`, `/api/admin/printers/${printer.id}/files`, null);
     }
 
@@ -401,11 +461,14 @@
         control(printer, 'resume', { method: 'POST' }, `Resumed ${printer.name}`);
     }
 
-    function stopPrint(printer) {
+    async function stopPrint(printer) {
         const job = tidyFileName(printer.file_name) || 'the current job';
-        if (!confirm(`Stop ${job} on ${printer.name}?\n\nThis cannot be undone - the print will be cancelled.`)) {
-            return;
-        }
+        const ok = await ask({
+            title: `Stop ${job} on ${printer.name}?`,
+            lines: ['This cannot be undone - the print will be cancelled.'],
+            ok: 'Stop print'
+        });
+        if (!ok) return;
         control(printer, 'stop', { method: 'POST' }, `Stop command sent to ${printer.name}`);
     }
 
@@ -456,11 +519,9 @@
         loadPrinterFiles(printer);
     }
 
-    async function printThisFile(printer, name) {
+    function printThisFile(printer, name) {
         if (startFor !== printer.id) toggleStart(printer);
         startFile = name;
-        await tick();
-        document.getElementById(`start-${printer.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
 
     async function startPrint(printer) {
@@ -478,12 +539,16 @@
             spool = chosen ? `AMS ${chosen.unit} slot ${chosen.slot} — ${chosen.label}` : `AMS tray ${slot}`;
         }
 
-        const ok = confirm(
-            `Start ${startFile} on ${printer.name}?\n\n` +
-            `Plate: ${bed}\nFilament: ${spool}\n\n` +
-            `The printer will start moving. Check the plate is clear and the ` +
-            `right one is fitted before continuing.`
-        );
+        const ok = await ask({
+            title: `Start ${startFile} on ${printer.name}?`,
+            lines: [
+                `Plate: ${bed}`,
+                `Filament: ${spool}`,
+                'The printer will start moving. Check the plate is clear and the right one is fitted before continuing.'
+            ],
+            ok: 'Start print',
+            tone: 'primary'
+        });
         if (!ok) return;
 
         const file = startFile;
@@ -589,8 +654,8 @@
             ? `${printer.name} failed - check it`
             : `${printer.name} finished${job ? ' ' + job : ''}`;
 
-        if (failed) showError(`⚠️ ${title}`, 15000);
-        else showNotice(`✅ ${title}`, 15000);
+        if (failed) showError(title, 15000);
+        else showNotice(title, 15000);
 
         if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
             try {
@@ -632,6 +697,15 @@
             default: return printer.state || 'Idle';
         }
     }
+
+    const BADGE = {
+        running: 'bg-blue-lt',
+        failed: 'bg-red-lt',
+        paused: 'bg-yellow-lt',
+        finished: 'bg-green-lt',
+        idle: 'bg-teal-lt',
+        offline: 'bg-secondary-lt'
+    };
 
     function stateClass(printer) {
         if (!printer.online) return 'offline';
@@ -679,1698 +753,813 @@
     }
 </script>
 
-<div class="container">
-    <div class="header">
-        <div class="logo-title">
-            <h1>🖨️ 3D Printers</h1>
-            <p class="subtitle">Live status of the lab's Bambu Lab P1S printers</p>
+<svelte:window on:keydown={onKey} />
+
+<div class="page-header d-print-none mt-0 mb-3">
+    <div class="row g-2 align-items-center">
+        <div class="col">
+            <div class="page-pretitle">Lab equipment</div>
+            <h2 class="page-title">3D Printers</h2>
+            <div class="text-secondary mt-1">Live status of the lab's Bambu Lab P1S printers</div>
         </div>
-        <a href="/?view=printer-guide" class="guide-link">📖 How to print</a>
+        <div class="col-12 col-sm-auto">
+            <a href="/?view=printer-guide" class="btn btn-outline-primary w-100">
+                <IconBook size={18} class="icon" />
+                How to print
+            </a>
+        </div>
+    </div>
+</div>
+
+{#if error}
+    <div class="toast-msg error" role="status">{error}</div>
+{/if}
+{#if notice}
+    <div class="toast-msg success" class:stacked={!!error} role="status">{notice}</div>
+{/if}
+
+{#if !loaded}
+    <div class="card">
+        <div class="card-body text-secondary">Loading printers...</div>
+    </div>
+{:else if printers.length === 0}
+    <div class="card">
+        <div class="empty">
+            <div class="empty-icon"><IconPrinter size={48} class="icon" /></div>
+            <p class="empty-title">No printers are configured</p>
+        </div>
+    </div>
+{:else}
+    <div class="d-flex flex-wrap gap-3 mb-3" aria-label="Printer summary">
+        <span class="status status-green"><span class="status-dot"></span>{summary.free} free</span>
+        <span class="status status-blue"><span class="status-dot status-dot-animated"></span>{summary.printing} printing</span>
+        {#if summary.attention}
+            <span class="status status-yellow"><span class="status-dot"></span>{summary.attention} paused or failed</span>
+        {/if}
+        {#if summary.offline}
+            <span class="status status-secondary"><span class="status-dot"></span>{summary.offline} offline</span>
+        {/if}
     </div>
 
-    {#if error}
-        <div class="message error">{error}</div>
-    {/if}
-    {#if notice}
-        <div class="message success">{notice}</div>
-    {/if}
-
-    {#if !loaded}
-        <p class="note">Loading printers...</p>
-    {:else if printers.length === 0}
-        <p class="note">No printers are configured.</p>
-    {:else}
-        <div class="summary" aria-label="Printer summary">
-            <span class="pill free"><span class="pip"></span>{summary.free} free</span>
-            <span class="pill printing"><span class="pip"></span>{summary.printing} printing</span>
-            {#if summary.attention}
-                <span class="pill attention"><span class="pip"></span>{summary.attention} paused or failed</span>
-            {/if}
-            {#if summary.offline}
-                <span class="pill offline"><span class="pip"></span>{summary.offline} offline</span>
-            {/if}
-        </div>
-
-        <div class="printer-grid">
-            {#each printers as printer, i (printer.id)}
-                <div class="printer-card {stateClass(printer)}" style="--i: {i}">
-                    <div class="card-head">
-                        <img src="/P1S.png" alt="" class="printer-icon" />
-                        <div class="head-text">
-                            <h2>{printer.name}</h2>
-                            <span class="availability {isPrinting(printer) ? 'busy' : printer.online ? 'free' : 'unknown'}">
-                                {availability(printer)}
-                            </span>
+    <div class="row row-cards g-3">
+        {#each printers as printer (printer.id)}
+            <div class="col-12 col-lg-6">
+                <div class="card h-100">
+                    <div class="card-header">
+                        <img src="/P1S.png" alt="" class="printer-icon me-2" width="32" height="32" />
+                        <div class="min-w-0">
+                            <h3 class="card-title text-truncate">{printer.name}</h3>
+                            <div class="card-subtitle mt-1">
+                                <span class="status {isPrinting(printer) ? 'status-blue' : printer.online ? 'status-green' : 'status-secondary'}">
+                                    <span class="status-dot"></span>{availability(printer)}
+                                </span>
+                            </div>
                         </div>
-                        <span class="state-badge {stateClass(printer)}">{stateLabel(printer)}</span>
+                        <div class="card-actions">
+                            <span class="badge {BADGE[stateClass(printer)]}">{stateLabel(printer)}</span>
+                        </div>
                     </div>
 
-                    {#if printer.access_code_problem}
-                        <div class="code-warning">
-                            <strong>⚠️ Camera not connecting</strong>
-                            <p>
-                                {printer.name} accepted the connection and then hung up. Usually
-                                the access code changed - toggling LAN mode on the printer
-                                regenerates it. It also happens when the camera is already open
-                                in Bambu Studio or Handy, since the P1S allows only one viewer.
-                            </p>
-                            {#if canManage}
-                                {#if editingCode === printer.id}
-                                    <div class="code-form">
-                                        <input
-                                            type="text"
-                                            bind:value={newCode}
-                                            placeholder="New access code from the printer screen"
-                                            autocomplete="off"
-                                            on:keydown={(e) => e.key === 'Enter' && saveAccessCode(printer)}
-                                        />
-                                        <button
-                                            class="save-code-btn"
-                                            on:click={() => saveAccessCode(printer)}
-                                            disabled={savingCode}
-                                        >
-                                            {savingCode ? 'Saving...' : 'Save'}
-                                        </button>
-                                        <button class="cancel-code-btn" on:click={() => (editingCode = '')}>
-                                            Cancel
-                                        </button>
-                                    </div>
-                                    <p class="code-hint">
-                                        On the printer: Settings → Network → the code is shown with
-                                        the IP address. No restart needed - it reconnects by itself.
-                                    </p>
-                                {:else}
-                                    <button class="fix-code-btn" on:click={() => startCodeEdit(printer)}>
-                                        Update access code
-                                    </button>
-                                {/if}
-                            {:else}
-                                <p class="code-hint">A printer admin can fix this from this page.</p>
-                            {/if}
-                        </div>
-                    {/if}
-
-                    {#if isRejected(printer)}
-                        <div class="reject-card">
-                            {#if canManage}
-                                <strong>🔒 Remote control blocked by the printer</strong>
-                                <p>
-                                    This printer rejected a command from the website: its firmware
-                                    only accepts signed commands. Turn on
-                                    <strong>LAN Only Mode → Developer Mode</strong> on the printer's
-                                    screen (Settings → Network) to allow remote control.
-                                </p>
-                            {:else}
-                                <strong>🔒 Remote control is off</strong>
-                                <p>
-                                    {printer.name} isn't accepting commands from the website yet. Use
-                                    the printer's screen - a printer admin is sorting it out.
-                                </p>
-                            {/if}
-                        </div>
-                    {/if}
-
-                    {#if printer.faults && printer.faults.length > 0}
-                        <div class="faults">
-                            <strong>⚠️ {printer.faults.length} fault{printer.faults.length > 1 ? 's' : ''} reported</strong>
-                            {#each printer.faults as fault (fault.code)}
-                                <a class="fault {fault.severity}" href={fault.url} target="_blank" rel="noopener">
-                                    <span class="fault-sev">{fault.severity}</span>
-                                    <span class="fault-code">{fault.code}</span>
-                                    <span class="fault-link">look up →</span>
-                                </a>
-                            {/each}
-                        </div>
-                    {/if}
-
-                    <div class="camera">
+                    <div class="ratio ratio-16x9 camera">
                         {#if printer.camera_online && $camera[printer.id]}
-                            <img
-                                src={$camera[printer.id]}
-                                alt="Camera view of {printer.name}"
-                            />
+                            <img src={$camera[printer.id]} alt="Camera view of {printer.name}" />
                         {:else}
-                            <div class="camera-placeholder">
-                                <img src="/P1S.png" alt="" class="placeholder-icon" />
-                                <p>{printer.camera_online ? 'Loading camera…' : 'No camera image'}</p>
+                            <div class="d-flex flex-column align-items-center justify-content-center text-secondary">
+                                <img src="/P1S.png" alt="" class="camera-placeholder mb-2" width="64" height="64" />
+                                <span class="small">{printer.camera_online ? 'Loading camera...' : 'No camera image'}</span>
                             </div>
                         {/if}
                     </div>
 
-                    {#if printer.online}
-                        {#if isPrinting(printer)}
-                            <div class="progress-row">
-                                <div class="progress-bar">
-                                    <div class="progress-fill" style="width: {printer.progress}%"></div>
-                                </div>
-                                <span class="progress-text">{printer.progress}%</span>
-                            </div>
-                            {#if printer.remaining_minutes > 0}
-                                <p class="remaining">
-                                    {formatRemaining(printer.remaining_minutes)}
-                                    <span class="eta">· {finishTime(printer.remaining_minutes)}</span>
-                                </p>
-                            {/if}
-                        {/if}
-
-                        {#if printer.file_name}
-                            <p class="file" title={printer.file_name}>
-                                📄 {tidyFileName(printer.file_name)}
-                            </p>
-                        {/if}
-
-                        <div class="controls" aria-label="{printer.name} controls">
-                            <button
-                                class="ctl notify"
-                                class:on={notifyOn[printer.id]}
-                                aria-pressed={!!notifyOn[printer.id]}
-                                on:click={() => toggleNotify(printer)}
-                                title="Get a notification in this browser when the current job finishes or fails"
-                            >
-                                {notifyOn[printer.id] ? '🔔 Notifying you' : '🔕 Notify me when done'}
-                            </button>
-
-                            {#if canManage}
-                                <button
-                                    class="ctl light"
-                                    class:on={printer.light_on}
-                                    aria-pressed={!!printer.light_on}
-                                    on:click={() => toggleLight(printer)}
-                                    disabled={!!busy[printer.id]}
-                                    title="Chamber light - the camera is useless in the dark"
-                                >
-                                    {busy[printer.id] === 'light' ? '...' : printer.light_on ? '💡 Light on' : '🌑 Light off'}
-                                </button>
-
-                                {#if printer.state === 'PAUSE'}
-                                    <button class="ctl resume" on:click={() => resumePrint(printer)} disabled={!!busy[printer.id]}>
-                                        {busy[printer.id] === 'resume' ? 'Resuming...' : '▶ Resume'}
-                                    </button>
-                                {:else if isActive(printer)}
-                                    <button class="ctl pause" on:click={() => pausePrint(printer)} disabled={!!busy[printer.id]}>
-                                        {busy[printer.id] === 'pause' ? 'Pausing...' : '⏸ Pause'}
-                                    </button>
-                                {/if}
-
-                                {#if isActive(printer)}
-                                    <button class="ctl stop" on:click={() => stopPrint(printer)} disabled={!!busy[printer.id]}>
-                                        {busy[printer.id] === 'stop' ? 'Stopping...' : '⏹ Stop'}
-                                    </button>
-                                {/if}
-
-                                {#if canStart(printer)}
-                                    <button
-                                        class="ctl start"
-                                        aria-expanded={startFor === printer.id}
-                                        on:click={() => toggleStart(printer)}
-                                        disabled={!!busy[printer.id] && startFor !== printer.id}
-                                    >
-                                        {startFor === printer.id ? '✕ Close' : '▶ Start print'}
-                                    </button>
-                                {/if}
-                            {/if}
-                        </div>
-
-                        {#if canManage && startFor === printer.id && canStart(printer)}
-                            <div class="start-panel" id="start-{printer.id}">
-                                <label class="start-row">
-                                    <span>File</span>
-                                    <select bind:value={startFile}>
-                                        <option value="">
-                                            {printerFiles[printer.id]
-                                                ? printerFiles[printer.id].length
-                                                    ? 'Choose a file...'
-                                                    : 'No files on this printer'
-                                                : filesError[printer.id]
-                                                    ? 'Could not read the files'
-                                                    : 'Loading files...'}
-                                        </option>
-                                        {#each printerFiles[printer.id] || [] as file (file.name)}
-                                            <option value={file.name}>{file.name}</option>
-                                        {/each}
-                                    </select>
-                                </label>
-
-                                <label class="start-row">
-                                    <span>Plate fitted</span>
-                                    <select bind:value={startBed}>
-                                        {#each BED_TYPES as bed}<option value={bed.value}>{bed.label}</option>{/each}
-                                    </select>
-                                </label>
-
-                                <label class="start-row">
-                                    <span>Filament</span>
-                                    <select bind:value={startSpool}>
-                                        {#each amsChoices(printer) as choice}
-                                            <option value={String(choice.index)}>
-                                                AMS {choice.unit} slot {choice.slot} — {choice.label}{choice.remain >= 0 ? ` (${choice.remain}%)` : ''}
-                                            </option>
-                                        {/each}
-                                        <option value="external">External spool</option>
-                                    </select>
-                                </label>
-
-                                {#if startSpool !== 'external'}
-                                    <div class="swatches">
-                                        {#each amsChoices(printer) as choice}
-                                            <button
-                                                class="swatch"
-                                                class:picked={startSpool === String(choice.index)}
-                                                style="background: {choice.color || 'var(--ctp-surface1)'}"
-                                                title="AMS {choice.unit} slot {choice.slot} — {choice.label}"
-                                                aria-label="AMS {choice.unit} slot {choice.slot}: {choice.label}"
-                                                aria-pressed={startSpool === String(choice.index)}
-                                                on:click={() => (startSpool = String(choice.index))}
-                                            ><span>{choice.slot}</span></button>
-                                        {/each}
+                    <div class="card-body">
+                        {#if printer.access_code_problem}
+                            <div class="alert alert-warning" role="alert">
+                                <div class="d-flex">
+                                    <div><IconAlert size={20} class="icon alert-icon" /></div>
+                                    <div class="min-w-0 flex-fill">
+                                        <h4 class="alert-title">Camera not connecting</h4>
+                                        <div class="text-secondary">
+                                            {printer.name} accepted the connection and then hung up. Usually
+                                            the access code changed - toggling LAN mode on the printer
+                                            regenerates it. It also happens when the camera is already open
+                                            in Bambu Studio or Handy, since the P1S allows only one viewer.
+                                        </div>
+                                        {#if canManage}
+                                            {#if editingCode === printer.id}
+                                                <div class="input-group mt-2">
+                                                    <input
+                                                        type="text"
+                                                        class="form-control"
+                                                        bind:value={newCode}
+                                                        placeholder="New access code"
+                                                        aria-label="New access code from the printer screen"
+                                                        autocomplete="off"
+                                                        on:keydown={(e) => e.key === 'Enter' && saveAccessCode(printer)}
+                                                    />
+                                                    <button class="btn btn-primary" on:click={() => saveAccessCode(printer)} disabled={savingCode}>
+                                                        {savingCode ? 'Saving...' : 'Save'}
+                                                    </button>
+                                                    <button class="btn" on:click={() => (editingCode = '')}>Cancel</button>
+                                                </div>
+                                                <div class="form-hint mt-1">
+                                                    On the printer: Settings › Network - the code is shown with
+                                                    the IP address. No restart needed - it reconnects by itself.
+                                                </div>
+                                            {:else}
+                                                <button class="btn btn-warning btn-sm mt-2" on:click={() => startCodeEdit(printer)}>
+                                                    Update access code
+                                                </button>
+                                            {/if}
+                                        {:else}
+                                            <div class="form-hint mt-1">A printer admin can fix this from this page.</div>
+                                        {/if}
                                     </div>
-                                {/if}
-
-                                <label class="start-row">
-                                    <span>Plate number</span>
-                                    <input type="number" min="1" max="64" bind:value={startPlate} />
-                                </label>
-
-                                <div class="start-opts">
-                                    <label><input type="checkbox" bind:checked={startLevel} /> Bed levelling</label>
-                                    <label><input type="checkbox" bind:checked={startFlow} /> Flow calibration</label>
-                                    <label><input type="checkbox" bind:checked={startTimelapse} /> Timelapse</label>
                                 </div>
-
-                                <p class="start-warn">
-                                    Check the camera above: the plate must be clear and the plate
-                                    type must match what you chose.
-                                </p>
-
-                                <button class="start-go" on:click={() => startPrint(printer)} disabled={!!busy[printer.id] || !startFile}>
-                                    {busy[printer.id] === 'print' ? 'Starting...' : '▶ Start print'}
-                                </button>
                             </div>
                         {/if}
 
-                        <button
-                            class="send-toggle"
-                            aria-expanded={sendFor === printer.id}
-                            on:click={() => toggleSend(printer)}
-                        >
-                            {#if sendFor === printer.id}
-                                ✕ Close
-                            {:else if canUpload}
-                                📤 Send a file to print
-                            {:else}
-                                📂 Files on this printer
-                            {/if}
-                        </button>
-
-                        {#if sendFor === printer.id}
-                            <div class="send-panel">
-                                {#if canUpload}
-                                    <p class="send-rule">
-                                        <strong>Name your file with your name first</strong> -
-                                        for example <code>srinath_bracket.3mf</code>. That is how
-                                        everyone knows whose print it is.
-                                    </p>
-
-                                    <div
-                                        class="dropzone"
-                                        class:over={dragOver === printer.id}
-                                        class:busy={uploading === printer.id}
-                                        role="button"
-                                        tabindex="0"
-                                        aria-label="Send a sliced file to {printer.name}"
-                                        on:dragover|preventDefault={() => (dragOver = printer.id)}
-                                        on:dragleave={() => (dragOver = '')}
-                                        on:drop|preventDefault={(e) => handleDrop(printer, e)}
-                                        on:click={() => pickFile(printer)}
-                                        on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), pickFile(printer))}
-                                    >
-                                        <input
-                                            id="pick-{printer.id}"
-                                            type="file"
-                                            accept=".3mf,.gcode"
-                                            on:change={(e) => handlePick(printer, e)}
-                                        />
-                                        {#if uploading === printer.id}
-                                            <span class="drop-title">Sending... {uploadProgress}%</span>
-                                            <div class="upload-bar">
-                                                <div class="upload-fill" style="width: {uploadProgress}%"></div>
+                        {#if isRejected(printer)}
+                            <div class="alert alert-warning" role="alert">
+                                <div class="d-flex">
+                                    <div><IconLock size={20} class="icon alert-icon" /></div>
+                                    <div>
+                                        {#if canManage}
+                                            <h4 class="alert-title">Remote control blocked by the printer</h4>
+                                            <div class="text-secondary">
+                                                This printer rejected a command from the website: its firmware
+                                                only accepts signed commands. Turn on
+                                                <strong>LAN Only Mode › Developer Mode</strong> on the printer's
+                                                screen (Settings › Network) to allow remote control.
                                             </div>
                                         {:else}
-                                            <span class="drop-icon">📄</span>
-                                            <span class="drop-title">Drop a sliced file here</span>
-                                            <span class="drop-sub">or tap to choose - .3mf or .gcode</span>
-                                        {/if}
-                                    </div>
-
-                                    <p class="send-note">
-                                        Slice in Bambu Studio and export the file. It lands on the
-                                        printer - then go to the machine, check the plate is clear,
-                                        and start it from the screen.
-                                    </p>
-                                {:else if !user}
-                                    <div class="send-locked">
-                                        <p>Log in to send a sliced file to {printer.name} from here.</p>
-                                        <a class="login-btn" href={loginHref}>🔑 Log in to send files</a>
-                                    </div>
-                                {:else}
-                                    <div class="send-locked">
-                                        <p>
-                                            Your account can't send files to printers yet. Ask a
-                                            server admin for the upload permission.
-                                        </p>
-                                    </div>
-                                {/if}
-
-                                <div class="files-head">
-                                    <p class="send-listhead">
-                                        On this printer{printerFiles[printer.id] ? ` (${printerFiles[printer.id].length})` : ''}
-                                    </p>
-                                    <div class="files-actions">
-                                        <button
-                                            class="mini-btn"
-                                            on:click={() => loadPrinterFiles(printer)}
-                                            disabled={filesLoading[printer.id]}
-                                            title="Read the file list again"
-                                        >
-                                            {filesLoading[printer.id] ? '...' : '↻ Refresh'}
-                                        </button>
-                                        {#if canManage && printerFiles[printer.id]?.length > 0}
-                                            <button
-                                                class="mini-btn danger"
-                                                on:click={() => clearAllFiles(printer)}
-                                                disabled={!!deleting || isPrinting(printer)}
-                                                title={isPrinting(printer) ? 'Wait for the job to finish' : 'Delete every file on this printer'}
-                                            >
-                                                {deleting === `${printer.id}/*` ? 'Clearing...' : '🗑️ Clear all'}
-                                            </button>
+                                            <h4 class="alert-title">Remote control is off</h4>
+                                            <div class="text-secondary">
+                                                {printer.name} isn't accepting commands from the website yet. Use
+                                                the printer's screen - a printer admin is sorting it out.
+                                            </div>
                                         {/if}
                                     </div>
                                 </div>
+                            </div>
+                        {/if}
 
-                                {#if filesError[printer.id]}
-                                    <p class="send-error">{filesError[printer.id]}</p>
-                                {/if}
-
-                                {#if printerFiles[printer.id]}
-                                    {#if printerFiles[printer.id].length === 0}
-                                        <p class="send-empty">No files on this printer yet.</p>
-                                    {:else}
-                                        <ul class="send-list">
-                                            {#each showAllFiles[printer.id] ? printerFiles[printer.id] : printerFiles[printer.id].slice(0, FILES_SHOWN) as file (file.name)}
-                                                <li>
-                                                    <span class="send-info">
-                                                        <span class="send-file" title={file.name}>{file.name}</span>
-                                                        <span class="send-meta">
-                                                            {fileSize(file.size)}{file.time ? ` · ${file.time}` : ''}
-                                                            {#if isCurrentJob(printer, file)}<span class="send-now"> · printing</span>{/if}
-                                                        </span>
-                                                    </span>
-                                                    {#if canManage && canStart(printer)}
-                                                        <button
-                                                            class="print-btn"
-                                                            on:click={() => printThisFile(printer, file.name)}
-                                                            disabled={!!busy[printer.id]}
-                                                            title="Print {file.name} on {printer.name}"
-                                                            aria-label="Print {file.name}"
-                                                        >▶</button>
-                                                    {/if}
-                                                    {#if canManage}
-                                                        <button
-                                                            class="delete-btn"
-                                                            on:click={() => deleteFile(printer, file)}
-                                                            disabled={!!deleting || isCurrentJob(printer, file)}
-                                                            title={isCurrentJob(printer, file) ? 'This file is printing right now' : `Delete ${file.name}`}
-                                                            aria-label="Delete {file.name}"
-                                                        >
-                                                            {deleting === `${printer.id}/${file.name}` ? '...' : '🗑️'}
-                                                        </button>
-                                                    {/if}
+                        {#if printer.faults && printer.faults.length > 0}
+                            <div class="alert alert-danger" role="alert">
+                                <div class="d-flex">
+                                    <div><IconAlert size={20} class="icon alert-icon" /></div>
+                                    <div class="min-w-0 flex-fill">
+                                        <h4 class="alert-title">
+                                            {printer.faults.length} fault{printer.faults.length > 1 ? 's' : ''} reported
+                                        </h4>
+                                        <ul class="list-unstyled mb-0">
+                                            {#each printer.faults as fault (fault.code)}
+                                                <li class="d-flex align-items-center gap-2 flex-wrap mt-1">
+                                                    <span class="badge {fault.severity === 'fatal' || fault.severity === 'serious' ? 'bg-red-lt' : 'bg-yellow-lt'} text-uppercase">{fault.severity}</span>
+                                                    <code class="text-break">{fault.code}</code>
+                                                    <a href={fault.url} target="_blank" rel="noopener" class="ms-auto">
+                                                        Look up <IconExternal size={14} class="icon" />
+                                                    </a>
                                                 </li>
                                             {/each}
                                         </ul>
-                                        {#if printerFiles[printer.id].length > FILES_SHOWN}
-                                            <button
-                                                class="show-all"
-                                                on:click={() => (showAllFiles = { ...showAllFiles, [printer.id]: !showAllFiles[printer.id] })}
-                                            >
-                                                {showAllFiles[printer.id]
-                                                    ? 'Show fewer'
-                                                    : `Show all ${printerFiles[printer.id].length} files`}
-                                            </button>
-                                        {/if}
-                                    {/if}
-                                {:else if filesLoading[printer.id]}
-                                    <p class="send-empty">Reading the printer's files...</p>
-                                {/if}
+                                    </div>
+                                </div>
                             </div>
                         {/if}
 
-                        {#if (printer.ams && printer.ams.length > 0) || printer.external_spool}
-                            <div class="ams">
+                        {#if printer.online}
+                            {#if isPrinting(printer)}
+                                <div class="d-flex align-items-center gap-2 mb-1">
+                                    <div
+                                        class="progress progress-sm flex-fill"
+                                        role="progressbar"
+                                        aria-label="Print progress"
+                                        aria-valuenow={printer.progress}
+                                        aria-valuemin="0"
+                                        aria-valuemax="100"
+                                    >
+                                        <div class="progress-bar" style="width: {printer.progress}%"></div>
+                                    </div>
+                                    <span class="fw-medium small">{printer.progress}%</span>
+                                </div>
+                            {/if}
+
+                            {#if printer.file_name}
+                                <div class="d-flex align-items-center gap-1 text-secondary small mb-3 min-w-0" title={printer.file_name}>
+                                    <IconFile size={16} class="icon flex-shrink-0" />
+                                    <span class="text-truncate">{tidyFileName(printer.file_name)}</span>
+                                </div>
+                            {/if}
+
+                            <div class="datagrid mb-3">
+                                <div class="datagrid-item">
+                                    <div class="datagrid-title">Nozzle</div>
+                                    <div class="datagrid-content">{printer.nozzle_temp.toFixed(0)}°C</div>
+                                </div>
+                                <div class="datagrid-item">
+                                    <div class="datagrid-title">Bed</div>
+                                    <div class="datagrid-content">{printer.bed_temp.toFixed(0)}°C</div>
+                                </div>
+                                {#if printer.chamber_temp > 0}
+                                    <div class="datagrid-item">
+                                        <div class="datagrid-title">Chamber</div>
+                                        <div class="datagrid-content">{printer.chamber_temp.toFixed(0)}°C</div>
+                                    </div>
+                                {/if}
+                                {#if isPrinting(printer) && printer.remaining_minutes > 0}
+                                    <div class="datagrid-item">
+                                        <div class="datagrid-title">Time left</div>
+                                        <div class="datagrid-content">{formatRemaining(printer.remaining_minutes)}</div>
+                                    </div>
+                                    <div class="datagrid-item">
+                                        <div class="datagrid-title">Finishes</div>
+                                        <div class="datagrid-content">{finishTime(printer.remaining_minutes)}</div>
+                                    </div>
+                                {/if}
+                            </div>
+
+                            {#if (printer.ams && printer.ams.length > 0) || printer.external_spool}
                                 {#each printer.ams || [] as unit}
-                                    <div class="ams-head">
-                                        <span class="ams-title">AMS {unit.id + 1}</span>
+                                    <div class="d-flex align-items-center gap-3 mb-2 small">
+                                        <span class="subheader mb-0">AMS {unit.id + 1}</span>
                                         {#if unit.humidity}
-                                            <span class="ams-meta" title="The AMS reports humidity on its own 1-5 scale">
-                                                💧 {unit.humidity}/5
+                                            <span class="text-secondary d-inline-flex align-items-center gap-1" title="The AMS reports humidity on its own 1-5 scale">
+                                                <IconDroplet size={14} class="icon" />{unit.humidity}/5
                                             </span>
                                         {/if}
                                         {#if unit.temp}
-                                            <span class="ams-meta">🌡️ {unit.temp}°C</span>
+                                            <span class="text-secondary d-inline-flex align-items-center gap-1">
+                                                <IconTemp size={14} class="icon" />{unit.temp}°C
+                                            </span>
                                         {/if}
                                     </div>
 
-                                    <div class="ams-slots">
+                                    <div class="row g-2 mb-3">
                                         {#each unit.slots as slot}
-                                            <div
-                                                class="ams-slot"
-                                                class:empty={slot.empty}
-                                                class:active={slot.active}
-                                                title={slot.empty
-                                                    ? `Slot ${slot.slot}: empty`
-                                                    : `Slot ${slot.slot}: ${slot.material}${slot.remain >= 0 ? ', ' + slot.remain + '% left' : ', amount unknown'}${slot.active ? ' (in use)' : ''}`}
-                                            >
-                                                <span class="ams-top">
-                                                    <span class="ams-swatch" style="background: {slot.color || 'transparent'}"></span>
-                                                    <span class="ams-num">{slot.slot}</span>
-                                                    {#if slot.active}<span class="ams-dot" title="Currently feeding"></span>{/if}
-                                                </span>
-
-                                                <span class="ams-mat">{slot.empty ? 'Empty' : slot.material}</span>
-
-                                                {#if slot.remain >= 0}
-                                                    <span class="ams-bar">
-                                                        <span class="ams-fill" style="width: {slot.remain}%"></span>
-                                                    </span>
-                                                    <span class="ams-pct">{slot.remain}%</span>
-                                                {:else if !slot.empty}
-                                                    <span class="ams-pct unknown" title="No RFID tag, so the printer cannot tell">? left</span>
-                                                {/if}
+                                            <div class="col-6 col-sm-3">
+                                                <div
+                                                    class="slot"
+                                                    class:active={slot.active}
+                                                    title={slot.empty
+                                                        ? `Slot ${slot.slot}: empty`
+                                                        : `Slot ${slot.slot}: ${slot.material}${slot.remain >= 0 ? ', ' + slot.remain + '% left' : ', amount unknown'}${slot.active ? ' (in use)' : ''}`}
+                                                >
+                                                    <div class="d-flex align-items-center gap-2">
+                                                        <span class="swatch" class:empty={slot.empty} style="background: {slot.empty ? 'transparent' : slot.color || 'transparent'}"></span>
+                                                        <span class="fw-medium">{slot.slot}</span>
+                                                        {#if slot.active}<span class="status-dot status-dot-animated status-green ms-auto" title="Currently feeding"></span>{/if}
+                                                    </div>
+                                                    <div class="small mt-1 text-truncate" class:text-secondary={slot.empty}>
+                                                        {slot.empty ? 'Empty' : slot.material}
+                                                    </div>
+                                                    {#if slot.remain >= 0}
+                                                        <div class="d-flex align-items-center gap-1 mt-1">
+                                                            <div class="progress progress-sm flex-fill">
+                                                                <div class="progress-bar bg-secondary" style="width: {slot.remain}%"></div>
+                                                            </div>
+                                                            <span class="small text-secondary">{slot.remain}%</span>
+                                                        </div>
+                                                    {:else if !slot.empty}
+                                                        <div class="small text-secondary mt-1" title="No RFID tag, so the printer cannot tell">? left</div>
+                                                    {/if}
+                                                </div>
                                             </div>
                                         {/each}
                                     </div>
                                 {/each}
 
                                 {#if printer.external_spool && !printer.external_spool.empty}
-                                    <div class="ams-ext">
-                                        <span class="ams-swatch" style="background: {printer.external_spool.color || 'transparent'}"></span>
-                                        <span class="ams-ext-label">External spool</span>
-                                        <span class="ams-ext-mat">{printer.external_spool.material}</span>
+                                    <div class="d-flex align-items-center gap-2 mb-3 small">
+                                        <span class="swatch" style="background: {printer.external_spool.color || 'transparent'}"></span>
+                                        <span class="fw-medium">External spool</span>
+                                        <span class="text-secondary">{printer.external_spool.material}</span>
                                         {#if printer.external_spool.remain >= 0}
-                                            <span class="ams-pct">{printer.external_spool.remain}%</span>
+                                            <span class="text-secondary ms-auto">{printer.external_spool.remain}%</span>
                                         {/if}
                                     </div>
                                 {/if}
+                            {/if}
+
+                            {#if printer.last_action_by}
+                                <div class="small text-secondary">Last stopped by {printer.last_action_by}</div>
+                            {/if}
+
+                            {#if notifyOn[printer.id] && !secure}
+                                <div class="form-hint mt-2">
+                                    Desktop notifications need HTTPS, so on this address you'll see an
+                                    alert on this page instead. Keep the page open.
+                                </div>
+                            {/if}
+
+                            {#if sendFor === printer.id}
+                                <div class="files mt-3 pt-3">
+                                    {#if canUpload}
+                                        <p class="small mb-2">
+                                            <strong>Name your file with your name first</strong> -
+                                            for example <code>srinath_bracket.3mf</code>. That is how
+                                            everyone knows whose print it is.
+                                        </p>
+
+                                        <div
+                                            class="dropzone"
+                                            class:over={dragOver === printer.id}
+                                            class:busy={uploading === printer.id}
+                                            role="button"
+                                            tabindex="0"
+                                            aria-label="Send a sliced file to {printer.name}"
+                                            on:dragover|preventDefault={() => (dragOver = printer.id)}
+                                            on:dragleave={() => (dragOver = '')}
+                                            on:drop|preventDefault={(e) => handleDrop(printer, e)}
+                                            on:click={() => pickFile(printer)}
+                                            on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), pickFile(printer))}
+                                        >
+                                            <input
+                                                id="pick-{printer.id}"
+                                                class="d-none"
+                                                type="file"
+                                                accept=".3mf,.gcode"
+                                                on:change={(e) => handlePick(printer, e)}
+                                            />
+                                            {#if uploading === printer.id}
+                                                <span class="fw-medium">Sending... {uploadProgress}%</span>
+                                                <div
+                                                    class="progress progress-sm w-100 mt-2"
+                                                    role="progressbar"
+                                                    aria-label="Upload progress"
+                                                    aria-valuenow={uploadProgress}
+                                                    aria-valuemin="0"
+                                                    aria-valuemax="100"
+                                                >
+                                                    <div class="progress-bar" style="width: {uploadProgress}%"></div>
+                                                </div>
+                                            {:else}
+                                                <IconUpload size={28} class="icon text-primary mb-1" />
+                                                <span class="fw-medium">Drop a sliced file here</span>
+                                                <span class="small text-secondary">or tap to choose - .3mf or .gcode</span>
+                                            {/if}
+                                        </div>
+
+                                        <div class="form-hint mt-2">
+                                            Slice in Bambu Studio and export the file. It lands on the
+                                            printer - then go to the machine, check the plate is clear,
+                                            and start it from the screen.
+                                        </div>
+                                    {:else if !user}
+                                        <div class="alert alert-info mb-0">
+                                            <div>Log in to send a sliced file to {printer.name} from here.</div>
+                                            <a class="btn btn-primary btn-sm mt-2" href={loginHref}>
+                                                <IconLogin size={16} class="icon" /> Log in to send files
+                                            </a>
+                                        </div>
+                                    {:else}
+                                        <div class="alert alert-info mb-0">
+                                            Your account can't send files to printers yet. Ask a
+                                            server admin for the upload permission.
+                                        </div>
+                                    {/if}
+
+                                    <div class="d-flex align-items-center gap-2 mt-3 mb-2">
+                                        <span class="subheader mb-0 me-auto">
+                                            On this printer{printerFiles[printer.id] ? ` (${printerFiles[printer.id].length})` : ''}
+                                        </span>
+                                        <button
+                                            class="btn btn-ghost-secondary btn-sm"
+                                            on:click={() => loadPrinterFiles(printer)}
+                                            disabled={filesLoading[printer.id]}
+                                            title="Read the file list again"
+                                        >
+                                            <IconRefresh size={16} class="icon" />
+                                            {filesLoading[printer.id] ? '...' : 'Refresh'}
+                                        </button>
+                                        {#if canManage && printerFiles[printer.id]?.length > 0}
+                                            <button
+                                                class="btn btn-ghost-danger btn-sm"
+                                                on:click={() => clearAllFiles(printer)}
+                                                disabled={!!deleting || isPrinting(printer)}
+                                                title={isPrinting(printer) ? 'Wait for the job to finish' : 'Delete every file on this printer'}
+                                            >
+                                                <IconTrash size={16} class="icon" />
+                                                {deleting === `${printer.id}/*` ? 'Clearing...' : 'Clear all'}
+                                            </button>
+                                        {/if}
+                                    </div>
+
+                                    {#if filesError[printer.id]}
+                                        <div class="text-danger small mb-2">{filesError[printer.id]}</div>
+                                    {/if}
+
+                                    {#if printerFiles[printer.id]}
+                                        {#if printerFiles[printer.id].length === 0}
+                                            <div class="text-secondary small">No files on this printer yet.</div>
+                                        {:else}
+                                            <div class="list-group list-group-flush file-list">
+                                                {#each showAllFiles[printer.id] ? printerFiles[printer.id] : printerFiles[printer.id].slice(0, FILES_SHOWN) as file (file.name)}
+                                                    <div class="list-group-item px-0 d-flex align-items-center gap-2">
+                                                        <div class="min-w-0 flex-fill">
+                                                            <div class="text-truncate" title={file.name}>{file.name}</div>
+                                                            <div class="small text-secondary">
+                                                                {fileSize(file.size)}{file.time ? ` · ${file.time}` : ''}
+                                                                {#if isCurrentJob(printer, file)}<span class="text-primary"> · printing</span>{/if}
+                                                            </div>
+                                                        </div>
+                                                        {#if canManage && canStart(printer)}
+                                                            <button
+                                                                class="btn btn-ghost-primary btn-icon"
+                                                                on:click={() => printThisFile(printer, file.name)}
+                                                                disabled={!!busy[printer.id]}
+                                                                title="Print {file.name} on {printer.name}"
+                                                                aria-label="Print {file.name}"
+                                                            >
+                                                                <IconPlay size={18} class="icon" />
+                                                            </button>
+                                                        {/if}
+                                                        {#if canManage}
+                                                            <button
+                                                                class="btn btn-ghost-danger btn-icon"
+                                                                on:click={() => deleteFile(printer, file)}
+                                                                disabled={!!deleting || isCurrentJob(printer, file)}
+                                                                title={isCurrentJob(printer, file) ? 'This file is printing right now' : `Delete ${file.name}`}
+                                                                aria-label="Delete {file.name}"
+                                                            >
+                                                                {#if deleting === `${printer.id}/${file.name}`}
+                                                                    <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                                                                {:else}
+                                                                    <IconTrash size={18} class="icon" />
+                                                                {/if}
+                                                            </button>
+                                                        {/if}
+                                                    </div>
+                                                {/each}
+                                            </div>
+                                            {#if printerFiles[printer.id].length > FILES_SHOWN}
+                                                <button
+                                                    class="btn btn-link btn-sm px-0 mt-1"
+                                                    on:click={() => (showAllFiles = { ...showAllFiles, [printer.id]: !showAllFiles[printer.id] })}
+                                                >
+                                                    {showAllFiles[printer.id]
+                                                        ? 'Show fewer'
+                                                        : `Show all ${printerFiles[printer.id].length} files`}
+                                                </button>
+                                            {/if}
+                                        {/if}
+                                    {:else if filesLoading[printer.id]}
+                                        <div class="text-secondary small">Reading the printer's files...</div>
+                                    {/if}
+                                </div>
+                            {/if}
+                        {:else}
+                            <div class="text-secondary">
+                                Not responding - it may be switched off or off the network.
+                                This page keeps checking and updates by itself when it is back.
                             </div>
                         {/if}
+                    </div>
 
-                        <div class="temps">
-                            <span>🔥 Nozzle {printer.nozzle_temp.toFixed(0)}°C</span>
-                            <span>🛏️ Bed {printer.bed_temp.toFixed(0)}°C</span>
-                            {#if printer.chamber_temp > 0}
-                                <span>📦 Chamber {printer.chamber_temp.toFixed(0)}°C</span>
-                            {/if}
+                    {#if printer.online}
+                        <div class="card-footer">
+                            <div class="btn-list" aria-label="{printer.name} controls">
+                                <button
+                                    class="btn {notifyOn[printer.id] ? 'btn-primary' : 'btn-outline-secondary'}"
+                                    aria-pressed={!!notifyOn[printer.id]}
+                                    on:click={() => toggleNotify(printer)}
+                                    title="Get a notification in this browser when the current job finishes or fails"
+                                >
+                                    {#if notifyOn[printer.id]}
+                                        <IconBell size={18} class="icon" /> Notifying you
+                                    {:else}
+                                        <IconBellOff size={18} class="icon" /> Notify me when done
+                                    {/if}
+                                </button>
+
+                                {#if canManage}
+                                    <button
+                                        class="btn {printer.light_on ? 'btn-warning' : 'btn-outline-secondary'}"
+                                        aria-pressed={!!printer.light_on}
+                                        on:click={() => toggleLight(printer)}
+                                        disabled={!!busy[printer.id]}
+                                        title="Chamber light - the camera is useless in the dark"
+                                    >
+                                        {#if printer.light_on}<IconBulb size={18} class="icon" />{:else}<IconBulbOff size={18} class="icon" />{/if}
+                                        {busy[printer.id] === 'light' ? '...' : printer.light_on ? 'Light on' : 'Light off'}
+                                    </button>
+
+                                    {#if printer.state === 'PAUSE'}
+                                        <button class="btn btn-outline-success" on:click={() => resumePrint(printer)} disabled={!!busy[printer.id]}>
+                                            <IconPlay size={18} class="icon" />
+                                            {busy[printer.id] === 'resume' ? 'Resuming...' : 'Resume'}
+                                        </button>
+                                    {:else if isActive(printer)}
+                                        <button class="btn btn-outline-warning" on:click={() => pausePrint(printer)} disabled={!!busy[printer.id]}>
+                                            <IconPause size={18} class="icon" />
+                                            {busy[printer.id] === 'pause' ? 'Pausing...' : 'Pause'}
+                                        </button>
+                                    {/if}
+
+                                    {#if isActive(printer)}
+                                        <button class="btn btn-outline-danger" on:click={() => stopPrint(printer)} disabled={!!busy[printer.id]}>
+                                            <IconStop size={18} class="icon" />
+                                            {busy[printer.id] === 'stop' ? 'Stopping...' : 'Stop'}
+                                        </button>
+                                    {/if}
+
+                                    {#if canStart(printer)}
+                                        <button
+                                            class="btn btn-primary"
+                                            aria-haspopup="dialog"
+                                            on:click={() => toggleStart(printer)}
+                                            disabled={!!busy[printer.id]}
+                                        >
+                                            <IconPlay size={18} class="icon" /> Start print
+                                        </button>
+                                    {/if}
+                                {/if}
+
+                                <button
+                                    class="btn {sendFor === printer.id ? 'btn-secondary' : 'btn-outline-secondary'}"
+                                    aria-expanded={sendFor === printer.id}
+                                    on:click={() => toggleSend(printer)}
+                                >
+                                    {#if sendFor === printer.id}
+                                        <IconX size={18} class="icon" /> Close files
+                                    {:else if canUpload}
+                                        <IconUpload size={18} class="icon" /> Send a file to print
+                                    {:else}
+                                        <IconFolder size={18} class="icon" /> Files on this printer
+                                    {/if}
+                                </button>
+                            </div>
                         </div>
-                        {#if printer.last_action_by}
-                            <p class="last-action">Last stopped by {printer.last_action_by}</p>
-                        {/if}
-                    {:else}
-                        <p class="offline-note">
-                            Not responding - it may be switched off or off the network.
-                            This page keeps checking and updates by itself when it is back.
-                        </p>
                     {/if}
                 </div>
-            {/each}
-        </div>
+            </div>
+        {/each}
+    </div>
 
-        <p class="footnote">
-            Status refreshes automatically. The camera updates about once every two
-            seconds - that is the fastest the P1S allows over the local network.
-        </p>
-    {/if}
-</div>
+    <p class="text-secondary small mt-3 mb-0">
+        Status refreshes automatically. The camera updates about once every two
+        seconds - that is the fastest the P1S allows over the local network.
+        {#if !secure}
+            Desktop notifications need HTTPS; on this address "Notify me when done"
+            shows an alert on this page instead.
+        {/if}
+    </p>
+{/if}
+
+{#if canManage && startPrinter && canStart(startPrinter)}
+    {@const printer = startPrinter}
+    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->
+    <div
+        class="modal d-block"
+        tabindex="-1"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="start-title"
+        on:click|self={() => (startFor = '')}
+    >
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable" role="document">
+            <div class="modal-content" id="start-{printer.id}">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="start-title">Start a print on {printer.name}</h5>
+                    <button type="button" class="btn-close" aria-label="Close" on:click={() => (startFor = '')}></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label" for="start-file">File</label>
+                        <select id="start-file" class="form-select" bind:value={startFile}>
+                            <option value="">
+                                {printerFiles[printer.id]
+                                    ? printerFiles[printer.id].length
+                                        ? 'Choose a file...'
+                                        : 'No files on this printer'
+                                    : filesError[printer.id]
+                                        ? 'Could not read the files'
+                                        : 'Loading files...'}
+                            </option>
+                            {#each printerFiles[printer.id] || [] as file (file.name)}
+                                <option value={file.name}>{file.name}</option>
+                            {/each}
+                        </select>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-sm-8">
+                            <label class="form-label" for="start-bed">Plate fitted</label>
+                            <select id="start-bed" class="form-select" bind:value={startBed}>
+                                {#each BED_TYPES as bed}<option value={bed.value}>{bed.label}</option>{/each}
+                            </select>
+                        </div>
+                        <div class="col-sm-4">
+                            <label class="form-label" for="start-plate">Plate number</label>
+                            <input id="start-plate" class="form-control" type="number" min="1" max="64" bind:value={startPlate} />
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label" for="start-spool">Filament</label>
+                        <select id="start-spool" class="form-select" bind:value={startSpool}>
+                            {#each amsChoices(printer) as choice}
+                                <option value={String(choice.index)}>
+                                    AMS {choice.unit} slot {choice.slot} — {choice.label}{choice.remain >= 0 ? ` (${choice.remain}%)` : ''}
+                                </option>
+                            {/each}
+                            <option value="external">External spool</option>
+                        </select>
+                        {#if startSpool !== 'external'}
+                            <div class="d-flex flex-wrap gap-2 mt-2">
+                                {#each amsChoices(printer) as choice}
+                                    <button
+                                        type="button"
+                                        class="btn btn-sm {startSpool === String(choice.index) ? 'btn-primary' : 'btn-outline-secondary'}"
+                                        title="AMS {choice.unit} slot {choice.slot} — {choice.label}"
+                                        aria-label="AMS {choice.unit} slot {choice.slot}: {choice.label}"
+                                        aria-pressed={startSpool === String(choice.index)}
+                                        on:click={() => (startSpool = String(choice.index))}
+                                    >
+                                        <span class="swatch me-1" style="background: {choice.color || 'var(--ctp-surface1)'}"></span>
+                                        {choice.unit}.{choice.slot}
+                                    </button>
+                                {/each}
+                            </div>
+                        {/if}
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" bind:checked={startLevel} />
+                            <span class="form-check-label">Bed levelling</span>
+                        </label>
+                        <label class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" bind:checked={startFlow} />
+                            <span class="form-check-label">Flow calibration</span>
+                        </label>
+                        <label class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" bind:checked={startTimelapse} />
+                            <span class="form-check-label">Timelapse</span>
+                        </label>
+                    </div>
+
+                    <div class="alert alert-warning mb-0">
+                        <div class="d-flex">
+                            <div><IconAlert size={20} class="icon alert-icon" /></div>
+                            <div>
+                                Check the camera: the plate must be clear and the plate type must
+                                match what you chose.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn me-auto" on:click={() => (startFor = '')}>Cancel</button>
+                    <button
+                        type="button"
+                        class="btn btn-primary"
+                        on:click={() => startPrint(printer)}
+                        disabled={!!busy[printer.id] || !startFile}
+                    >
+                        <IconPlay size={18} class="icon" />
+                        {busy[printer.id] === 'print' ? 'Starting...' : 'Start print'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop show"></div>
+{/if}
+
+{#if confirmBox}
+    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->
+    <div
+        class="modal d-block"
+        tabindex="-1"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="confirm-title"
+        on:click|self={() => answer(false)}
+    >
+        <div class="modal-dialog modal-sm modal-dialog-centered" role="document">
+            <div class="modal-content">
+                <div class="modal-status bg-{confirmBox.tone}"></div>
+                <div class="modal-body text-center py-4">
+                    <IconAlert size={40} class="icon mb-2 text-{confirmBox.tone}" />
+                    <h3 id="confirm-title" class="text-break">{confirmBox.title}</h3>
+                    {#each confirmBox.lines || [] as line}
+                        <div class="text-secondary mt-1">{line}</div>
+                    {/each}
+                </div>
+                <div class="modal-footer">
+                    <div class="w-100">
+                        <div class="row g-2">
+                            <div class="col">
+                                <button type="button" class="btn w-100" on:click={() => answer(false)}>Cancel</button>
+                            </div>
+                            <div class="col">
+                                <button type="button" class="btn btn-{confirmBox.tone} w-100" on:click={() => answer(true)}>
+                                    {confirmBox.ok}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop show"></div>
+{/if}
 
 <style>
-    .container {
-        max-width: var(--page-max);
-        margin: 0 auto;
-        padding: 16px var(--gutter) 32px;
-        box-sizing: border-box;
-    }
-
-    .header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 12px;
-        flex-wrap: wrap;
-        border-bottom: 1px solid var(--ctp-surface0);
-        padding-bottom: 12px;
-        margin-bottom: 16px;
-    }
-
-    h1 {
-        margin: 0;
-        font-size: clamp(1.2rem, 3vw, 1.6rem);
-        color: var(--ctp-peach);
-    }
-
-    .subtitle {
-        margin: 2px 0 0;
-        font-size: 0.85rem;
-        color: var(--ctp-subtext0);
-    }
-
-    .guide-link {
-        display: inline-flex;
-        align-items: center;
-        min-height: 40px;
-        color: var(--link);
-        text-decoration: none;
-        font-size: 0.9rem;
-    }
-
-    .guide-link:hover {
-        text-decoration: underline;
-    }
-
-    /* The shell floats .message as a toast; keep the old tinted look */
-    .message.error {
-        background: color-mix(in srgb, var(--ctp-red) 14%, color-mix(in srgb, var(--card) 60%, transparent));
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .message.success {
-        background: color-mix(in srgb, var(--ctp-green) 14%, color-mix(in srgb, var(--card) 60%, transparent));
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .note,
-    .footnote {
-        color: var(--ctp-overlay0);
-        font-size: 0.85rem;
-        text-align: center;
-        margin-top: 16px;
-    }
-
-    .summary {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        margin-bottom: 16px;
-    }
-
-    .pill {
-        --pip: var(--ctp-overlay0);
-        display: inline-flex;
-        align-items: center;
-        gap: 7px;
-        padding: 5px 12px;
-        border-radius: var(--radius-pill);
-        border: 1px solid var(--ctp-surface0);
-        background: color-mix(in srgb, var(--ctp-mantle) 60%, transparent);
-        font-size: 0.8rem;
-        font-weight: 600;
-        color: var(--ctp-subtext0);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .pill .pip {
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        background: var(--pip);
-    }
-
-    .pill.free { --pip: var(--ctp-green); }
-    .pill.printing { --pip: var(--ctp-peach); }
-    .pill.attention { --pip: var(--ctp-red); }
-
-    .printer-grid {
-        display: grid;
-        /* Three printers side by side on a desktop, two on a tablet, one on a
-           phone - sharing the width rather than capping each card. */
-        grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
-        align-items: start;
-        gap: 16px;
-    }
-
-    .printer-card {
-        --stripe: var(--ctp-overlay0);
-        position: relative;
+    .min-w-0 {
         min-width: 0;
-        background:
-            linear-gradient(180deg, color-mix(in srgb, var(--ctp-text) 3.5%, transparent), transparent 55%),
-            color-mix(in srgb, var(--ctp-mantle) 60%, transparent);
-        border: 1px solid var(--ctp-surface0);
-        border-left: 4px solid var(--stripe);
-        border-radius: var(--radius-lg);
-        padding: 16px;
-        box-shadow: var(--shadow-sm);
-        transition:
-            transform var(--normal) var(--ease),
-            box-shadow var(--normal) var(--ease),
-            border-color var(--normal) var(--ease);
-        animation: rise var(--slow) var(--ease) both;
-        animation-delay: calc(var(--i, 0) * 70ms);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    /* No staggered entrance for people who asked for less motion */
-    @media (prefers-reduced-motion: reduce) {
-        .printer-card { animation-delay: 0s; }
-    }
-
-    .printer-card:hover {
-        transform: translateY(-2px);
-        box-shadow: var(--shadow);
-    }
-
-    .printer-card.running { --stripe: var(--ctp-green); }
-    .printer-card.failed { --stripe: var(--ctp-red); }
-    .printer-card.paused { --stripe: var(--ctp-yellow); }
-    .printer-card.finished { --stripe: var(--ctp-blue); }
-    .printer-card.idle { --stripe: var(--ctp-sapphire); }
-
-    /* Faded, but the access-code fix stays fully readable */
-    .printer-card.offline > :not(.code-warning):not(.reject-card):not(.faults) { opacity: 0.62; }
-
-    /* A quiet heartbeat on the machines that are actually working */
-    .printer-card.running .availability.busy::before {
-        content: '';
-        display: inline-block;
-        width: 7px;
-        height: 7px;
-        margin-right: 6px;
-        border-radius: 50%;
-        background: var(--ctp-green);
-        animation: soft-pulse 1.8s ease-in-out infinite;
-    }
-
-    .card-head {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 10px;
-        margin-bottom: 10px;
     }
 
     .printer-icon {
-        width: 42px;
-        height: 42px;
+        width: 32px;
+        height: 32px;
         object-fit: contain;
         flex-shrink: 0;
     }
 
-    .head-text {
-        flex: 1;
-        min-width: 0;
-    }
-
-    h2 {
-        margin: 0;
-        font-size: 1rem;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .availability {
-        font-size: 0.8rem;
-        font-weight: 600;
-    }
-
-    .availability.free { color: var(--ctp-green); }
-    .availability.busy { color: var(--ctp-peach); }
-    .availability.unknown { color: var(--ctp-overlay0); }
-
-    .state-badge {
-        font-size: 0.75rem;
-        padding: 3px 9px;
-        border-radius: 999px;
-        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
-        color: var(--ctp-text);
-        white-space: nowrap;
-    }
-
-    .state-badge.running { background: var(--ctp-green); color: var(--rp-base); }
-    .state-badge.failed { background: var(--ctp-red); color: var(--rp-base); }
-    .state-badge.paused { background: var(--ctp-yellow); color: var(--rp-base); }
-    .state-badge.finished { background: var(--ctp-blue); color: var(--rp-base); }
-
     .camera {
-        aspect-ratio: 16 / 9;
-        background: color-mix(in srgb, var(--ctp-crust) 60%, transparent);
-        border: 1px solid var(--ctp-surface0);
-        border-radius: var(--radius);
-        overflow: hidden;
-        margin-bottom: 12px;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
+        background: var(--tblr-bg-surface-secondary);
+        border-bottom: 1px solid var(--tblr-border-color);
     }
 
-    .camera img {
-        width: 100%;
-        height: 100%;
+    .camera img:not(.camera-placeholder) {
         object-fit: cover;
-        display: block;
-        animation: fade var(--normal) var(--ease);
-        transition: transform var(--slow) var(--ease);
-    }
-
-    .printer-card:hover .camera img {
-        transform: scale(1.03);
     }
 
     .camera-placeholder {
-        width: 100%;
-        height: 100%;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        color: var(--ctp-overlay0);
-    }
-
-    /* Scoped past the ".camera img" rule above, which would stretch it */
-    .camera-placeholder .placeholder-icon {
+        position: static;
         width: 64px;
         height: 64px;
         object-fit: contain;
-        opacity: 0.35;
+        opacity: 0.5;
     }
 
-    .printer-card:hover .camera-placeholder .placeholder-icon {
-        transform: none;
-    }
-
-    .camera-placeholder p {
-        margin: 4px 0 0;
-        font-size: 0.8rem;
-    }
-
-    .progress-row {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }
-
-    .progress-bar {
-        flex: 1;
-        height: 8px;
-        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
-        border-radius: 999px;
-        overflow: hidden;
-    }
-
-    .progress-fill {
-        position: relative;
+    .slot {
         height: 100%;
-        border-radius: var(--radius-pill);
-        background: linear-gradient(90deg, var(--ctp-green), var(--ctp-blue));
-        transition: width var(--slow) var(--ease);
-        overflow: hidden;
+        padding: 0.5rem;
+        border: 1px solid var(--tblr-border-color);
+        border-radius: var(--tblr-border-radius);
     }
 
-    /* Light sweeping across the bar, so it reads as live */
-    .progress-fill::after {
-        content: '';
-        position: absolute;
-        inset: 0;
-        background: linear-gradient(
-            90deg,
-            transparent,
-            color-mix(in srgb, color-mix(in srgb, var(--rp-surface) 60%, transparent) 45%, transparent),
-            transparent
-        );
-        transform: translateX(-100%);
-        animation: sweep 2.2s var(--ease) infinite;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
+    .slot.active {
+        border-color: var(--tblr-primary);
+        box-shadow: 0 0 0 1px var(--tblr-primary);
     }
 
-    @keyframes sweep {
-        to {
-            transform: translateX(100%);
-        }
-    }
-
-    .progress-text {
-        font-size: 0.8rem;
-        color: var(--ctp-subtext0);
-        min-width: 34px;
-        text-align: right;
-    }
-
-    .remaining {
-        margin: 6px 0 0;
-        font-size: 0.85rem;
-        color: var(--ctp-green);
-    }
-
-    .eta { color: var(--ctp-subtext0); }
-
-    .file {
-        margin: 8px 0 0;
-        font-size: 0.8rem;
-        color: var(--ctp-subtext0);
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .temps {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-        margin-top: 10px;
-        font-size: 0.78rem;
-        color: var(--ctp-subtext0);
-    }
-
-    .code-warning {
-        background: color-mix(in srgb, var(--ctp-peach) 12%, color-mix(in srgb, var(--card) 60%, transparent));
-        border: 1px solid var(--ctp-peach);
-        border-radius: 8px;
-        padding: 10px 12px;
-        margin-bottom: 10px;
-        font-size: 0.82rem;
-        color: var(--ctp-yellow);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .code-warning p {
-        margin: 6px 0 0;
-        color: var(--ctp-text);
-        line-height: 1.35;
-    }
-
-    .code-form {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-        margin-top: 8px;
-    }
-
-    .code-form input {
-        flex: 1;
-        min-width: 150px;
-        min-height: 40px;
-        box-sizing: border-box;
-        background: color-mix(in srgb, var(--ctp-base) 60%, transparent);
-        border: 1px solid var(--ctp-surface1);
-        border-radius: 6px;
-        padding: 8px;
-        color: var(--ctp-text);
-        font-size: 0.9rem;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .fix-code-btn,
-    .save-code-btn {
-        background: var(--ctp-peach);
-        color: var(--rp-base);
-        border: none;
-        border-radius: 6px;
-        padding: 8px 14px;
-        font-weight: 600;
-        font-family: inherit;
-        cursor: pointer;
-        margin-top: 8px;
-        min-height: 40px;
-    }
-
-    .save-code-btn { margin-top: 0; }
-
-    .save-code-btn:disabled {
-        opacity: 0.6;
-        cursor: not-allowed;
-    }
-
-    .cancel-code-btn {
-        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
-        color: var(--ctp-text);
-        border: none;
-        border-radius: 6px;
-        padding: 8px 12px;
-        font-family: inherit;
-        cursor: pointer;
-        min-height: 40px;
-    }
-
-    .code-hint {
-        font-size: 0.75rem;
-        color: var(--ctp-subtext0);
-        margin-top: 6px;
-    }
-
-    .last-action {
-        margin: 8px 0 0;
-        font-size: 0.75rem;
-        color: var(--ctp-overlay0);
-    }
-
-    /* --- AMS ------------------------------------------------------------ */
-    .ams {
-        margin-top: 12px;
-        padding: 10px;
-        border: 1px solid var(--ctp-surface0);
-        border-radius: var(--radius-sm);
-        background: color-mix(in srgb, var(--ctp-crust) 60%, transparent);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .ams-head {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        flex-wrap: wrap;
-        margin-bottom: 8px;
-    }
-
-    .ams-title {
-        font-size: 0.72rem;
-        font-weight: 700;
-        letter-spacing: 0.6px;
-        text-transform: uppercase;
-        color: var(--ctp-teal);
-    }
-
-    .ams-meta {
-        font-size: 0.7rem;
-        color: var(--ctp-subtext0);
-    }
-
-    .ams-slots {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(60px, 1fr));
-        gap: 6px;
-    }
-
-    .ams-slot {
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-        padding: 7px;
-        border: 1px solid var(--ctp-surface1);
-        border-radius: var(--radius-sm);
-        background: color-mix(in srgb, var(--ctp-mantle) 60%, transparent);
-        min-width: 0;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .ams-slot.active {
-        border-color: var(--ctp-green);
-        box-shadow: 0 0 0 1px var(--ctp-green) inset;
-    }
-
-    .ams-slot.empty { opacity: 0.45; }
-
-    .ams-top {
-        display: flex;
-        align-items: center;
-        gap: 5px;
-    }
-
-    .ams-swatch {
-        width: 14px;
-        height: 14px;
-        border-radius: 50%;
-        border: 1px solid var(--ctp-surface2);
+    .swatch {
+        display: inline-block;
         flex-shrink: 0;
-    }
-
-    .ams-num {
-        font-size: 0.65rem;
-        color: var(--ctp-overlay0);
-        font-weight: 700;
-    }
-
-    .ams-dot {
-        width: 6px;
-        height: 6px;
+        width: 1rem;
+        height: 1rem;
         border-radius: 50%;
-        background: var(--ctp-green);
-        margin-left: auto;
-        animation: soft-pulse 1.8s ease-in-out infinite;
+        border: 1px solid var(--tblr-border-color-translucent, var(--tblr-border-color));
+        vertical-align: -0.15em;
     }
 
-    .ams-mat {
-        font-size: 0.68rem;
-        color: var(--ctp-text);
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+    .swatch.empty {
+        border-style: dashed;
     }
 
-    .ams-bar {
-        display: block;
-        height: 4px;
-        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
-        border-radius: var(--radius-pill);
-        overflow: hidden;
+    .files {
+        border-top: 1px solid var(--tblr-border-color);
     }
 
-    .ams-fill {
-        display: block;
-        height: 100%;
-        background: linear-gradient(90deg, var(--ctp-blue), var(--ctp-teal));
-        transition: width var(--slow) var(--ease);
-    }
-
-    .ams-pct {
-        font-size: 0.62rem;
-        color: var(--ctp-subtext0);
-    }
-
-    .ams-pct.unknown { color: var(--ctp-overlay0); }
-
-    .ams-ext {
-        display: flex;
-        align-items: center;
-        gap: 7px;
-        margin-top: 8px;
-        padding-top: 8px;
-        border-top: 1px dashed var(--ctp-surface1);
-        font-size: 0.7rem;
-    }
-
-    /* No AMS units above it: no divider needed */
-    .ams-ext:first-child {
-        margin-top: 0;
-        padding-top: 0;
-        border-top: none;
-    }
-
-    .ams-ext-label {
-        color: var(--ctp-overlay0);
-        text-transform: uppercase;
-        letter-spacing: 0.4px;
-        font-size: 0.62rem;
-    }
-
-    .ams-ext-mat {
-        color: var(--ctp-text);
-        flex: 1;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    /* --- sending files and the file list --------------------------------- */
-    .send-toggle {
-        margin-top: 12px;
-        width: 100%;
-        min-height: 44px;
-        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
-        color: var(--ctp-text);
-        border: 1px solid var(--ctp-surface1);
-        border-radius: var(--radius-sm);
-        font-weight: 600;
-        font-family: inherit;
-        font-size: 0.88rem;
-        cursor: pointer;
-        transition: background-color var(--fast) var(--ease), transform var(--fast) var(--ease);
-    }
-
-    .send-toggle:hover {
-        background: color-mix(in srgb, var(--ctp-surface1) 60%, transparent);
-        transform: translateY(-1px);
-    }
-
-    .send-panel {
-        margin-top: 10px;
-        padding: 12px;
-        border: 1px solid var(--ctp-surface0);
-        border-radius: var(--radius-sm);
-        background: color-mix(in srgb, var(--ctp-crust) 60%, transparent);
-        animation: rise var(--normal) var(--ease) both;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .send-rule {
-        margin: 0 0 10px;
-        font-size: 0.78rem;
-        line-height: 1.45;
-        color: var(--ctp-subtext0);
-    }
-
-    .send-rule strong { color: var(--ctp-mauve); }
-
-    .send-rule code {
-        background: color-mix(in srgb, var(--ctp-mantle) 60%, transparent);
-        border: 1px solid var(--ctp-surface0);
-        border-radius: 4px;
-        padding: 1px 5px;
-        color: var(--ctp-text);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
+    .file-list {
+        max-height: 26rem;
+        overflow-y: auto;
     }
 
     .dropzone {
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: 4px;
-        padding: 20px 12px;
-        border: 2px dashed var(--ctp-surface2);
-        border-radius: var(--radius);
-        cursor: pointer;
+        gap: 0.15rem;
+        padding: 1.25rem 1rem;
+        border: 2px dashed var(--tblr-border-color);
+        border-radius: var(--tblr-border-radius-lg, 8px);
         text-align: center;
-        transition:
-            border-color var(--fast) var(--ease),
-            background-color var(--fast) var(--ease),
-            transform var(--fast) var(--ease);
+        cursor: pointer;
+        transition: border-color 0.15s, background-color 0.15s;
     }
 
-    .dropzone:hover {
-        border-color: var(--ctp-mauve);
-        background: color-mix(in srgb, var(--ctp-mauve) 6%, transparent);
-    }
-
+    .dropzone:hover,
+    .dropzone:focus-visible,
     .dropzone.over {
-        border-color: var(--ctp-mauve);
-        background: color-mix(in srgb, var(--ctp-mauve) 14%, transparent);
-        transform: scale(1.01);
+        border-color: var(--tblr-primary);
+        background: color-mix(in srgb, var(--tblr-primary) 8%, transparent);
+        outline: none;
     }
 
-    .dropzone.busy { cursor: progress; }
-
-    .dropzone input { display: none; }
-
-    .drop-icon { font-size: 1.6rem; }
-
-    .drop-title {
-        font-size: 0.88rem;
-        font-weight: 600;
-        color: var(--ctp-text);
+    .dropzone.busy {
+        cursor: progress;
     }
 
-    .drop-sub {
-        font-size: 0.75rem;
-        color: var(--ctp-overlay0);
+    .toast-msg.stacked {
+        bottom: 80px;
     }
 
-    .upload-bar {
-        width: 100%;
-        height: 6px;
-        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
-        border-radius: var(--radius-pill);
-        overflow: hidden;
-        margin-top: 8px;
-    }
-
-    .upload-fill {
-        height: 100%;
-        background: linear-gradient(90deg, var(--ctp-mauve), var(--ctp-rosewater));
-        transition: width var(--fast) linear;
-    }
-
-    .send-note {
-        margin: 10px 0 0;
-        font-size: 0.73rem;
-        line-height: 1.45;
-        color: var(--ctp-overlay0);
-    }
-
-    .send-locked {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 8px;
-        padding: 14px 12px;
-        border: 2px dashed var(--ctp-surface1);
-        border-radius: var(--radius);
-        text-align: center;
-    }
-
-    .send-locked p {
-        margin: 0;
-        font-size: 0.8rem;
-        line-height: 1.45;
-        color: var(--ctp-subtext0);
-    }
-
-    .login-btn {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        min-height: 40px;
-        padding: 0 16px;
-        border-radius: var(--radius-sm);
-        background: var(--accent);
-        color: var(--accent-ink);
-        font-weight: 600;
-        font-size: 0.88rem;
-        text-decoration: none;
-    }
-
-    .login-btn:hover { filter: brightness(1.05); }
-
-    .files-head {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 8px;
-        flex-wrap: wrap;
-        margin: 14px 0 6px;
-        padding-top: 10px;
-        border-top: 1px solid var(--ctp-surface0);
-    }
-
-    .send-listhead {
-        margin: 0;
-        font-size: 0.72rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.4px;
-        color: var(--ctp-overlay0);
-    }
-
-    .files-actions {
-        display: flex;
-        gap: 6px;
-    }
-
-    .mini-btn {
-        min-height: 40px;
-        padding: 0 12px;
-        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
-        color: var(--ctp-text);
-        border: 1px solid var(--ctp-surface1);
-        border-radius: 6px;
-        font-family: inherit;
-        font-size: 0.78rem;
-        font-weight: 600;
-        cursor: pointer;
-    }
-
-    .mini-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--ctp-surface1) 60%, transparent); }
-
-    .mini-btn.danger { color: var(--danger); }
-
-    .mini-btn:disabled,
-    .delete-btn:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-    }
-
-    .send-empty,
-    .send-error {
-        margin: 6px 0 0;
-        font-size: 0.75rem;
-        color: var(--ctp-overlay0);
-    }
-
-    .send-error { color: var(--danger); }
-
-    .send-list {
-        list-style: none;
-        margin: 0;
-        padding: 0;
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-    }
-
-    .send-list li {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        font-size: 0.75rem;
-        background: color-mix(in srgb, var(--ctp-mantle) 60%, transparent);
-        border: 1px solid var(--ctp-surface0);
-        border-radius: 6px;
-        padding: 6px 6px 6px 10px;
-        min-height: 40px;
-        box-sizing: border-box;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .send-info {
-        flex: 1;
-        min-width: 0;
-        display: flex;
-        flex-direction: column;
-        gap: 1px;
-    }
-
-    .send-file {
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        color: var(--ctp-text);
-    }
-
-    .send-meta {
-        font-size: 0.68rem;
-        color: var(--ctp-overlay0);
-    }
-
-    .send-now { color: var(--ctp-green); }
-
-    .delete-btn {
-        flex-shrink: 0;
-        width: 40px;
-        height: 40px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        background: transparent;
-        border: 1px solid transparent;
-        border-radius: 6px;
-        color: var(--danger);
-        font-size: 0.95rem;
-        cursor: pointer;
-        transition: background-color var(--fast) var(--ease), border-color var(--fast) var(--ease);
-    }
-
-    .delete-btn:hover:not(:disabled) {
-        background: color-mix(in srgb, var(--danger) 12%, transparent);
-        border-color: color-mix(in srgb, var(--danger) 40%, transparent);
-    }
-
-    .show-all {
-        margin-top: 6px;
-        width: 100%;
-        min-height: 40px;
-        background: transparent;
-        border: 1px dashed var(--ctp-surface1);
-        border-radius: 6px;
-        color: var(--link);
-        font-family: inherit;
-        font-size: 0.78rem;
-        cursor: pointer;
-    }
-
-    .print-btn {
-        flex-shrink: 0;
-        width: 40px;
-        height: 40px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        background: transparent;
-        border: 1px solid transparent;
-        border-radius: 6px;
-        color: var(--ctp-green);
-        font-size: 0.95rem;
-        cursor: pointer;
-        transition: background-color var(--fast) var(--ease), border-color var(--fast) var(--ease);
-    }
-
-    .print-btn:hover:not(:disabled) {
-        background: color-mix(in srgb, var(--ctp-green) 12%, transparent);
-        border-color: color-mix(in srgb, var(--ctp-green) 40%, transparent);
-    }
-
-    .print-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-    /* --- remote control ---------------------------------------------------- */
-    .controls {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-        margin-top: 12px;
-    }
-
-    .ctl {
-        flex: 1 1 auto;
-        min-height: 44px;
-        padding: 0 12px;
-        background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent);
-        color: var(--ctp-text);
-        border: 1px solid var(--ctp-surface1);
-        border-radius: var(--radius-sm);
-        font-weight: 600;
-        font-family: inherit;
-        font-size: 0.84rem;
-        white-space: nowrap;
-        cursor: pointer;
-        transition:
-            background-color var(--fast) var(--ease),
-            border-color var(--fast) var(--ease),
-            transform var(--fast) var(--ease);
-    }
-
-    .ctl:hover:not(:disabled) {
-        background: color-mix(in srgb, var(--ctp-surface1) 60%, transparent);
-        transform: translateY(-1px);
-    }
-
-    .ctl:disabled { opacity: 0.6; cursor: not-allowed; }
-
-    .ctl.notify { color: var(--ctp-subtext0); }
-
-    .ctl.notify.on {
-        color: var(--ctp-mauve);
-        border-color: var(--ctp-mauve);
-        background: color-mix(in srgb, var(--ctp-mauve) 12%, color-mix(in srgb, var(--ctp-surface0) 60%, transparent));
-    }
-
-    .ctl.light.on {
-        color: var(--ctp-yellow);
-        border-color: var(--ctp-yellow);
-        background: color-mix(in srgb, var(--ctp-yellow) 12%, color-mix(in srgb, var(--ctp-surface0) 60%, transparent));
-    }
-
-    .ctl.pause { color: var(--ctp-yellow); border-color: var(--ctp-yellow); }
-    .ctl.resume,
-    .ctl.start { color: var(--ctp-green); border-color: var(--ctp-green); }
-
-    .ctl.stop {
-        background: var(--danger);
-        border-color: var(--danger);
-        color: var(--rp-base);
-    }
-
-    .ctl.stop:hover:not(:disabled) {
-        background: var(--danger);
-        filter: brightness(1.08);
-    }
-
-    .start-panel {
-        margin-top: 10px;
-        padding: 12px;
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-        border: 1px solid var(--ctp-green);
-        border-radius: var(--radius-sm);
-        background: color-mix(in srgb, var(--ctp-crust) 60%, transparent);
-        animation: rise var(--normal) var(--ease) both;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .start-row {
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-        font-size: 0.72rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.4px;
-        color: var(--ctp-overlay0);
-    }
-
-    .start-row select,
-    .start-row input {
-        min-height: 40px;
-        box-sizing: border-box;
-        width: 100%;
-        background: color-mix(in srgb, var(--ctp-base) 60%, transparent);
-        border: 1px solid var(--ctp-surface1);
-        border-radius: 6px;
-        padding: 6px 8px;
-        color: var(--ctp-text);
-        font-family: inherit;
-        font-size: 0.88rem;
-        font-weight: 400;
-        text-transform: none;
-        letter-spacing: normal;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .swatches {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-    }
-
-    .swatch {
-        width: 40px;
-        height: 40px;
-        border-radius: 50%;
-        border: 2px solid var(--ctp-surface2);
-        cursor: pointer;
-        padding: 0;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-    }
-
-    /* Readable on any filament colour */
-    .swatch span {
-        font-size: 0.7rem;
-        font-weight: 700;
-        color: var(--ctp-text);
-        background: color-mix(in srgb, var(--ctp-mantle) 60%, transparent);
-        border-radius: var(--radius-pill);
-        padding: 1px 5px;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .swatch.picked {
-        border-color: var(--ctp-green);
-        box-shadow: 0 0 0 2px var(--ctp-green);
-    }
-
-    .start-opts {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 4px 14px;
-    }
-
-    .start-opts label {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        min-height: 40px;
-        font-size: 0.82rem;
-        color: var(--ctp-text);
-        cursor: pointer;
-    }
-
-    .start-opts input {
-        width: 18px;
-        height: 18px;
-        accent-color: var(--ctp-green);
-    }
-
-    .start-warn {
-        margin: 0;
-        padding: 8px 10px;
-        border-radius: 6px;
-        border: 1px solid var(--ctp-yellow);
-        background: color-mix(in srgb, var(--ctp-yellow) 10%, transparent);
-        font-size: 0.78rem;
-        line-height: 1.4;
-        color: var(--ctp-text);
-    }
-
-    .start-go {
-        min-height: 44px;
-        background: var(--ctp-green);
-        color: var(--rp-base);
-        border: none;
-        border-radius: var(--radius-sm);
-        font-weight: 700;
-        font-family: inherit;
-        font-size: 0.9rem;
-        cursor: pointer;
-    }
-
-    .start-go:hover:not(:disabled) { filter: brightness(1.06); }
-    .start-go:disabled { opacity: 0.55; cursor: not-allowed; }
-
-    /* --- faults ------------------------------------------------------------ */
-    .reject-card {
-        background: color-mix(in srgb, var(--ctp-mauve) 12%, color-mix(in srgb, var(--card) 60%, transparent));
-        border: 1px solid var(--ctp-mauve);
-        border-radius: 8px;
-        padding: 10px 12px;
-        margin-bottom: 10px;
-        font-size: 0.82rem;
-        color: var(--ctp-mauve);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .reject-card p {
-        margin: 6px 0 0;
-        color: var(--ctp-text);
-        line-height: 1.4;
-    }
-
-    .reject-card p strong { color: var(--ctp-mauve); }
-
-    .faults {
-        background: color-mix(in srgb, var(--ctp-red) 10%, color-mix(in srgb, var(--card) 60%, transparent));
-        border: 1px solid var(--ctp-red);
-        border-radius: 8px;
-        padding: 10px 12px;
-        margin-bottom: 10px;
-        font-size: 0.82rem;
-        color: var(--ctp-red);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .fault {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        margin-top: 6px;
-        min-height: 40px;
-        padding: 6px 8px;
-        box-sizing: border-box;
-        border-radius: 6px;
-        background: color-mix(in srgb, var(--ctp-crust) 60%, transparent);
-        text-decoration: none;
-        color: var(--ctp-subtext0);
-        font-size: 0.75rem;
-        transition: background-color var(--fast) var(--ease);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .fault:hover { background: color-mix(in srgb, var(--ctp-surface0) 60%, transparent); }
-
-    .fault-sev {
-        text-transform: uppercase;
-        font-weight: 700;
-        letter-spacing: 0.4px;
-        padding: 2px 6px;
-        border-radius: var(--radius-pill);
-        background: color-mix(in srgb, var(--ctp-surface1) 60%, transparent);
-        color: var(--ctp-text);
-        font-size: 0.65rem;
-    }
-
-    .fault.fatal .fault-sev { background: var(--ctp-red); color: var(--rp-base); }
-    .fault.serious .fault-sev { background: var(--ctp-peach); color: var(--rp-base); }
-    .fault.common .fault-sev { background: var(--ctp-yellow); color: var(--rp-base); }
-    .fault.info .fault-sev { background: var(--ctp-sapphire); color: var(--rp-base); }
-
-    .fault-code {
-        flex: 1;
-        min-width: 0;
-        font-family: var(--mono, monospace);
-        color: var(--ctp-text);
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .fault-link { color: var(--link); white-space: nowrap; }
-
-    .offline-note {
-        margin: 8px 0 0;
-        font-size: 0.82rem;
-        color: var(--ctp-overlay0);
+    .modal {
+        overflow-y: auto;
     }
 </style>
