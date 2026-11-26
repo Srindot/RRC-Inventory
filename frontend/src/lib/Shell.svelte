@@ -46,7 +46,9 @@
 <div class="frame">
     <header class="site-head" class:compact={!home}>
         <a class="brand" href="/" aria-label="Robotics Research Centre - home">
-            <img class="logo" src="/rrc_logo.png" alt="" />
+            <!-- One logo per theme: on light, the lettering is black instead of white -->
+            <img class="logo logo-dark" src="/rrc_logo_header.png" alt="" width="384" height="168" />
+            <img class="logo logo-light" src="/rrc_logo_header_light.png" alt="" width="384" height="168" />
             <span class="titles">
                 <span class="site-title">Robotics Research Centre</span>
                 <span class="site-sub">Lab Equipment Management System</span>
@@ -130,8 +132,9 @@
         text-decoration: none;
     }
 
-    /* The logo's lettering is white on transparent, so it always sits on a
-       dark Rosé Pine plate - otherwise it vanishes on the light theme. */
+    /* The dark-theme logo's lettering is white on transparent, so it sits on
+       a dark Rosé Pine plate. The light theme swaps in a copy with black
+       lettering (same blue badge), which needs no plate. */
     .logo {
         height: clamp(52px, 8vw, 78px);
         width: auto;
@@ -140,6 +143,20 @@
         background: #191724;
         box-shadow: var(--shadow-sm);
         transition: transform var(--normal) var(--ease), box-shadow var(--normal) var(--ease);
+    }
+
+    .logo-light {
+        display: none;
+    }
+
+    :global(:root[data-theme='light']) .logo-dark {
+        display: none;
+    }
+
+    :global(:root[data-theme='light']) .logo-light {
+        display: block;
+        background: transparent;
+        box-shadow: none;
     }
 
     .brand:hover .logo {
