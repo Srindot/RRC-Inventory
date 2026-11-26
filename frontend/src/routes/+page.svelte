@@ -21,6 +21,8 @@
     $: currentView = $page.state.view || urlView;
 
     onMount(async () => {
+        loadPulse();
+        pulseTimer = setInterval(loadPulse, 30000);
         user = getUser();
         user = await refreshUser();
         ready = true;
@@ -29,8 +31,53 @@
     });
 
     onDestroy(() => {
+        clearInterval(pulseTimer);
         if (photoPreview) URL.revokeObjectURL(photoPreview);
     });
+
+    // "The lab right now": a live line under the home heading, from the same
+    // public data the printers, return and MoCap pages show. Each part stays
+    // hidden until its request answers, so nothing flashes a wrong zero.
+    let pulse = { printers: null, out: null, mocap: null };
+    let pulseTimer;
+
+    async function loadPulse() {
+        const get = (url) => fetch(url).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+        const start = new Date();
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(start.getTime() + 864e5);
+        const [printers, loans, bookings] = await Promise.all([
+            get('/api/printers'),
+            get('/api/loans/active'),
+            get(`/api/bookings?lab=mocap&from=${encodeURIComponent(start.toISOString())}&to=${encodeURIComponent(end.toISOString())}`)
+        ]);
+        pulse = {
+            printers: Array.isArray(printers) && printers.length ? printerPulse(printers) : null,
+            out: Array.isArray(loans) ? loans.length : null,
+            mocap: Array.isArray(bookings) ? mocapPulse(bookings) : null
+        };
+    }
+
+    function printerPulse(list) {
+        const busy = (p) => ['RUNNING', 'PAUSE', 'PREPARE'].includes(p.state);
+        const online = list.filter((p) => p.online);
+        return {
+            printing: online.filter(busy).length,
+            free: online.filter((p) => !busy(p)).length,
+            offline: list.length - online.length
+        };
+    }
+
+    function mocapPulse(list) {
+        const now = Date.now();
+        const hhmm = (t) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const sorted = [...list].sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
+        const current = sorted.find((b) => new Date(b.start_time) <= now && new Date(b.end_time) > now);
+        if (current) return { busy: true, text: `MoCap in use until ${hhmm(current.end_time)}` };
+        const next = sorted.find((b) => new Date(b.start_time) > now);
+        if (next) return { busy: false, text: `MoCap free until ${hhmm(next.start_time)}` };
+        return { busy: false, text: 'MoCap free for the rest of today' };
+    }
 
     $: if (ready) enter(currentView);
 
@@ -633,6 +680,27 @@
 
         <div class="home-options">
             <h2>What would you like to do?</h2>
+            {#if pulse.printers || pulse.out !== null || pulse.mocap}
+                <div class="pulse" aria-label="The lab right now">
+                    {#if pulse.printers}
+                        <a class="pulse-pill" href="/printers">
+                            <span class="pip" class:live={pulse.printers.printing > 0}></span>
+                            🖨️ {pulse.printers.printing} printing · {pulse.printers.free} free{#if pulse.printers.offline} · {pulse.printers.offline} offline{/if}
+                        </a>
+                    {/if}
+                    {#if pulse.out !== null}
+                        <button class="pulse-pill" on:click={() => go('return')}>
+                            📦 {pulse.out} {pulse.out === 1 ? 'item' : 'items'} out
+                        </button>
+                    {/if}
+                    {#if pulse.mocap}
+                        <a class="pulse-pill" href="/mocap">
+                            <span class="pip" class:busy={pulse.mocap.busy}></span>
+                            🎥 {pulse.mocap.text}
+                        </a>
+                    {/if}
+                </div>
+            {/if}
             <!-- The pointer position drives each tile's spotlight -->
             <div
                 class="option-buttons"
@@ -1606,15 +1674,68 @@
         animation: fade var(--slow) var(--ease) both;
     }
 
+    .pulse {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 8px;
+        margin: clamp(10px, 1.4vh, 16px) auto 0;
+        animation: fade var(--slow) var(--ease) both;
+    }
+
+    .pulse-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 36px;
+        padding: 0 14px;
+        border: 1px solid var(--line-strong);
+        border-radius: var(--radius-pill);
+        background: var(--glass);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
+        color: var(--muted);
+        font: inherit;
+        font-size: clamp(0.82rem, 0.85vw, 0.95rem);
+        text-decoration: none;
+        cursor: pointer;
+        transition: color var(--fast) var(--ease), border-color var(--fast) var(--ease);
+    }
+
+    .pulse-pill:hover {
+        color: var(--rp-text);
+        border-color: color-mix(in srgb, var(--accent) 45%, var(--line-strong));
+    }
+
+    .pip {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--rp-foam);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--rp-foam) 18%, transparent);
+    }
+
+    .pip.live {
+        background: var(--rp-gold);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--rp-gold) 22%, transparent);
+        animation: soft-pulse 1.6s ease-in-out infinite;
+    }
+
+    .pip.busy {
+        background: var(--rp-love);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--rp-love) 20%, transparent);
+    }
+
     .option-buttons {
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
-        grid-auto-rows: minmax(clamp(96px, 12vh, 180px), 1fr);
+        grid-auto-rows: minmax(clamp(96px, 12vh, 168px), 1fr);
         gap: clamp(12px, min(1.4vw, 2.2vh), 24px);
         width: 100%;
-        /* Take the free height (rows share it), but no further than looks right */
+        /* Take the free height (rows share it), but stop while the tiles
+           still read as solid cards rather than empty panels */
         flex: 1 1 0;
-        max-height: 860px;
+        max-height: 620px;
         margin: clamp(14px, 2.2vh, 32px) auto 0;
     }
 
@@ -1799,17 +1920,19 @@
         background: color-mix(in srgb, var(--tile-accent) 12%, transparent);
     }
 
-    /* A lone tile on the last row (signed out: 7 tiles) spans the row
-       instead of leaving a hole */
+    /* A lone tile on the last row (signed out: 7 tiles) keeps its size and
+       sits in the middle, rather than stretching into a wide empty card */
     @media (min-width: 1025px) {
         .option-btn:last-child:nth-child(3n + 1) {
-            grid-column: 1 / -1;
+            grid-column: 2;
         }
     }
 
     @media (min-width: 641px) and (max-width: 1024px) {
         .option-btn:last-child:nth-child(2n + 1) {
             grid-column: 1 / -1;
+            justify-self: center;
+            width: calc(50% - clamp(12px, min(1.4vw, 2.2vh), 24px) / 2);
         }
     }
 
@@ -1818,15 +1941,13 @@
     @media (min-width: 1025px) and (min-height: 940px) {
         .option-btn {
             grid-template-columns: 1fr auto;
-            grid-template-rows: 1fr auto;
+            grid-template-rows: auto auto;
             grid-template-areas:
                 'icon arrow'
                 'body body';
             align-items: start;
-        }
-
-        .tile-body {
-            align-self: end;
+            align-content: center;
+            row-gap: clamp(12px, 1.6vh, 20px);
         }
 
         .option-btn::after {
