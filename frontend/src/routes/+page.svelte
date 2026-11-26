@@ -5,6 +5,43 @@
     import { page } from '$app/stores';
     import { api, can, getUser, loginUrl, refreshUser } from '$lib/auth.js';
     import { AREA } from '$lib/palette.js';
+    import IconBorrow from '@tabler/icons-svelte-runes/icons/package-export';
+    import IconReturn from '@tabler/icons-svelte-runes/icons/package-import';
+    import IconVideo from '@tabler/icons-svelte-runes/icons/video';
+    import IconRobot from '@tabler/icons-svelte-runes/icons/robot';
+    import IconItems from '@tabler/icons-svelte-runes/icons/list-search';
+    import IconBook from '@tabler/icons-svelte-runes/icons/book';
+    import IconDashboard from '@tabler/icons-svelte-runes/icons/layout-dashboard';
+    import IconThreads from '@tabler/icons-svelte-runes/icons/flask';
+    import IconPrinter from '@tabler/icons-svelte-runes/icons/printer';
+    import IconBox from '@tabler/icons-svelte-runes/icons/box';
+    import IconArrowRight from '@tabler/icons-svelte-runes/icons/arrow-right';
+    import IconAlert from '@tabler/icons-svelte-runes/icons/alert-triangle';
+    import IconLock from '@tabler/icons-svelte-runes/icons/lock';
+    import IconClock from '@tabler/icons-svelte-runes/icons/clock';
+    import IconHome from '@tabler/icons-svelte-runes/icons/home';
+    import IconPin from '@tabler/icons-svelte-runes/icons/map-pin';
+    import IconSparkles from '@tabler/icons-svelte-runes/icons/sparkles';
+    import IconCheck from '@tabler/icons-svelte-runes/icons/check';
+    import IconCircleCheck from '@tabler/icons-svelte-runes/icons/circle-check';
+    import IconExchange from '@tabler/icons-svelte-runes/icons/arrows-exchange';
+    import IconSearch from '@tabler/icons-svelte-runes/icons/search';
+    import IconX from '@tabler/icons-svelte-runes/icons/x';
+    import IconInbox from '@tabler/icons-svelte-runes/icons/inbox';
+    import IconCamera from '@tabler/icons-svelte-runes/icons/camera';
+    import IconDownload from '@tabler/icons-svelte-runes/icons/download';
+    import IconWifi from '@tabler/icons-svelte-runes/icons/wifi';
+    import IconEye from '@tabler/icons-svelte-runes/icons/eye';
+    import IconEyeOff from '@tabler/icons-svelte-runes/icons/eye-off';
+    import IconExternal from '@tabler/icons-svelte-runes/icons/external-link';
+    import IconInfo from '@tabler/icons-svelte-runes/icons/info-circle';
+    import IconHelp from '@tabler/icons-svelte-runes/icons/help';
+    import IconBan from '@tabler/icons-svelte-runes/icons/ban';
+    import IconShield from '@tabler/icons-svelte-runes/icons/shield';
+    import IconListCheck from '@tabler/icons-svelte-runes/icons/list-check';
+    import IconUsers from '@tabler/icons-svelte-runes/icons/users';
+    import IconPhone from '@tabler/icons-svelte-runes/icons/phone';
+    import IconUser from '@tabler/icons-svelte-runes/icons/user';
 
     let user = null;
     // True once we know whether the session is still alive
@@ -112,6 +149,54 @@
         // Step back if we got here by a tap, so history stays clean
         if ($page.state.pushed) history.back();
         else replaceState('/', { view: 'home' });
+    }
+
+    // The home page's action cards. Those with a `view` open in place (a
+    // plain click is shallow-routed by go(); the href still works for a new tab).
+    $: tiles = [
+        { view: 'borrow', href: '/?view=borrow', title: 'Borrow', sub: 'Take equipment from the lab', icon: IconBorrow, color: 'pink' },
+        { view: 'return', href: '/?view=return', title: 'Return', sub: 'Give equipment back', icon: IconReturn, color: 'azure' },
+        { href: '/printers', title: '3D Printers', sub: 'See which printers are free', img: '/P1S.png', color: 'yellow' },
+        { href: '/mocap', title: 'MoCap Lab', sub: 'Book a slot, see the calendar', icon: IconVideo, color: 'purple' },
+        { href: '/mechlab', title: 'Mech Lab', sub: 'Book a robot', icon: IconRobot, color: 'red' },
+        { href: '/items', title: "What's in the Lab", sub: 'Who has what, report a problem', icon: IconItems, color: 'teal' },
+        { view: 'printer-guide', href: '/?view=printer-guide', title: 'Printer guidelines', sub: 'How to print, safely', icon: IconBook, color: 'orange' },
+        ...(user
+            ? [
+                  { href: '/dashboard', title: 'Dashboard', sub: 'What needs you, your bookings', icon: IconDashboard, color: 'indigo' },
+                  { href: '/threads', title: 'Research Threads', sub: 'Your projects and robot access', icon: IconThreads, color: 'green' }
+              ]
+            : [])
+    ];
+
+    $: firstName = (user?.name || '').trim().split(/\s+/)[0];
+
+    // A plain left click opens a view in place; modified clicks (new tab)
+    // fall through to the link.
+    function openTile(e, tile) {
+        if (!tile.view || e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        e.preventDefault();
+        go(tile.view);
+    }
+
+    // The printer guide's sections, for the in-page menu on wide screens
+    const guideSections = [
+        { id: 'guide-setup', label: '1. First-time setup' },
+        { id: 'guide-presets', label: '2. Pick the right presets' },
+        { id: 'guide-slice', label: '3. Slice and check' },
+        { id: 'guide-send', label: '4. Send it to the printer' },
+        { id: 'guide-during', label: '5. During and after' },
+        { id: 'guide-stop', label: 'When to stop a print' },
+        { id: 'guide-filament', label: 'Loading filament' },
+        { id: 'guide-safety', label: 'Safety' },
+        { id: 'guide-rules', label: 'Lab rules' },
+        { id: 'guide-faq', label: 'Common questions' },
+        { id: 'guide-links', label: 'Official guides' }
+    ];
+
+    // Scrolls without touching the URL, so the ?view= stays as it is
+    function jumpTo(id) {
+        document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
     // State management
@@ -653,750 +738,922 @@
     }
 </script>
 
-<div class="page">
-    {#if message}
-        <div class="message {messageType}" role="status">
-            {message}
+{#if message}
+    <div class="toast-msg {messageType}" role="status">{message}</div>
+{/if}
+
+{#if currentView === 'home'}
+    <div class="page-header d-print-none mt-0 mb-4">
+        <div class="row g-3 align-items-center">
+            <div class="col">
+                <div class="page-pretitle">Robotics Research Centre</div>
+                <h2 class="page-title">{firstName ? `Hello, ${firstName}` : 'Welcome to the lab'}</h2>
+                <div class="text-secondary mt-1">Borrow and return equipment, book the labs and check on the printers.</div>
+            </div>
+            <div class="col-12 col-md-auto">
+                <div class="btn-list">
+                    <a class="btn btn-primary" href="/?view=borrow" on:click={(e) => openTile(e, tiles[0])}>
+                        <IconBorrow size={18} class="icon" />Borrow
+                    </a>
+                    <a class="btn btn-outline-secondary" href="/?view=return" on:click={(e) => openTile(e, tiles[1])}>
+                        <IconReturn size={18} class="icon" />Return
+                    </a>
+                </div>
+            </div>
         </div>
+    </div>
+
+    <!-- The lab right now: each card appears once its request answers -->
+    {#if pulse.printers || pulse.out !== null || pulse.mocap}
+        <section class="row row-cards g-3 mb-3" aria-label="The lab right now">
+            {#if pulse.printers}
+                <div class="col-12 col-sm-6 col-lg-4">
+                    <a class="card card-sm card-link h-100" href="/printers">
+                        <div class="card-body">
+                            <div class="row align-items-center g-3">
+                                <div class="col-auto">
+                                    <span class="avatar bg-yellow-lt"><IconPrinter size={22} class="icon" /></span>
+                                </div>
+                                <div class="col">
+                                    <div class="fw-medium">
+                                        <span class="tabular">{pulse.printers.free}</span> printer{pulse.printers.free === 1 ? '' : 's'} free
+                                    </div>
+                                    <div class="text-secondary small">
+                                        {#if pulse.printers.printing > 0}<span class="status-dot status-dot-animated status-green me-1"></span>{/if}
+                                        <span class="tabular">{pulse.printers.printing}</span> printing{#if pulse.printers.offline}, <span class="tabular">{pulse.printers.offline}</span> offline{/if}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+            {/if}
+            {#if pulse.out !== null}
+                <div class="col-12 col-sm-6 col-lg-4">
+                    <a class="card card-sm card-link h-100" href="/?view=return" on:click={(e) => openTile(e, tiles[1])}>
+                        <div class="card-body">
+                            <div class="row align-items-center g-3">
+                                <div class="col-auto">
+                                    <span class="avatar bg-azure-lt"><IconBox size={22} class="icon" /></span>
+                                </div>
+                                <div class="col">
+                                    <div class="fw-medium"><span class="tabular">{pulse.out}</span> {pulse.out === 1 ? 'item' : 'items'} out</div>
+                                    <div class="text-secondary small">Borrowed from the lab right now</div>
+                                </div>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+            {/if}
+            {#if pulse.mocap}
+                <div class="col-12 col-sm-6 col-lg-4">
+                    <a class="card card-sm card-link h-100" href="/mocap">
+                        <div class="card-body">
+                            <div class="row align-items-center g-3">
+                                <div class="col-auto">
+                                    <span class="avatar bg-purple-lt"><IconVideo size={22} class="icon" /></span>
+                                </div>
+                                <div class="col">
+                                    <div class="fw-medium">
+                                        <span class="status-dot me-1" class:status-red={pulse.mocap.busy} class:status-green={!pulse.mocap.busy}></span>
+                                        {pulse.mocap.busy ? 'MoCap in use' : 'MoCap free'}
+                                    </div>
+                                    <div class="text-secondary small">{pulse.mocap.text}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+            {/if}
+        </section>
     {/if}
 
-    {#if currentView === 'home'}
-        {#if openMine.length}
-            <section class="card hued mine" style="--hue: {AREA.equipment}" aria-labelledby="my-loans-title">
-                <p class="label" id="my-loans-title">You have</p>
+    {#if openMine.length}
+        <section class="card mb-3" aria-labelledby="my-loans-title">
+            <div class="card-status-top" style="background: {AREA.equipment}"></div>
+            <div class="card-header">
+                <h3 class="card-title" id="my-loans-title">You have</h3>
+                <div class="card-actions">
+                    <a class="btn btn-ghost-secondary btn-sm" href="/?view=return" on:click={(e) => openTile(e, tiles[1])}>All loans</a>
+                </div>
+            </div>
+            <div class="list-group list-group-flush">
                 {#each openMine as loan (loan.ID)}
-                    <div class="row">
-                        <span class="grow">
-                            <strong>{loan.item_name}</strong>{#if loan.quantity_borrowed > 1}<span class="mono"> ×{loan.quantity_borrowed}</span>{/if}
-                            <span class="due" class:late={loan.overdue} class:waiting={loan.status === 'pending'}>{dueText(loan)}</span>
-                        </span>
-                        <button class="btn" on:click={() => returnMine(loan)} disabled={loading}>
-                            {loan.status === 'pending' ? 'Cancel request' : 'Returned'}
-                        </button>
+                    <div class="list-group-item">
+                        <div class="row align-items-center g-2">
+                            <div class="col">
+                                <span class="fw-medium">{loan.item_name}</span>{#if loan.quantity_borrowed > 1}<span class="text-secondary tabular"> x{loan.quantity_borrowed}</span>{/if}
+                                <span
+                                    class="badge ms-1"
+                                    class:bg-red-lt={loan.overdue}
+                                    class:bg-yellow-lt={!loan.overdue && loan.status === 'pending'}
+                                    class:bg-secondary-lt={!loan.overdue && loan.status !== 'pending'}
+                                >
+                                    {dueText(loan)}
+                                </span>
+                            </div>
+                            <div class="col-auto">
+                                <button class="btn btn-outline-secondary" type="button" on:click={() => returnMine(loan)} disabled={loading}>
+                                    {#if loan.status !== 'pending'}<IconCheck size={18} class="icon" />{/if}
+                                    {loan.status === 'pending' ? 'Cancel request' : 'Returned'}
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 {/each}
-            </section>
-        {/if}
-
-        <div class="home-options">
-            <h2>What would you like to do?</h2>
-            {#if pulse.printers || pulse.out !== null || pulse.mocap}
-                <div class="pulse" aria-label="The lab right now">
-                    {#if pulse.printers}
-                        <a class="pulse-pill" href="/printers">
-                            <span class="pip" class:live={pulse.printers.printing > 0}></span>
-                            🖨️ {pulse.printers.printing} printing · {pulse.printers.free} free{#if pulse.printers.offline} · {pulse.printers.offline} offline{/if}
-                        </a>
-                    {/if}
-                    {#if pulse.out !== null}
-                        <button class="pulse-pill" on:click={() => go('return')}>
-                            📦 {pulse.out} {pulse.out === 1 ? 'item' : 'items'} out
-                        </button>
-                    {/if}
-                    {#if pulse.mocap}
-                        <a class="pulse-pill" href="/mocap">
-                            <span class="pip" class:busy={pulse.mocap.busy}></span>
-                            🎥 {pulse.mocap.text}
-                        </a>
-                    {/if}
-                </div>
-            {/if}
-            <!-- The pointer position drives each tile's spotlight -->
-            <div
-                class="option-buttons"
-                on:pointermove={(e) => {
-                    const t = e.target.closest?.('.option-btn');
-                    if (!t) return;
-                    const r = t.getBoundingClientRect();
-                    t.style.setProperty('--mx', `${e.clientX - r.left}px`);
-                    t.style.setProperty('--my', `${e.clientY - r.top}px`);
-                }}
-            >
-                <button class="option-btn" style="--i: 0; --tile-accent: var(--rp-rose)" on:click={() => go('borrow')}>
-                    <span class="tile-icon" aria-hidden="true">📦</span>
-                    <span class="tile-body">
-                        <span class="tile-title">Borrow Item</span>
-                        <span class="tile-sub">Take equipment from the lab</span>
-                    </span>
-                    <span class="tile-arrow" aria-hidden="true">→</span>
-                </button>
-
-                <button class="option-btn" style="--i: 1; --tile-accent: var(--rp-foam)" on:click={() => go('return')}>
-                    <span class="tile-icon" aria-hidden="true">↩️</span>
-                    <span class="tile-body">
-                        <span class="tile-title">Return Item</span>
-                        <span class="tile-sub">Give equipment back</span>
-                    </span>
-                    <span class="tile-arrow" aria-hidden="true">→</span>
-                </button>
-
-                <a class="option-btn" style="--i: 2; --tile-accent: var(--rp-gold)" href="/printers">
-                    <img class="tile-image" src="/P1S.png" alt="" aria-hidden="true" />
-                    <span class="tile-body">
-                        <span class="tile-title">3D Printers</span>
-                        <span class="tile-sub">See which printers are free</span>
-                    </span>
-                    <span class="tile-arrow" aria-hidden="true">→</span>
-                </a>
-
-                <a class="option-btn" style="--i: 3; --tile-accent: var(--rp-iris)" href="/mocap">
-                    <span class="tile-icon" aria-hidden="true">🎥</span>
-                    <span class="tile-body">
-                        <span class="tile-title">Motion Capture Lab</span>
-                        <span class="tile-sub">Book a slot, see the calendar</span>
-                    </span>
-                    <span class="tile-arrow" aria-hidden="true">→</span>
-                </a>
-
-                <a class="option-btn" style="--i: 4; --tile-accent: var(--rp-love)" href="/mechlab">
-                    <span class="tile-icon" aria-hidden="true">🦾</span>
-                    <span class="tile-body">
-                        <span class="tile-title">Mech Lab</span>
-                        <span class="tile-sub">Book a robot</span>
-                    </span>
-                    <span class="tile-arrow" aria-hidden="true">→</span>
-                </a>
-
-                <a class="option-btn" style="--i: 5; --tile-accent: var(--rp-foam)" href="/items">
-                    <span class="tile-icon" aria-hidden="true">🧰</span>
-                    <span class="tile-body">
-                        <span class="tile-title">What's in the Lab</span>
-                        <span class="tile-sub">Who has what, report a problem</span>
-                    </span>
-                    <span class="tile-arrow" aria-hidden="true">→</span>
-                </a>
-
-                <button class="option-btn" style="--i: 6; --tile-accent: var(--rp-gold)" on:click={() => go('printer-guide')}>
-                    <span class="tile-icon" aria-hidden="true">📖</span>
-                    <span class="tile-body">
-                        <span class="tile-title">Printer Guidelines</span>
-                        <span class="tile-sub">How to print, safely</span>
-                    </span>
-                    <span class="tile-arrow" aria-hidden="true">→</span>
-                </button>
-
-                {#if user}
-                    <a class="option-btn" style="--i: 7; --tile-accent: var(--rp-iris)" href="/dashboard">
-                        <span class="tile-icon" aria-hidden="true">📊</span>
-                        <span class="tile-body">
-                            <span class="tile-title">Dashboard</span>
-                            <span class="tile-sub">What needs you, your bookings</span>
-                        </span>
-                        <span class="tile-arrow" aria-hidden="true">→</span>
-                    </a>
-
-                    <a class="option-btn" style="--i: 8; --tile-accent: var(--rp-rose)" href="/threads">
-                        <span class="tile-icon" aria-hidden="true">🧪</span>
-                        <span class="tile-body">
-                            <span class="tile-title">Research Threads</span>
-                            <span class="tile-sub">Your projects and robot access</span>
-                        </span>
-                        <span class="tile-arrow" aria-hidden="true">→</span>
-                    </a>
-                {/if}
             </div>
-        </div>
+        </section>
     {/if}
 
-    <!-- Borrow View -->
-    {#if currentView === 'borrow'}
-        <div class="form-container">
-            <h2 class="view-title borrow-title">📦 Borrow Equipment</h2>
-            <p class="view-sub">Pick the item, say when it comes back, and you're done.</p>
-
-            <form on:submit|preventDefault={() => submitBorrow()}>
-                {#if user}
-                    <div class="form-group">
-                        <div class="label-row">
-                            <span class="label">Borrowing as</span>
-                            <a class="link-btn" href="/account">Not you?</a>
+    <div class="row row-cards g-3">
+        {#each tiles as tile (tile.href)}
+            <div class="col-12 col-sm-6 col-lg-4 col-xxl-3">
+                <a class="card card-link card-link-pop h-100" href={tile.href} on:click={(e) => openTile(e, tile)}>
+                    <div class="card-body d-flex align-items-center gap-3">
+                        {#if tile.img}
+                            <span class="avatar avatar-md bg-{tile.color}-lt"><img class="tile-img" src={tile.img} alt="" /></span>
+                        {:else}
+                            <span class="avatar avatar-md bg-{tile.color}-lt"><svelte:component this={tile.icon} size={24} class="icon" /></span>
+                        {/if}
+                        <div class="flex-fill min-w-0">
+                            <div class="fw-semibold">{tile.title}</div>
+                            <div class="text-secondary small">{tile.sub}</div>
                         </div>
-                        <div class="account-box">
-                            <span class="account-name">👤 {user.name || ''}</span>
-                            {#if user.phone}<span class="account-phone mono">{user.phone}</span>{/if}
+                        <IconArrowRight size={18} class="icon text-secondary flex-shrink-0" />
+                    </div>
+                </a>
+            </div>
+        {/each}
+    </div>
+{/if}
+
+{#if currentView === 'borrow'}
+    <div class="page-header d-print-none mt-0 mb-4">
+        <div class="page-pretitle">Equipment</div>
+        <h2 class="page-title">Borrow equipment</h2>
+        <div class="text-secondary mt-1">Pick the item, say when it comes back, and you're done.</div>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-12 col-lg-8">
+            <form class="card" on:submit|preventDefault={() => submitBorrow()}>
+                <div class="card-body">
+                    {#if user}
+                        <div class="mb-3">
+                            <div class="d-flex align-items-center justify-content-between mb-2">
+                                <span class="form-label mb-0">Borrowing as</span>
+                                <a class="small" href="/account">Not you?</a>
+                            </div>
+                            <div class="d-flex align-items-center gap-2 p-2 rounded border well">
+                                <span class="avatar avatar-sm bg-primary-lt"><IconUser size={18} class="icon" /></span>
+                                <span class="fw-medium">{user.name || ''}</span>
+                                {#if user.phone}<span class="text-secondary tabular ms-auto">{user.phone}</span>{/if}
+                            </div>
+                            <div class="form-hint">From your account, so you only pick the item and the return date.</div>
                         </div>
-                        <small class="help-text">From your account, so you only pick the item and the return date.</small>
-                    </div>
-                {:else}
-                    <div class="login-hint">
-                        <span>Have an account? <a href={loginUrl()}>Log in</a> - then you only fill in the item and the date.</span>
-                    </div>
-
-                    <div class="form-group">
-                        <div class="label-row">
-                            <label for="name">Name *</label>
-                            {#if borrowForm.borrower_name}
-                                <button type="button" class="link-btn" on:click={forgetContact}>Not you?</button>
-                            {/if}
+                    {:else}
+                        <div class="alert alert-info" role="note">
+                            <div class="d-flex gap-2">
+                                <IconInfo size={20} class="icon alert-icon flex-shrink-0" />
+                                <div>Have an account? <a href={loginUrl()}>Log in</a>, then you only fill in the item and the date.</div>
+                            </div>
                         </div>
-                        <input
-                            type="text"
-                            id="name"
-                            bind:value={borrowForm.borrower_name}
-                            required
-                            maxlength="100"
-                            autocomplete="name"
-                            placeholder="Enter your name"
-                        />
-                        <small class="help-text">Your name and phone are saved on this device for next time.</small>
-                    </div>
 
-                    <div class="form-group">
-                        <label for="phone">Phone Number *</label>
-                        <input
-                            type="tel"
-                            id="phone"
-                            value={borrowForm.borrower_phone}
-                            required
-                            placeholder="Enter 10-digit phone number"
-                            title="Please enter exactly 10 digits"
-                            inputmode="numeric"
-                            autocomplete="tel-national"
-                            on:input={onPhoneInput}
-                        />
-                        <small class="help-text">You'll need this number to return the item.</small>
-                    </div>
-                {/if}
+                        <div class="row g-3 mb-3">
+                            <div class="col-12 col-md-6">
+                                <div class="d-flex align-items-center justify-content-between">
+                                    <label class="form-label required" for="name">Name</label>
+                                    {#if borrowForm.borrower_name}
+                                        <button type="button" class="btn btn-link btn-sm p-0 mb-2" on:click={forgetContact}>Not you?</button>
+                                    {/if}
+                                </div>
+                                <input
+                                    type="text"
+                                    id="name"
+                                    class="form-control"
+                                    bind:value={borrowForm.borrower_name}
+                                    required
+                                    maxlength="100"
+                                    autocomplete="name"
+                                    placeholder="Your name"
+                                />
+                                <div class="form-hint">Your name and phone are saved on this device for next time.</div>
+                            </div>
+                            <div class="col-12 col-md-6">
+                                <label class="form-label required" for="phone">Phone number</label>
+                                <input
+                                    type="tel"
+                                    id="phone"
+                                    class="form-control"
+                                    value={borrowForm.borrower_phone}
+                                    required
+                                    placeholder="10-digit phone number"
+                                    title="Please enter exactly 10 digits"
+                                    inputmode="numeric"
+                                    autocomplete="tel-national"
+                                    on:input={onPhoneInput}
+                                />
+                                <div class="form-hint">You'll need this number to return the item.</div>
+                            </div>
+                        </div>
+                    {/if}
 
-                <div class="form-group">
-                    <label for="item">Item Name *</label>
-                    <input
-                        type="text"
-                        id="item"
-                        list="catalogue"
-                        bind:value={borrowForm.item_name}
-                        required
-                        autocomplete="off"
-                        placeholder="Start typing, e.g. RealSense"
-                    />
-                    <datalist id="catalogue">
-                        {#each items as item (item.ID)}
-                            <option value={item.name}>{item.home_lab}{item.out.length ? ` · ${item.out.length} out` : ''}</option>
-                        {/each}
-                    </datalist>
+                    <div class="mb-3">
+                        <label class="form-label required" for="item">Item</label>
+                        <div class="input-icon">
+                            <span class="input-icon-addon"><IconSearch size={18} class="icon" /></span>
+                            <input
+                                type="text"
+                                id="item"
+                                class="form-control"
+                                list="catalogue"
+                                bind:value={borrowForm.item_name}
+                                required
+                                autocomplete="off"
+                                placeholder="Start typing, e.g. RealSense"
+                            />
+                        </div>
+                        <datalist id="catalogue">
+                            {#each items as item (item.ID)}
+                                <option value={item.name}>{item.home_lab}{item.out.length ? ` · ${item.out.length} out` : ''}</option>
+                            {/each}
+                        </datalist>
 
-                    {#if selectedItem}
-                        <div class="item-info">
-                            <div class="info-row">
-                                <span class="info-chip">📍 {selectedItem.home_lab || 'Lab not set'}</span>
-                                {#if freeCount !== null}
-                                    <span class="info-chip" class:short={freeCount < borrowForm.quantity_borrowed}>
-                                        {freeCount} of {selectedItem.total_quantity} free
-                                    </span>
-                                {/if}
-                                {#if holders.length}
-                                    <span class="info-chip">Out with {holders.map((l) => l.borrower_name).join(', ')}</span>
-                                {/if}
-                                {#if waiting.length}
-                                    <span class="info-chip">{waiting.length} request{waiting.length === 1 ? '' : 's'} waiting</span>
+                        {#if selectedItem}
+                            <div class="mt-2 p-3 rounded border well">
+                                <div class="d-flex flex-wrap gap-2">
+                                    <span class="badge bg-secondary-lt"><IconPin size={14} class="icon me-1" />{selectedItem.home_lab || 'Lab not set'}</span>
+                                    {#if freeCount !== null}
+                                        <span
+                                            class="badge"
+                                            class:bg-red-lt={freeCount < borrowForm.quantity_borrowed}
+                                            class:bg-green-lt={freeCount >= borrowForm.quantity_borrowed}
+                                        >
+                                            {freeCount} of {selectedItem.total_quantity} free
+                                        </span>
+                                    {/if}
+                                    {#if holders.length}
+                                        <span class="badge bg-azure-lt text-wrap text-start">Out with {holders.map((l) => l.borrower_name).join(', ')}</span>
+                                    {/if}
+                                    {#if waiting.length}
+                                        <span class="badge bg-yellow-lt">{waiting.length} request{waiting.length === 1 ? '' : 's'} waiting</span>
+                                    {/if}
+                                </div>
+                                {#if selectedItem.notes}
+                                    <div class="form-hint mt-2">{selectedItem.notes}</div>
                                 {/if}
                             </div>
-                            {#if selectedItem.notes}
-                                <small class="help-text">{selectedItem.notes}</small>
+                            {#if selectedItem.issue}
+                                <div class="alert alert-warning mt-2 mb-0" role="note">
+                                    <div class="d-flex gap-2">
+                                        <IconAlert size={20} class="icon alert-icon flex-shrink-0" />
+                                        <div>Reported problem: {selectedItem.issue}</div>
+                                    </div>
+                                </div>
                             {/if}
-                        </div>
-                        {#if selectedItem.issue}
-                            <p class="status-message pending">⚠️ Reported problem: {selectedItem.issue}</p>
+                            {#if selectedItem.lab_only}
+                                <div class="alert alert-warning mt-2 mb-0" role="note">
+                                    <div class="d-flex gap-2">
+                                        <IconHome size={20} class="icon alert-icon flex-shrink-0" />
+                                        <div>Lab only. Please don't take this out of the lab.</div>
+                                    </div>
+                                </div>
+                            {/if}
+                            {#if loginToRequest}
+                                <div class="alert alert-danger mt-2 mb-0" role="note">
+                                    <div class="d-flex gap-2">
+                                        <IconLock size={20} class="icon alert-icon flex-shrink-0" />
+                                        <div>Needs a lab admin's approval. <a href={loginUrl()}>Log in</a> to request it.</div>
+                                    </div>
+                                </div>
+                            {:else if needsApproval}
+                                <div class="alert alert-info mt-2 mb-0" role="note">
+                                    <div class="d-flex gap-2">
+                                        <IconClock size={20} class="icon alert-icon flex-shrink-0" />
+                                        <div>Needs a lab admin's approval. You'll get a notification.</div>
+                                    </div>
+                                </div>
+                            {/if}
+                            {#if selectedItem.tracked}
+                                <label class="form-check mt-3 mb-0">
+                                    <input class="form-check-input" type="checkbox" bind:checked={borrowForm.accept} required />
+                                    <span class="form-check-label">I take responsibility for this {selectedItem.name} until I return it or hand it on.</span>
+                                </label>
+                            {/if}
+                        {:else if itemKey(borrowForm.item_name)}
+                            <div class="form-hint"><IconSparkles size={14} class="icon me-1" />New item. It'll be added to the catalogue.</div>
+                        {:else}
+                            <div class="form-hint">Pick from the list, or type a new item's name to add it.</div>
                         {/if}
-                        {#if selectedItem.lab_only}
-                            <p class="status-message pending">🏠 Lab only. Please don't take this out of the lab.</p>
-                        {/if}
-                        {#if loginToRequest}
-                            <p class="status-message return-pending">🔒 Needs a lab admin's approval. <a href={loginUrl()}>Log in</a> to request it.</p>
-                        {:else if needsApproval}
-                            <p class="status-message return-pending">🕓 Needs a lab admin's approval. You'll get a notification.</p>
-                        {/if}
-                        {#if selectedItem.tracked}
-                            <label class="accept">
-                                <input type="checkbox" bind:checked={borrowForm.accept} required />
-                                <span>I take responsibility for this {selectedItem.name} until I return it or hand it on.</span>
-                            </label>
-                        {/if}
-                    {:else if itemKey(borrowForm.item_name)}
-                        <small class="help-text">✨ New item. It'll be added to the catalogue.</small>
-                    {:else}
-                        <small class="help-text">Pick from the list, or type a new item's name to add it.</small>
-                    {/if}
-                </div>
-
-                {#if !selectedItem && itemKey(borrowForm.item_name)}
-                    <div class="form-group">
-                        <label for="lab">Lab Location *</label>
-                        <select id="lab" bind:value={borrowForm.lab_location} required>
-                            <option value="">Select the lab where the item lives</option>
-                            {#each labLocations as lab}
-                                <option value={lab.value}>{lab.label}</option>
-                            {/each}
-                        </select>
                     </div>
-                {/if}
 
-                <div class="form-group">
-                    <label for="quantity">Quantity *</label>
-                    <input type="number" id="quantity" inputmode="numeric" bind:value={borrowForm.quantity_borrowed} min="1" required />
-                    {#if freeCount !== null && borrowForm.quantity_borrowed > freeCount}
-                        <small class="help-text warn-text">The lab should only have {freeCount} free. You'll be asked to confirm.</small>
-                    {/if}
-                </div>
+                    <div class="row g-3 mb-3">
+                        {#if !selectedItem && itemKey(borrowForm.item_name)}
+                            <div class="col-12 col-md-8">
+                                <label class="form-label required" for="lab">Lab location</label>
+                                <select id="lab" class="form-select" bind:value={borrowForm.lab_location} required>
+                                    <option value="">Select the lab where the item lives</option>
+                                    {#each labLocations as lab}
+                                        <option value={lab.value}>{lab.label}</option>
+                                    {/each}
+                                </select>
+                            </div>
+                        {/if}
+                        <div class="col-12 col-md-4">
+                            <label class="form-label required" for="quantity">Quantity</label>
+                            <input type="number" id="quantity" class="form-control" inputmode="numeric" bind:value={borrowForm.quantity_borrowed} min="1" required />
+                        </div>
+                        {#if freeCount !== null && borrowForm.quantity_borrowed > freeCount}
+                            <div class="col-12 mt-1">
+                                <div class="form-hint text-warning">The lab should only have {freeCount} free. You'll be asked to confirm.</div>
+                            </div>
+                        {/if}
+                    </div>
 
-                <div class="form-group">
-                    <span class="label" id="return-label">Return Time *</span>
-                    <div class="chip-row" role="group" aria-labelledby="return-label">
-                        {#each durationPresets as preset}
+                    <div class="mb-3">
+                        <span class="form-label required" id="return-label">Return by</span>
+                        <div class="btn-list" role="group" aria-labelledby="return-label">
+                            {#each durationPresets as preset}
+                                {@const on = !showCustomDuration && borrowForm.due_date === dateIn(preset.days)}
+                                <button
+                                    type="button"
+                                    class="btn"
+                                    class:btn-primary={on}
+                                    class:btn-outline-secondary={!on}
+                                    aria-pressed={on}
+                                    on:click={() => { borrowForm.due_date = dateIn(preset.days); showCustomDuration = false; }}
+                                >
+                                    {preset.label}
+                                </button>
+                            {/each}
                             <button
                                 type="button"
-                                class="chip"
-                                class:selected={!showCustomDuration && borrowForm.due_date === dateIn(preset.days)}
-                                on:click={() => { borrowForm.due_date = dateIn(preset.days); showCustomDuration = false; }}
+                                class="btn"
+                                class:btn-primary={showCustomDuration}
+                                class:btn-outline-secondary={!showCustomDuration}
+                                aria-pressed={showCustomDuration}
+                                on:click={() => (showCustomDuration = !showCustomDuration)}
                             >
-                                {preset.label}
+                                Pick a date
                             </button>
-                        {/each}
-                        <button type="button" class="chip" class:selected={showCustomDuration} on:click={() => (showCustomDuration = !showCustomDuration)}>
-                            Pick a date
-                        </button>
-                    </div>
-                    {#if showCustomDuration}
-                        <input
-                            type="date"
-                            aria-label="Return date"
-                            bind:value={borrowForm.due_date}
-                            min={dateIn(0)}
-                            max={dateIn(365)}
-                            required
-                        />
-                    {/if}
-                    <small class="help-text">
-                        Expected return: by the end of <strong class="mono">{shortDay(borrowForm.due_date)}</strong> ({daysAway(borrowForm.due_date)})
-                    </small>
-                </div>
-
-                <div class="form-group">
-                    <label for="purpose">Purpose <span class="optional-tag">optional</span></label>
-                    <div class="chip-row">
-                        {#each purposePresets as preset}
-                            <button type="button" class="chip" class:selected={borrowForm.purpose === preset} on:click={() => pickPurpose(preset)}>
-                                {preset}
-                            </button>
-                        {/each}
-                    </div>
-                    <textarea id="purpose" bind:value={borrowForm.purpose} placeholder="Anything more specific? (project name, priority)" rows="2"></textarea>
-                </div>
-
-                <div class="form-group">
-                    <label for="photo">Item Photo <span class="optional-tag">optional</span></label>
-                    <input
-                        type="file"
-                        id="photo"
-                        accept="image/jpeg,image/jpg,image/png,image/webp,image/gif,image/bmp"
-                        capture="environment"
-                        bind:this={photoInput}
-                        on:change={handlePhotoUpload}
-                    />
-                    <small class="help-text">Take a photo or upload an image (JPG, PNG, WEBP, GIF, BMP - max 10MB). It shows the condition the item left in.</small>
-                    {#if borrowForm.item_photo}
-                        <div class="photo-preview">
-                            {#if photoPreview}
-                                <img src={photoPreview} alt="Selected item" />
-                            {/if}
-                            <p>✅ Photo selected: {borrowForm.item_photo.name} ({(borrowForm.item_photo.size / 1024 / 1024).toFixed(2)}MB)</p>
-                            <button type="button" class="remove-photo" on:click={clearPhoto}>Remove</button>
                         </div>
-                    {/if}
-                </div>
+                        {#if showCustomDuration}
+                            <input
+                                type="date"
+                                class="form-control mt-2 date-input"
+                                aria-label="Return date"
+                                bind:value={borrowForm.due_date}
+                                min={dateIn(0)}
+                                max={dateIn(365)}
+                                required
+                            />
+                        {/if}
+                        <div class="form-hint">
+                            Expected back by the end of <strong class="tabular">{shortDay(borrowForm.due_date)}</strong> ({daysAway(borrowForm.due_date)})
+                        </div>
+                    </div>
 
-                <button type="submit" class="submit-btn" disabled={isSubmitting}>
-                    {isSubmitting ? 'Processing...' : loginToRequest ? 'Log in to Request' : needsApproval ? 'Request to Borrow' : 'Borrow Item'}
-                </button>
+                    <div class="mb-3">
+                        <label class="form-label" for="purpose">Purpose <span class="form-label-description">Optional</span></label>
+                        <div class="btn-list mb-2">
+                            {#each purposePresets as preset}
+                                {@const on = borrowForm.purpose === preset}
+                                <button
+                                    type="button"
+                                    class="btn btn-sm"
+                                    class:btn-primary={on}
+                                    class:btn-outline-secondary={!on}
+                                    aria-pressed={on}
+                                    on:click={() => pickPurpose(preset)}
+                                >
+                                    {preset}
+                                </button>
+                            {/each}
+                        </div>
+                        <textarea id="purpose" class="form-control" bind:value={borrowForm.purpose} placeholder="Anything more specific? (project name, priority)" rows="2"></textarea>
+                    </div>
+
+                    <div>
+                        <label class="form-label" for="photo">Item photo <span class="form-label-description">Optional</span></label>
+                        <input
+                            type="file"
+                            id="photo"
+                            class="form-control"
+                            accept="image/jpeg,image/jpg,image/png,image/webp,image/gif,image/bmp"
+                            capture="environment"
+                            bind:this={photoInput}
+                            on:change={handlePhotoUpload}
+                        />
+                        <div class="form-hint">Take a photo or upload an image (JPG, PNG, WEBP, GIF, BMP, up to 10MB). It shows the condition the item left in.</div>
+                        {#if borrowForm.item_photo}
+                            <div class="d-flex align-items-center gap-3 mt-2 p-2 rounded border">
+                                {#if photoPreview}
+                                    <img class="photo-preview rounded" src={photoPreview} alt="Selected item" />
+                                {/if}
+                                <div class="flex-fill min-w-0 small">
+                                    <div class="text-truncate fw-medium"><IconCamera size={16} class="icon me-1" />{borrowForm.item_photo.name}</div>
+                                    <div class="text-secondary tabular">{(borrowForm.item_photo.size / 1024 / 1024).toFixed(2)}MB</div>
+                                </div>
+                                <button type="button" class="btn btn-ghost-danger" on:click={clearPhoto}>Remove</button>
+                            </div>
+                        {/if}
+                    </div>
+                </div>
+                <div class="card-footer d-flex justify-content-end">
+                    <button type="submit" class="btn btn-primary w-100 w-md-auto" disabled={isSubmitting}>
+                        {#if isSubmitting}<span class="spinner-border spinner-border-sm me-2" role="status"></span>{/if}
+                        {isSubmitting ? 'Processing...' : loginToRequest ? 'Log in to request' : needsApproval ? 'Request to borrow' : 'Borrow item'}
+                    </button>
+                </div>
             </form>
         </div>
-    {/if}
 
-    <!-- Return View -->
-    {#if currentView === 'return'}
-        <div class="return-container">
-            <h2 class="view-title return-title">↩️ Return Equipment</h2>
-            <p class="view-sub">Your own loans are at the top.{#if !user}{' '}Borrowed without an account? Return it with the phone number you used.{/if}</p>
-
-            <div class="search-container">
-                <label for="search">Search by name or item:</label>
-                <div class="search-input-group">
-                    <input
-                        type="text"
-                        id="search"
-                        bind:value={searchQuery}
-                        placeholder="Enter name or item name..."
-                        autocomplete="off"
-                    />
-                    {#if searchQuery && searchQuery.trim()}
-                        <button class="clear-search-btn" on:click={clearSearch} title="Clear search" aria-label="Clear search" type="button">
-                            <span aria-hidden="true">✕</span>
-                        </button>
-                    {/if}
+        <div class="col-12 col-lg-4">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">How borrowing works</h3>
                 </div>
-            </div>
-
-            {#if loading && !filteredLoans.length}
-                <div class="loading-state">
-                    <p>🔄 Loading items...</p>
-                </div>
-            {:else if filteredLoans.length === 0}
-                <div class="no-items-state">
-                    <p>📭 No items found.</p>
-                    {#if searchQuery.trim()}
-                        <p class="search-suggestion">Try different search terms or clear the search to see all items.</p>
-                    {:else}
-                        <p class="search-suggestion">Nothing is out right now.</p>
-                    {/if}
-                </div>
-            {:else}
-                <div class="items-list">
-                    {#if searchQuery.trim()}
-                        <h3 class="results-header">Search Results ({filteredLoans.length} found)</h3>
-                    {:else}
-                        <h3 class="results-header">All Items ({filteredLoans.length} total)</h3>
-                    {/if}
-
-                    {#each filteredLoans as loan (loan.ID)}
-                        {@const itemCategory = loan.status === 'not_found' ? 'missing' : loan.status === 'returned' ? 'returned' : 'borrowed'}
-                        {@const late = itemCategory === 'borrowed' && !!loan.expected_return_date && isOverdue(loan.expected_return_date)}
-                        {@const mine = isMine(loan)}
-
-                        <div class="item-card {itemCategory}" class:overdue={late} class:own={mine}>
-                            <div class="category-tag {itemCategory}" class:overdue={late}>
-                                {#if itemCategory === 'missing'}
-                                    <span class="tag-icon">⚠️</span>
-                                    <span class="tag-text">Missing Item</span>
-                                {:else if itemCategory === 'returned'}
-                                    <span class="tag-icon">✅</span>
-                                    <span class="tag-text">Returned Item</span>
-                                {:else if late}
-                                    <span class="tag-icon">⏰</span>
-                                    <span class="tag-text">Overdue Item</span>
-                                {:else}
-                                    <span class="tag-icon">📋</span>
-                                    <span class="tag-text">Borrowed Item</span>
-                                {/if}
-                                {#if mine}
-                                    <span class="mine-badge">Yours</span>
-                                {:else if isProbablyMine(loan) && itemCategory === 'borrowed'}
-                                    <span class="mine-badge">Yours?</span>
-                                {/if}
-                            </div>
-
-                            <div class="item-content">
-                                <div class="item-header">
-                                    <h4 class="item-name">{loan.item_name}</h4>
-                                </div>
-
-                                <div class="item-details">
-                                    <div class="detail-row">
-                                        <div class="detail-item">
-                                            <strong>Borrower:</strong> {loan.borrower_name}
-                                        </div>
-                                        <div class="detail-item">
-                                            <strong>Lab:</strong> {loan.lab_location}
-                                        </div>
-                                    </div>
-
-                                    <div class="detail-row">
-                                        <div class="detail-item">
-                                            <strong>Quantity:</strong> <span class="mono">{loan.quantity_borrowed}</span>
-                                        </div>
-                                    </div>
-
-                                    <div class="detail-row">
-                                        <div class="detail-item">
-                                            <strong>Borrowed:</strong> <span class="mono">{formatDate(loan.CreatedAt)}</span>
-                                        </div>
-                                        {#if loan.expected_return_date}
-                                            <div class="detail-item" class:late-text={late}>
-                                                <strong>Expected Return:</strong> {formatExpectedReturn(loan.expected_return_date)}
-                                            </div>
-                                        {/if}
-                                    </div>
-
-                                    {#if loan.photo_filename}
-                                        <div class="item-photo">
-                                            <a href="/api/photos/{loan.photo_filename}" target="_blank" rel="noopener noreferrer">
-                                                <img src="/api/photos/{loan.photo_filename}" alt={loan.item_name} class="photo-thumbnail" loading="lazy" />
-                                            </a>
-                                        </div>
-                                    {/if}
-                                </div>
-
-                                <div class="item-actions">
-                                    {#if itemCategory === 'missing'}
-                                        <p class="status-message missing">⚠️ Marked missing by an admin. If you find it, tell lab staff.</p>
-                                    {:else if itemCategory === 'returned'}
-                                        <p class="status-message returned">✅ Successfully returned.</p>
-                                    {:else if mine}
-                                        <button class="return-action-btn" on:click={() => returnMine(loan)} disabled={loading}>
-                                            ✅ Mark as Returned
-                                        </button>
-                                    {:else if loan.user_id}
-                                        <button class="return-action-btn handover-btn" on:click={() => takeOver(loan)} disabled={loading}>
-                                            🤝 I have this now
-                                        </button>
-                                        <small class="help-text">Got it straight from {loan.borrower_name}? Move it to your account.</small>
-                                    {:else if returningLoanId === loan.ID}
-                                        <form class="return-confirm" on:submit|preventDefault={() => returnItem(loan.ID)}>
-                                            <label for="return-phone-{loan.ID}">Phone number you borrowed it with</label>
-                                            <input
-                                                id="return-phone-{loan.ID}"
-                                                type="tel"
-                                                inputmode="numeric"
-                                                autocomplete="tel"
-                                                bind:value={returnPhone}
-                                                placeholder="10-digit phone number"
-                                            />
-                                            {#if returnError}
-                                                <p class="return-error" role="alert">{returnError}</p>
-                                            {/if}
-                                            <div class="return-confirm-actions">
-                                                <button type="submit" class="return-action-btn" disabled={loading}>
-                                                    ✅ Confirm Return
-                                                </button>
-                                                <button type="button" class="return-cancel-btn" on:click={cancelReturn}>
-                                                    Cancel
-                                                </button>
-                                            </div>
-                                        </form>
-                                    {:else}
-                                        <button class="return-action-btn" on:click={() => startReturn(loan.ID)} disabled={loading}>
-                                            ✅ Mark as Returned
-                                        </button>
-                                    {/if}
-                                </div>
-                            </div>
-                        </div>
-                    {/each}
-                </div>
-            {/if}
-        </div>
-    {/if}
-
-    <!-- Printer Guidelines View -->
-    {#if currentView === 'printer-guide'}
-        <div class="printer-guide-container">
-            <h2 class="view-title guide-title">🖨️ Printer guide</h2>
-            <p class="view-sub">How to print on the lab's Bambu Lab P1S printers, step by step.</p>
-
-            <div class="guide-content">
-                <!-- The one thing everyone must remember, before anything else -->
-                <div class="rule-box">
-                    <strong>The one rule: put your name in the file name.</strong>
-                    <p>
-                        Name every print <code>yourname_object</code>, for example
-                        <code>srinath_bracket.3mf</code>. The <a href="/printers">printer page</a> shows
-                        the file name, so everyone can see whose print is running. A print with no
-                        name on it may be stopped when someone else needs the printer.
-                    </p>
-                </div>
-
-                <section class="guide-section">
-                    <h3>🚀 1. First-time setup</h3>
-                    <p class="section-intro">Do this once on your laptop. Next time, skip straight to step 2.</p>
-                    <ol class="steps">
-                        <li>
-                            <strong>Install a slicer.</strong>
-                            It turns your 3D model into instructions the printer understands
-                            ("slicing"). Either one works with our printers:
-                            <ul>
-                                <li>
-                                    <strong>Bambu Studio</strong> (recommended - the RRC presets below are made for it):
-                                    <a href="https://bambulab.com/en/download/studio" target="_blank" rel="noopener noreferrer">download from bambulab.com</a>
-                                </li>
-                                <li>
-                                    <strong>OrcaSlicer</strong>:
-                                    <a href="https://www.orcaslicer.com/download/" target="_blank" rel="noopener noreferrer">download from orcaslicer.com</a>
-                                </li>
-                            </ul>
+                <div class="card-body">
+                    <ol class="steps steps-vertical steps-counter">
+                        <li class="step-item">
+                            <div class="fw-medium">Pick the item</div>
+                            <div class="text-secondary small">Choose it from the list, or type a new item's name to add it.</div>
                         </li>
-                        <li>
-                            <strong>Download the RRC presets</strong> and import them.
-                            They are the lab's tested settings for our printers and our filament.
-                            <a class="guide-link download-link" href="/downloads/RRC_Bambu_P1S_Preset.bbscfg" download>
-                                <span class="link-icon">📥</span>
-                                <span class="link-content">
-                                    <strong>RRC_Bambu_P1S_Preset.bbscfg</strong>
-                                    <span class="link-desc">Printer, print and filament presets for the lab's P1S printers</span>
-                                </span>
-                            </a>
-                            In Bambu Studio choose <em>File → Import → Import Configs…</em>, pick the
-                            file, and restart Bambu Studio if the presets do not show up.
+                        <li class="step-item">
+                            <div class="fw-medium">Say when it comes back</div>
+                            <div class="text-secondary small">It's due by the end of the day you pick.</div>
                         </li>
-                        <li>
-                            <strong>Join the printer network.</strong>
-                            The printers have their own network inside the lab. You cannot reach
-                            them from wifi@iiith.
-                            <div class="wifi-box">
-                                <div class="wifi-row">
-                                    <span class="wifi-label">Network</span>
-                                    <code>printers@rrc</code>
-                                </div>
-                                <div class="wifi-row">
-                                    <span class="wifi-label">Password</span>
-                                    {#if showWifiPassword}
-                                        <code>printers@1234</code>
-                                        <button class="reveal-btn" on:click={() => (showWifiPassword = false)}>Hide</button>
-                                    {:else}
-                                        <code class="hidden-password">••••••••••••</code>
-                                        <button class="reveal-btn" on:click={() => (showWifiPassword = true)}>Show</button>
-                                    {/if}
-                                </div>
-                                <p class="wifi-note">Lab members only. Do not post it in group chats or share it outside the lab.</p>
-                            </div>
-                        </li>
-                        <li>
-                            <strong>Add the printers in Bambu Studio</strong> (only if you want to
-                            send prints from Bambu Studio itself). Use <em>LAN mode</em> and enter the
-                            printer's IP address and access code. The access code is on the printer's
-                            screen under <em>Settings → Network</em>; it is not listed here on purpose.
-                            <div class="printer-table-wrap">
-                                <table class="printer-table">
-                                    <thead>
-                                        <tr><th>Printer</th><th>Label on the machine</th><th>IP address</th></tr>
-                                    </thead>
-                                    <tbody>
-                                        <tr><td>Printer 1</td><td class="mono">3DP-01P-279</td><td><code>192.168.2.101</code></td></tr>
-                                        <tr><td>Printer 2</td><td class="mono">3DP-01P-112</td><td><code>192.168.2.105</code></td></tr>
-                                        <tr><td>Printer 3</td><td class="mono">3DP-01P-739</td><td><code>192.168.2.102</code></td></tr>
-                                    </tbody>
-                                </table>
+                        <li class="step-item">
+                            <div class="fw-medium">Return it here</div>
+                            <div class="text-secondary small">
+                                Use <a href="/?view=return" on:click={(e) => openTile(e, tiles[1])}>Return</a>.
+                                {user ? 'Your loans return in one tap.' : 'You return it with the phone number you borrowed with.'}
                             </div>
                         </li>
                     </ol>
-                </section>
+                </div>
+                <div class="card-footer text-secondary small">
+                    Some items need a lab admin's approval first. Those can only be requested with an account.
+                </div>
+            </div>
+        </div>
+    </div>
+{/if}
 
-                <section class="guide-section">
-                    <h3>🎛️ 2. Pick the right presets</h3>
-                    <p class="section-intro">
+{#if currentView === 'return'}
+    <div class="page-header d-print-none mt-0 mb-4">
+        <div class="page-pretitle">Equipment</div>
+        <h2 class="page-title">Return equipment</h2>
+        <div class="text-secondary mt-1">
+            Your own loans are at the top.{#if !user}{' '}Borrowed without an account? Return it with the phone number you used.{/if}
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header flex-wrap gap-2">
+            <h3 class="card-title me-auto">
+                {#if searchQuery.trim()}
+                    Search results <span class="text-secondary tabular">({filteredLoans.length} found)</span>
+                {:else}
+                    All items <span class="text-secondary tabular">({filteredLoans.length} total)</span>
+                {/if}
+            </h3>
+            <div class="search-box">
+                <label class="visually-hidden" for="search">Search by name or item</label>
+                <div class="input-group">
+                    <span class="input-group-text"><IconSearch size={18} class="icon" /></span>
+                    <input
+                        type="text"
+                        id="search"
+                        class="form-control"
+                        bind:value={searchQuery}
+                        placeholder="Name or item"
+                        autocomplete="off"
+                    />
+                    {#if searchQuery && searchQuery.trim()}
+                        <button class="btn btn-icon" on:click={clearSearch} title="Clear search" aria-label="Clear search" type="button">
+                            <IconX size={18} class="icon" />
+                        </button>
+                    {/if}
+                </div>
+            </div>
+        </div>
+
+        {#if loading && !filteredLoans.length}
+            <div class="card-body text-center py-5">
+                <div class="spinner-border text-secondary" role="status"></div>
+                <div class="text-secondary mt-2">Loading items...</div>
+            </div>
+        {:else if filteredLoans.length === 0}
+            <div class="empty">
+                <div class="empty-icon"><IconInbox size={48} class="icon" /></div>
+                <p class="empty-title">No items found</p>
+                <p class="empty-subtitle text-secondary">
+                    {#if searchQuery.trim()}
+                        Try different search terms or clear the search to see all items.
+                    {:else}
+                        Nothing is out right now.
+                    {/if}
+                </p>
+            </div>
+        {:else}
+            <div class="list-group list-group-flush">
+                {#each filteredLoans as loan (loan.ID)}
+                    {@const itemCategory = loan.status === 'not_found' ? 'missing' : loan.status === 'returned' ? 'returned' : 'borrowed'}
+                    {@const late = itemCategory === 'borrowed' && !!loan.expected_return_date && isOverdue(loan.expected_return_date)}
+                    {@const mine = isMine(loan)}
+
+                    <div class="list-group-item" class:mine-row={mine}>
+                        <div class="row g-3 align-items-center">
+                            {#if loan.photo_filename}
+                                <div class="col-auto">
+                                    <a href="/api/photos/{loan.photo_filename}" target="_blank" rel="noopener noreferrer">
+                                        <img src="/api/photos/{loan.photo_filename}" alt={loan.item_name} class="loan-photo rounded border" loading="lazy" />
+                                    </a>
+                                </div>
+                            {/if}
+                            <div class="col">
+                                <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
+                                    <span class="fw-semibold">{loan.item_name}</span>
+                                    {#if itemCategory === 'missing'}
+                                        <span class="badge bg-red-lt">Missing</span>
+                                    {:else if itemCategory === 'returned'}
+                                        <span class="badge bg-green-lt">Returned</span>
+                                    {:else if late}
+                                        <span class="badge bg-orange-lt">Overdue</span>
+                                    {:else}
+                                        <span class="badge bg-blue-lt">Borrowed</span>
+                                    {/if}
+                                    {#if mine}
+                                        <span class="badge bg-primary-lt">Yours</span>
+                                    {:else if isProbablyMine(loan) && itemCategory === 'borrowed'}
+                                        <span class="badge bg-primary-lt">Yours?</span>
+                                    {/if}
+                                </div>
+                                <div class="text-secondary small loan-meta">
+                                    <span>{loan.borrower_name}</span>
+                                    <span>{loan.lab_location}</span>
+                                    <span>Qty <span class="tabular">{loan.quantity_borrowed}</span></span>
+                                    <span>Borrowed <span class="tabular">{formatDate(loan.CreatedAt)}</span></span>
+                                    {#if loan.expected_return_date}
+                                        <span class:text-danger={late}>Return due: {formatExpectedReturn(loan.expected_return_date)}</span>
+                                    {/if}
+                                </div>
+                            </div>
+
+                            <div class="col-12 col-md-auto">
+                                {#if itemCategory === 'missing'}
+                                    <div class="text-danger small">Marked missing by an admin. If you find it, tell lab staff.</div>
+                                {:else if itemCategory === 'returned'}
+                                    <div class="text-success small"><IconCircleCheck size={16} class="icon me-1" />Returned</div>
+                                {:else if mine}
+                                    <button class="btn btn-success w-100" type="button" on:click={() => returnMine(loan)} disabled={loading}>
+                                        <IconCheck size={18} class="icon" />Mark as returned
+                                    </button>
+                                {:else if loan.user_id}
+                                    <button class="btn btn-outline-primary w-100" type="button" on:click={() => takeOver(loan)} disabled={loading}>
+                                        <IconExchange size={18} class="icon" />I have this now
+                                    </button>
+                                    <div class="form-hint handover-hint">Got it straight from {loan.borrower_name}? Move it to your account.</div>
+                                {:else if returningLoanId !== loan.ID}
+                                    <button class="btn btn-outline-success w-100" type="button" on:click={() => startReturn(loan.ID)} disabled={loading}>
+                                        <IconCheck size={18} class="icon" />Mark as returned
+                                    </button>
+                                {/if}
+                            </div>
+
+                            {#if itemCategory === 'borrowed' && !mine && !loan.user_id && returningLoanId === loan.ID}
+                                <div class="col-12">
+                                    <form class="p-3 rounded border well" on:submit|preventDefault={() => returnItem(loan.ID)}>
+                                        <label class="form-label" for="return-phone-{loan.ID}">Phone number you borrowed it with</label>
+                                        <div class="row g-2">
+                                            <div class="col-12 col-sm">
+                                                <div class="input-icon">
+                                                    <span class="input-icon-addon"><IconPhone size={18} class="icon" /></span>
+                                                    <input
+                                                        id="return-phone-{loan.ID}"
+                                                        type="tel"
+                                                        class="form-control"
+                                                        class:is-invalid={returnError}
+                                                        inputmode="numeric"
+                                                        autocomplete="tel"
+                                                        bind:value={returnPhone}
+                                                        placeholder="10-digit phone number"
+                                                    />
+                                                </div>
+                                                {#if returnError}
+                                                    <div class="invalid-feedback d-block" role="alert">{returnError}</div>
+                                                {/if}
+                                            </div>
+                                            <div class="col-6 col-sm-auto">
+                                                <button type="submit" class="btn btn-success w-100" disabled={loading}>
+                                                    <IconCheck size={18} class="icon" />Confirm return
+                                                </button>
+                                            </div>
+                                            <div class="col-6 col-sm-auto">
+                                                <button type="button" class="btn btn-outline-secondary w-100" on:click={cancelReturn}>Cancel</button>
+                                            </div>
+                                        </div>
+                                    </form>
+                                </div>
+                            {/if}
+                        </div>
+                    </div>
+                {/each}
+            </div>
+        {/if}
+    </div>
+{/if}
+
+{#if currentView === 'printer-guide'}
+    <div class="page-header d-print-none mt-0 mb-4">
+        <div class="page-pretitle">3D printers</div>
+        <h2 class="page-title">Printer guide</h2>
+        <div class="text-secondary mt-1">How to print on the lab's Bambu Lab P1S printers, step by step.</div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-3 d-none d-lg-block">
+            <nav class="guide-nav" aria-label="On this page">
+                <div class="subheader mb-2">On this page</div>
+                <div class="list-group list-group-transparent">
+                    {#each guideSections as s (s.id)}
+                        <button type="button" class="list-group-item list-group-item-action py-2" on:click={() => jumpTo(s.id)}>{s.label}</button>
+                    {/each}
+                </div>
+            </nav>
+        </div>
+
+        <div class="col-12 col-lg-9 guide">
+            <!-- The one thing everyone must remember, before anything else -->
+            <div class="alert alert-warning mb-4" role="note">
+                <div class="d-flex gap-2">
+                    <IconAlert size={20} class="icon alert-icon flex-shrink-0" />
+                    <div>
+                        <h4 class="alert-title">The one rule: put your name in the file name.</h4>
+                        <div>
+                            Name every print <code>yourname_object</code>, for example
+                            <code>srinath_bracket.3mf</code>. The <a href="/printers">printer page</a> shows
+                            the file name, so everyone can see whose print is running. A print with no
+                            name on it may be stopped when someone else needs the printer.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <section class="card mb-4" id="guide-setup">
+                <div class="card-header">
+                    <h3 class="card-title">1. First-time setup</h3>
+                </div>
+                <div class="card-body">
+                    <p class="text-secondary">Do this once on your laptop. Next time, skip straight to step 2.</p>
+                    <ol class="steps steps-vertical steps-counter">
+                        <li class="step-item">
+                            <div class="fw-semibold">Install a slicer.</div>
+                            <p class="mb-2">
+                                It turns your 3D model into instructions the printer understands
+                                ("slicing"). Either one works with our printers:
+                            </p>
+                            <div class="list-group">
+                                <a class="list-group-item list-group-item-action d-flex align-items-center gap-2" href="https://bambulab.com/en/download/studio" target="_blank" rel="noopener noreferrer">
+                                    <div class="flex-fill">
+                                        <div class="fw-medium">Bambu Studio <span class="badge bg-green-lt ms-1">Recommended</span></div>
+                                        <div class="text-secondary small">The RRC presets below are made for it. Download from bambulab.com</div>
+                                    </div>
+                                    <IconExternal size={18} class="icon text-secondary" />
+                                </a>
+                                <a class="list-group-item list-group-item-action d-flex align-items-center gap-2" href="https://www.orcaslicer.com/download/" target="_blank" rel="noopener noreferrer">
+                                    <div class="flex-fill">
+                                        <div class="fw-medium">OrcaSlicer</div>
+                                        <div class="text-secondary small">Download from orcaslicer.com</div>
+                                    </div>
+                                    <IconExternal size={18} class="icon text-secondary" />
+                                </a>
+                            </div>
+                        </li>
+                        <li class="step-item">
+                            <div class="fw-semibold">Download the RRC presets and import them.</div>
+                            <p class="mb-2">They are the lab's tested settings for our printers and our filament.</p>
+                            <a class="card card-sm card-link mb-2" href="/downloads/RRC_Bambu_P1S_Preset.bbscfg" download>
+                                <div class="card-body d-flex align-items-center gap-3">
+                                    <span class="avatar bg-primary-lt"><IconDownload size={20} class="icon" /></span>
+                                    <div class="min-w-0">
+                                        <div class="fw-medium text-break">RRC_Bambu_P1S_Preset.bbscfg</div>
+                                        <div class="text-secondary small">Printer, print and filament presets for the lab's P1S printers</div>
+                                    </div>
+                                </div>
+                            </a>
+                            <p class="mb-0">
+                                In Bambu Studio choose <em>File &gt; Import &gt; Import Configs…</em>, pick the
+                                file, and restart Bambu Studio if the presets do not show up.
+                            </p>
+                        </li>
+                        <li class="step-item">
+                            <div class="fw-semibold">Join the printer network.</div>
+                            <p class="mb-2">
+                                The printers have their own network inside the lab. You cannot reach
+                                them from wifi@iiith.
+                            </p>
+                            <div class="p-3 rounded border well">
+                                <div class="datagrid wifi-grid">
+                                    <div class="datagrid-item">
+                                        <div class="datagrid-title"><IconWifi size={14} class="icon me-1" />Network</div>
+                                        <div class="datagrid-content"><code>printers@rrc</code></div>
+                                    </div>
+                                    <div class="datagrid-item">
+                                        <div class="datagrid-title">Password</div>
+                                        <div class="datagrid-content d-flex align-items-center gap-2">
+                                            {#if showWifiPassword}
+                                                <code>printers@1234</code>
+                                                <button type="button" class="btn btn-sm btn-ghost-secondary" on:click={() => (showWifiPassword = false)}>
+                                                    <IconEyeOff size={16} class="icon" />Hide
+                                                </button>
+                                            {:else}
+                                                <code>••••••••••••</code>
+                                                <button type="button" class="btn btn-sm btn-ghost-secondary" on:click={() => (showWifiPassword = true)}>
+                                                    <IconEye size={16} class="icon" />Show
+                                                </button>
+                                            {/if}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="form-hint mt-2">Lab members only. Do not post it in group chats or share it outside the lab.</div>
+                            </div>
+                        </li>
+                        <li class="step-item">
+                            <div class="fw-semibold">Add the printers in Bambu Studio</div>
+                            <p class="mb-2">
+                                Only if you want to send prints from Bambu Studio itself. Use <em>LAN mode</em> and enter the
+                                printer's IP address and access code. The access code is on the printer's
+                                screen under <em>Settings &gt; Network</em>; it is not listed here on purpose.
+                            </p>
+                            <div class="card">
+                                <div class="table-responsive">
+                                    <table class="table table-vcenter card-table">
+                                        <thead>
+                                            <tr><th>Printer</th><th>Label on the machine</th><th>IP address</th></tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr><td>Printer 1</td><td class="font-monospace">3DP-01P-279</td><td><code>192.168.2.101</code></td></tr>
+                                            <tr><td>Printer 2</td><td class="font-monospace">3DP-01P-112</td><td><code>192.168.2.105</code></td></tr>
+                                            <tr><td>Printer 3</td><td class="font-monospace">3DP-01P-739</td><td><code>192.168.2.102</code></td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </li>
+                    </ol>
+                </div>
+            </section>
+
+            <section class="card mb-4" id="guide-presets">
+                <div class="card-header">
+                    <h3 class="card-title">2. Pick the right presets</h3>
+                </div>
+                <div class="card-body">
+                    <p class="text-secondary">
                         In Bambu Studio, choose these three things before you slice. Getting them
                         right is most of what makes a print work.
                     </p>
 
-                    <h4 class="sub-head">Printer</h4>
-                    <p class="body-text">Always <code>Bambu Lab P1S 0.4 nozzle</code>.</p>
+                    <h4 class="mt-3">Printer</h4>
+                    <p>Always <code>Bambu Lab P1S 0.4 nozzle</code>.</p>
 
-                    <h4 class="sub-head">Print settings (process)</h4>
-                    <div class="printer-table-wrap">
-                        <table class="printer-table wide">
-                            <thead>
-                                <tr><th>Preset</th><th>Use it for</th><th>What it does</th></tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td><strong>RRC Printing Default</strong></td>
-                                    <td>Almost every print. Start here.</td>
-                                    <td>0.2 mm layers, 20% gyroid infill, tree supports on, brim on the outside.</td>
-                                </tr>
-                                <tr>
-                                    <td><strong>Ironing</strong></td>
-                                    <td>Parts with flat tops that should look smooth.</td>
-                                    <td>Same as the default, plus a final pass that smooths the top surface. Takes longer.</td>
-                                </tr>
-                            </tbody>
-                        </table>
+                    <h4 class="mt-4">Print settings (process)</h4>
+                    <div class="card mb-2">
+                        <div class="table-responsive">
+                            <table class="table table-vcenter card-table">
+                                <thead>
+                                    <tr><th>Preset</th><th>Use it for</th><th>What it does</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td class="fw-medium text-nowrap">RRC Printing Default</td>
+                                        <td>Almost every print. Start here.</td>
+                                        <td>0.2 mm layers, 20% gyroid infill, tree supports on, brim on the outside.</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="fw-medium text-nowrap">Ironing</td>
+                                        <td>Parts with flat tops that should look smooth.</td>
+                                        <td>Same as the default, plus a final pass that smooths the top surface. Takes longer.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
-                    <span class="step-note">
+                    <p class="form-hint">
                         Supports are switched on in both. If your model has no overhangs, turn
                         supports off to save time and filament. The full preset names end in
                         <em>@BBL X1C</em>; that is normal, the P1S uses the same print settings.
-                    </span>
+                    </p>
 
-                    <h4 class="sub-head">Filament</h4>
-                    <p class="body-text">
+                    <h4 class="mt-4">Filament</h4>
+                    <p>
                         Pick the preset for the filament that is <strong>actually loaded</strong> in
                         the printer you will use. Check on the printer page or the printer's screen.
                     </p>
-                    <div class="printer-table-wrap">
-                        <table class="printer-table wide">
-                            <thead>
-                                <tr><th>Loaded filament</th><th>Preset</th><th>Nozzle</th><th>Bed</th></tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td>Numakers PLA+</td>
-                                    <td><code>Numakers PLA +</code></td>
-                                    <td class="nowrap">220 °C</td>
-                                    <td>55 °C smooth plate, 65 °C textured plate</td>
-                                </tr>
-                                <tr>
-                                    <td>Numakers PLA Silk</td>
-                                    <td><code>Numakers PLA Silk</code></td>
-                                    <td class="nowrap">230 °C</td>
-                                    <td class="nowrap">55 °C</td>
-                                </tr>
-                                <tr>
-                                    <td>Numakers ABS</td>
-                                    <td><code>Numakers ABS ABS</code></td>
-                                    <td class="nowrap">260 °C</td>
-                                    <td class="nowrap">90 °C</td>
-                                </tr>
-                                <tr>
-                                    <td>Numakers ABS, tall or thin parts</td>
-                                    <td><code>Numakers ABS ABS … 0.8 Retract</code></td>
-                                    <td class="nowrap">260 °C</td>
-                                    <td class="nowrap">90 °C</td>
-                                </tr>
-                            </tbody>
-                        </table>
+                    <div class="card mb-2">
+                        <div class="table-responsive">
+                            <table class="table table-vcenter card-table">
+                                <thead>
+                                    <tr><th>Loaded filament</th><th>Preset</th><th>Nozzle</th><th>Bed</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>Numakers PLA+</td>
+                                        <td><code>Numakers PLA +</code></td>
+                                        <td class="text-nowrap">220 °C</td>
+                                        <td>55 °C smooth plate, 65 °C textured plate</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Numakers PLA Silk</td>
+                                        <td><code>Numakers PLA Silk</code></td>
+                                        <td class="text-nowrap">230 °C</td>
+                                        <td class="text-nowrap">55 °C</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Numakers ABS</td>
+                                        <td><code>Numakers ABS ABS</code></td>
+                                        <td class="text-nowrap">260 °C</td>
+                                        <td class="text-nowrap">90 °C</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Numakers ABS, tall or thin parts</td>
+                                        <td><code>Numakers ABS ABS … 0.8 Retract</code></td>
+                                        <td class="text-nowrap">260 °C</td>
+                                        <td class="text-nowrap">90 °C</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
-                    <span class="step-note">
+                    <p class="form-hint">
                         The temperatures are already in the presets; they are listed so you can
                         check them. The "0.8 Retract" version lifts the nozzle 0.8 mm when it moves,
                         so it does not knock over or scrape tall, thin ABS parts.
-                    </span>
-                    <span class="danger-note">
-                        Never print one material with another material's preset. The wrong
-                        temperature can <strong>clog the nozzle</strong>, and a clog takes the printer
-                        out of service until it is repaired.
-                    </span>
+                    </p>
+                    <div class="alert alert-danger" role="note">
+                        <div class="d-flex gap-2">
+                            <IconAlert size={20} class="icon alert-icon flex-shrink-0" />
+                            <div>
+                                Never print one material with another material's preset. The wrong
+                                temperature can <strong>clog the nozzle</strong>, and a clog takes the printer
+                                out of service until it is repaired.
+                            </div>
+                        </div>
+                    </div>
 
-                    <h4 class="sub-head">Printing ABS</h4>
-                    <ul class="plain-list">
+                    <h4 class="mt-4">Printing ABS</h4>
+                    <ul class="mb-0">
                         <li>Keep the printer's lid and door <strong>closed</strong> for the whole print. A draught makes ABS warp and lift off the bed.</li>
                         <li>ABS gives off fumes. Keep the room ventilated and do not lean over the printer while it prints.</li>
                         <li>Use a textured or engineering plate, not the smooth plate.</li>
                     </ul>
-                </section>
+                </div>
+            </section>
 
-                <section class="guide-section">
-                    <h3>🔪 3. Slice and check</h3>
-                    <ol class="steps">
-                        <li>
+            <section class="card mb-4" id="guide-slice">
+                <div class="card-header">
+                    <h3 class="card-title">3. Slice and check</h3>
+                </div>
+                <div class="card-body">
+                    <ol class="steps steps-vertical steps-counter">
+                        <li class="step-item">
                             <strong>Set the plate type</strong> in Bambu Studio to the plate that is
                             on the printer (smooth or textured). The bed temperature depends on it.
                         </li>
-                        <li>
+                        <li class="step-item">
                             <strong>Slice</strong>, then look at the preview. Check the estimated
                             time and how much filament it needs, and make sure there is enough left
                             on the spool.
                         </li>
-                        <li>
+                        <li class="step-item">
                             <strong>First few prints?</strong> Show your settings to a lab admin before
                             you start. A 30-second check can save a failed 10-hour print.
                         </li>
-                        <li>
+                        <li class="step-item">
                             <strong>Export</strong> the sliced file and name it
                             <code>yourname_object</code>.
                         </li>
                     </ol>
-                </section>
+                </div>
+            </section>
 
-                <section class="guide-section">
-                    <h3>📤 4. Send it to the printer</h3>
-                    <ol class="steps">
-                        <li>
+            <section class="card mb-4" id="guide-send">
+                <div class="card-header">
+                    <h3 class="card-title">4. Send it to the printer</h3>
+                </div>
+                <div class="card-body">
+                    <ol class="steps steps-vertical steps-counter">
+                        <li class="step-item">
                             <strong>Check the printer is free.</strong> Open the
                             <a href="/printers">printer page</a>. Look at the <em>camera</em>, not only
                             the status: a printer can say "Finished" while the last person's print is
                             still on the plate.
                         </li>
-                        <li>
+                        <li class="step-item">
                             <strong>Send the file.</strong> Either:
-                            <ul class="sub-steps">
+                            <ul class="mt-1 mb-0">
                                 <li>
                                     <strong>From this website</strong> (easiest, no wifi switching):
                                     log in, open <a href="/printers">3D printers</a>, choose the
@@ -1408,111 +1665,130 @@
                                 </li>
                             </ul>
                         </li>
-                        <li>
+                        <li class="step-item">
                             <strong>Go to the printer and check it</strong> before you start: the
                             plate is empty and clean, and the right filament is loaded with enough on
                             the spool. Then start the print on the printer's screen.
                         </li>
                     </ol>
-                </section>
+                </div>
+            </section>
 
-                <section class="guide-section">
-                    <h3>👀 5. During and after the print</h3>
-                    <ol class="steps">
-                        <li>
+            <section class="card mb-4" id="guide-during">
+                <div class="card-header">
+                    <h3 class="card-title">5. During and after the print</h3>
+                </div>
+                <div class="card-body">
+                    <ol class="steps steps-vertical steps-counter">
+                        <li class="step-item">
                             <strong>Watch the first layer.</strong> Stay until it is down: most
                             failures happen there.
                         </li>
-                        <li>
+                        <li class="step-item">
                             <strong>Check in regularly</strong> on the <a href="/printers">printer
                             page</a>. The camera shows whether it is still printing properly. Do not
                             start a print and forget about it.
                         </li>
-                        <li>
+                        <li class="step-item">
                             <strong>Collect your print soon after it finishes</strong> and clear the
                             plate, so the next person can start. Take your waste (purge blobs,
                             supports, brim) with you.
                         </li>
                     </ol>
-                </section>
+                </div>
+            </section>
 
-                <section class="guide-section warning-section">
-                    <h3>⚠️ When to stop a print</h3>
-                    <p class="section-intro">
+            <section class="card mb-4" id="guide-stop">
+                <div class="card-status-top bg-danger"></div>
+                <div class="card-header">
+                    <h3 class="card-title">When to stop a print</h3>
+                </div>
+                <div class="card-body">
+                    <p>
                         Stop the print on the printer's screen <strong>straight away</strong> and tell
                         a lab admin if you see any of these. Anyone may stop a print that is going
                         wrong. It is always better to stop early than to damage the printer.
                     </p>
-                    <div class="warning-list">
-                        <div class="warning-item">
-                            <span class="warning-icon" aria-hidden="true">🚫</span>
-                            <div class="warning-content">
-                                <strong>No plastic coming out of the nozzle</strong>
-                                <p>Stop. The nozzle may be clogged. Do not try to clear it yourself.</p>
-                            </div>
-                        </div>
-                        <div class="warning-item">
-                            <span class="warning-icon" aria-hidden="true">🌀</span>
-                            <div class="warning-content">
-                                <strong>Tangled filament, or printing in mid-air ("spaghetti")</strong>
-                                <p>Stop. Do not touch the hot nozzle or bed.</p>
-                            </div>
-                        </div>
-                        <div class="warning-item">
-                            <span class="warning-icon" aria-hidden="true">❌</span>
-                            <div class="warning-content">
-                                <strong>Print came loose, or looks badly wrong</strong>
-                                <p>Stop to save filament. Take a photo if you can.</p>
-                            </div>
-                        </div>
-                        <div class="warning-item">
-                            <span class="warning-icon" aria-hidden="true">📟</span>
-                            <div class="warning-content">
-                                <strong>An error on the printer's screen</strong>
-                                <p>Take a photo of the error <em>before</em> clearing it, then tell an admin.</p>
-                            </div>
-                        </div>
-                        <div class="warning-item community-item">
-                            <span class="warning-icon" aria-hidden="true">👥</span>
-                            <div class="warning-content">
-                                <p>If you stop someone else's print, tell them or a lab admin.</p>
-                            </div>
+                </div>
+                <div class="list-group list-group-flush">
+                    <div class="list-group-item d-flex gap-3">
+                        <span class="avatar avatar-sm bg-red-lt flex-shrink-0"><IconBan size={18} class="icon" /></span>
+                        <div>
+                            <div class="fw-medium">No plastic coming out of the nozzle</div>
+                            <div class="text-secondary">Stop. The nozzle may be clogged. Do not try to clear it yourself.</div>
                         </div>
                     </div>
-                </section>
+                    <div class="list-group-item d-flex gap-3">
+                        <span class="avatar avatar-sm bg-red-lt flex-shrink-0"><IconAlert size={18} class="icon" /></span>
+                        <div>
+                            <div class="fw-medium">Tangled filament, or printing in mid-air ("spaghetti")</div>
+                            <div class="text-secondary">Stop. Do not touch the hot nozzle or bed.</div>
+                        </div>
+                    </div>
+                    <div class="list-group-item d-flex gap-3">
+                        <span class="avatar avatar-sm bg-red-lt flex-shrink-0"><IconX size={18} class="icon" /></span>
+                        <div>
+                            <div class="fw-medium">Print came loose, or looks badly wrong</div>
+                            <div class="text-secondary">Stop to save filament. Take a photo if you can.</div>
+                        </div>
+                    </div>
+                    <div class="list-group-item d-flex gap-3">
+                        <span class="avatar avatar-sm bg-red-lt flex-shrink-0"><IconCamera size={18} class="icon" /></span>
+                        <div>
+                            <div class="fw-medium">An error on the printer's screen</div>
+                            <div class="text-secondary">Take a photo of the error <em>before</em> clearing it, then tell an admin.</div>
+                        </div>
+                    </div>
+                    <div class="list-group-item d-flex gap-3 align-items-center">
+                        <span class="avatar avatar-sm bg-secondary-lt flex-shrink-0"><IconUsers size={18} class="icon" /></span>
+                        <div>If you stop someone else's print, tell them or a lab admin.</div>
+                    </div>
+                </div>
+            </section>
 
-                <section class="guide-section">
-                    <h3>🧵 Loading and unloading filament</h3>
-                    <p class="section-intro">
+            <section class="card mb-4" id="guide-filament">
+                <div class="card-header">
+                    <h3 class="card-title">Loading and unloading filament</h3>
+                </div>
+                <div class="card-body">
+                    <p>
                         Always use the menu on the printer's screen. Never pull filament out cold or
                         force it: that is how nozzles get damaged.
                     </p>
-                    <div class="two-col">
-                        <div class="col-box">
-                            <h4>Loading</h4>
-                            <ol class="mini-steps">
-                                <li>Put the spool on the holder so it unwinds without tangling.</li>
-                                <li>Cut the end at an angle so it feeds in cleanly.</li>
-                                <li>Push it through the tube until it reaches the extruder.</li>
-                                <li>On the screen, choose <em>Filament → Load</em> and pick the material.</li>
-                                <li>Wait until only the new colour comes out of the nozzle.</li>
-                            </ol>
+                    <div class="row g-3">
+                        <div class="col-12 col-md-6">
+                            <div class="p-3 rounded border h-100">
+                                <h4>Loading</h4>
+                                <ol class="mb-0 ps-3">
+                                    <li>Put the spool on the holder so it unwinds without tangling.</li>
+                                    <li>Cut the end at an angle so it feeds in cleanly.</li>
+                                    <li>Push it through the tube until it reaches the extruder.</li>
+                                    <li>On the screen, choose <em>Filament &gt; Load</em> and pick the material.</li>
+                                    <li>Wait until only the new colour comes out of the nozzle.</li>
+                                </ol>
+                            </div>
                         </div>
-                        <div class="col-box">
-                            <h4>Unloading</h4>
-                            <ol class="mini-steps">
-                                <li>On the screen, choose <em>Filament → Unload</em>.</li>
-                                <li>Wait for the nozzle to heat up. Do not skip this.</li>
-                                <li>Let the printer pull it back, then pull gently. If it resists, stop and ask an admin.</li>
-                                <li>Clip the end into the spool so it does not unwind for the next person.</li>
-                            </ol>
+                        <div class="col-12 col-md-6">
+                            <div class="p-3 rounded border h-100">
+                                <h4>Unloading</h4>
+                                <ol class="mb-0 ps-3">
+                                    <li>On the screen, choose <em>Filament &gt; Unload</em>.</li>
+                                    <li>Wait for the nozzle to heat up. Do not skip this.</li>
+                                    <li>Let the printer pull it back, then pull gently. If it resists, stop and ask an admin.</li>
+                                    <li>Clip the end into the spool so it does not unwind for the next person.</li>
+                                </ol>
+                            </div>
                         </div>
                     </div>
-                </section>
+                </div>
+            </section>
 
-                <section class="guide-section">
-                    <h3>🦺 Safety</h3>
-                    <ul class="plain-list">
+            <section class="card mb-4" id="guide-safety">
+                <div class="card-header">
+                    <h3 class="card-title"><IconShield size={20} class="icon me-2 text-warning" />Safety</h3>
+                </div>
+                <div class="card-body">
+                    <ul class="mb-0 spaced">
                         <li>
                             <strong>Be careful with the scraper.</strong> The blade is sharp and
                             prints come loose suddenly. Take the plate off the printer first and
@@ -1528,11 +1804,15 @@
                             something mid-print. Pause or stop it first.
                         </li>
                     </ul>
-                </section>
+                </div>
+            </section>
 
-                <section class="guide-section">
-                    <h3>📋 Lab rules</h3>
-                    <ul class="plain-list">
+            <section class="card mb-4" id="guide-rules">
+                <div class="card-header">
+                    <h3 class="card-title"><IconListCheck size={20} class="icon me-2 text-primary" />Lab rules</h3>
+                </div>
+                <div class="card-body">
+                    <ul class="mb-0 spaced">
                         <li>Put your name in the file name. Every time.</li>
                         <li>Use the RRC presets. Do not change printer settings, calibration or firmware.</li>
                         <li>Ask before using filament that is not yours. If you are not sure whose it is, ask; do not assume it is lab stock.</li>
@@ -1541,1640 +1821,170 @@
                         <li>Keep the printer area clean: clear purge blobs and supports, put tools back.</li>
                         <li>If you break something, say so. Hiding it costs the lab more.</li>
                     </ul>
-                </section>
+                </div>
+            </section>
 
-                <section class="guide-section">
-                    <h3>🤔 Common questions</h3>
-                    <ul class="plain-list">
-                        <li>
-                            <strong>A printer shows Offline?</strong> It is switched off or off the
-                            network. Tell an admin.
-                        </li>
-                        <li>
-                            <strong>Your print stopped and you do not know why?</strong> An admin may
-                            have stopped it; the printer page shows who. Ask them.
-                        </li>
-                        <li>
-                            <strong>A printer says "Access code changed"?</strong> Nothing you did.
-                            Tell an admin so they can update it.
-                        </li>
-                        <li>
-                            <strong>Your print is failing and you are not in the lab?</strong> Message
-                            a lab admin. Admins can stop any print from the printer page.
-                        </li>
-                    </ul>
-                </section>
-
-                <section class="guide-section">
-                    <h3>📚 Official Bambu Lab guides</h3>
-                    <div class="link-grid">
-                        <a class="guide-link" href="https://wiki.bambulab.com/en/p1/manual/loading-filament" target="_blank" rel="noopener noreferrer">
-                            <span class="link-icon">📥</span>
-                            <span class="link-content">
-                                <strong>Loading filament</strong>
-                                <span class="link-desc">Step-by-step, with pictures</span>
-                            </span>
-                        </a>
-                        <a class="guide-link" href="https://wiki.bambulab.com/en/p1/manual/print-from-bambu-studio" target="_blank" rel="noopener noreferrer">
-                            <span class="link-icon">🚀</span>
-                            <span class="link-content">
-                                <strong>Printing from Bambu Studio</strong>
-                                <span class="link-desc">Sending a print over the network</span>
-                            </span>
-                        </a>
-                        <a class="guide-link" href="https://wiki.bambulab.com/en/p1/manual" target="_blank" rel="noopener noreferrer">
-                            <span class="link-icon">📘</span>
-                            <span class="link-content">
-                                <strong>P1S manual</strong>
-                                <span class="link-desc">Everything else about the printer</span>
-                            </span>
-                        </a>
-                        <a class="guide-link" href="https://wiki.bambulab.com/en/general/filament-guide-material-table" target="_blank" rel="noopener noreferrer">
-                            <span class="link-icon">📖</span>
-                            <span class="link-content">
-                                <strong>Filament guide</strong>
-                                <span class="link-desc">Which material to use for what</span>
-                            </span>
-                        </a>
+            <section class="card mb-4" id="guide-faq">
+                <div class="card-header">
+                    <h3 class="card-title"><IconHelp size={20} class="icon me-2 text-info" />Common questions</h3>
+                </div>
+                <div class="list-group list-group-flush">
+                    <div class="list-group-item">
+                        <div class="fw-medium">A printer shows Offline?</div>
+                        <div class="text-secondary">It is switched off or off the network. Tell an admin.</div>
                     </div>
-                </section>
+                    <div class="list-group-item">
+                        <div class="fw-medium">Your print stopped and you do not know why?</div>
+                        <div class="text-secondary">An admin may have stopped it; the printer page shows who. Ask them.</div>
+                    </div>
+                    <div class="list-group-item">
+                        <div class="fw-medium">A printer says "Access code changed"?</div>
+                        <div class="text-secondary">Nothing you did. Tell an admin so they can update it.</div>
+                    </div>
+                    <div class="list-group-item">
+                        <div class="fw-medium">Your print is failing and you are not in the lab?</div>
+                        <div class="text-secondary">Message a lab admin. Admins can stop any print from the printer page.</div>
+                    </div>
+                </div>
+            </section>
 
-                <section class="guide-section contact-section">
-                    <h3>📞 Need help?</h3>
-                    <p>Ask a lab admin. It is always better to stop and ask than to damage a printer.</p>
-                </section>
+            <section class="card mb-4" id="guide-links">
+                <div class="card-header">
+                    <h3 class="card-title">Official Bambu Lab guides</h3>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        {#each [
+                            { href: 'https://wiki.bambulab.com/en/p1/manual/loading-filament', title: 'Loading filament', desc: 'Step-by-step, with pictures' },
+                            { href: 'https://wiki.bambulab.com/en/p1/manual/print-from-bambu-studio', title: 'Printing from Bambu Studio', desc: 'Sending a print over the network' },
+                            { href: 'https://wiki.bambulab.com/en/p1/manual', title: 'P1S manual', desc: 'Everything else about the printer' },
+                            { href: 'https://wiki.bambulab.com/en/general/filament-guide-material-table', title: 'Filament guide', desc: 'Which material to use for what' }
+                        ] as link (link.href)}
+                            <div class="col-12 col-md-6">
+                                <a class="card card-sm card-link h-100" href={link.href} target="_blank" rel="noopener noreferrer">
+                                    <div class="card-body d-flex align-items-center gap-3">
+                                        <span class="avatar bg-blue-lt"><IconBook size={20} class="icon" /></span>
+                                        <div class="flex-fill min-w-0">
+                                            <div class="fw-medium">{link.title}</div>
+                                            <div class="text-secondary small">{link.desc}</div>
+                                        </div>
+                                        <IconExternal size={18} class="icon text-secondary" />
+                                    </div>
+                                </a>
+                            </div>
+                        {/each}
+                    </div>
+                </div>
+            </section>
+
+            <div class="alert alert-info mb-0" role="note">
+                <div class="d-flex gap-2">
+                    <IconHelp size={20} class="icon alert-icon flex-shrink-0" />
+                    <div>
+                        <h4 class="alert-title">Need help?</h4>
+                        <div>Ask a lab admin. It is always better to stop and ask than to damage a printer.</div>
+                    </div>
+                </div>
             </div>
         </div>
-    {/if}
-</div>
+    </div>
+{/if}
 
 <style>
-    /* Home */
-    .grow {
-        min-width: 0;
-    }
-
-    .due {
-        display: block;
-        font-size: 0.9rem;
-        color: var(--muted);
-    }
-
-    .late {
-        color: var(--danger);
-    }
-
-    .waiting {
-        color: var(--warn);
-    }
-
-    /* Home: the menu of tiles. On tablets and up the grid fills the space
-       between the header and the footer (tiles grow with the screen, within
-       limits); on phones it is one column of comfortable rows.
-       Tiles are a row (icon, text, arrow) by default, and become cards
-       (icon on top, title below) when there is room: wide and tall screens. */
-    .page:has(.home-options) {
-        --home-grid-max: 100%;
-        padding-bottom: clamp(20px, 3vh, 40px);
-    }
-
-    .mine {
+    /* The P1S picture inside its avatar */
+    .tile-img {
         width: 100%;
-        max-width: var(--home-grid-max);
-        margin: 0 auto clamp(14px, 2.2vh, 26px);
-        padding: clamp(14px, 1.4vw, 22px) clamp(16px, 1.8vw, 28px);
-        box-sizing: border-box;
-        background: color-mix(in srgb, var(--hue) 7%, var(--glass-strong));
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .mine .label {
-        margin-bottom: 4px;
-    }
-
-    .home-options {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        width: 100%;
-        max-width: var(--home-grid-max);
-        margin: 0 auto;
-        text-align: center;
-    }
-
-    .home-options h2 {
-        margin: 0;
-        font-size: clamp(1.3rem, 1.9vw, 2.1rem);
-        font-weight: 600;
-        letter-spacing: -0.025em;
-        line-height: 1.2;
-        color: var(--rp-text);
-        animation: fade var(--slow) var(--ease) both;
-    }
-
-    .pulse {
-        display: flex;
-        flex-wrap: wrap;
-        justify-content: center;
-        gap: 8px;
-        margin: clamp(10px, 1.4vh, 16px) auto 0;
-        animation: fade var(--slow) var(--ease) both;
-    }
-
-    .pulse-pill {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        min-height: 36px;
-        padding: 0 14px;
-        border: 1px solid var(--line-strong);
-        border-radius: var(--radius-pill);
-        background: var(--glass);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-        color: var(--muted);
-        font: inherit;
-        font-size: clamp(0.82rem, 0.85vw, 0.95rem);
-        text-decoration: none;
-        cursor: pointer;
-        transition: color var(--fast) var(--ease), border-color var(--fast) var(--ease);
-    }
-
-    .pulse-pill:hover {
-        color: var(--rp-text);
-        border-color: color-mix(in srgb, var(--accent) 45%, var(--line-strong));
-    }
-
-    .pip {
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        background: var(--rp-foam);
-        box-shadow: 0 0 0 3px color-mix(in srgb, var(--rp-foam) 18%, transparent);
-    }
-
-    .pip.live {
-        background: var(--rp-gold);
-        box-shadow: 0 0 0 3px color-mix(in srgb, var(--rp-gold) 22%, transparent);
-        animation: soft-pulse 1.6s ease-in-out infinite;
-    }
-
-    .pip.busy {
-        background: var(--rp-love);
-        box-shadow: 0 0 0 3px color-mix(in srgb, var(--rp-love) 20%, transparent);
-    }
-
-    .option-buttons {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        grid-auto-rows: minmax(clamp(96px, 12vh, 168px), 1fr);
-        gap: clamp(12px, min(1.4vw, 2.2vh), 24px);
-        width: 100%;
-        /* Take the free height (rows share it), but stop while the tiles
-           still read as solid cards rather than empty panels */
-        flex: 1 1 0;
-        max-height: 620px;
-        margin: clamp(14px, 2.2vh, 32px) auto 0;
-    }
-
-    .option-btn {
-        --tile-accent: var(--rp-iris);
-        --mx: 50%;
-        --my: 50%;
-        --icon: clamp(44px, min(4.2vw, 5vh), 84px);
-        position: relative;
-        display: grid;
-        grid-template-columns: auto 1fr auto;
-        grid-template-areas: 'icon body arrow';
-        align-items: center;
-        gap: clamp(12px, 1.2vw, 20px);
-        width: 100%;
-        min-width: 0;
-        box-sizing: border-box;
-        text-align: left;
-        text-decoration: none;
-        padding: clamp(14px, min(1.6vw, 2vh), 30px);
-        border: 1px solid var(--line-strong);
-        border-radius: clamp(14px, 1.2vw, 22px);
-        background:
-            linear-gradient(160deg, color-mix(in srgb, var(--tile-accent) 8%, transparent), transparent 50%),
-            var(--glass);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-        color: var(--rp-text);
-        font: inherit;
-        cursor: pointer;
-        overflow: hidden;
-        isolation: isolate;
-        box-shadow:
-            inset 0 1px 0 color-mix(in srgb, var(--rp-text) 6%, transparent),
-            var(--shadow-sm);
-        transition:
-            transform var(--normal) var(--ease),
-            border-color var(--normal) var(--ease),
-            box-shadow var(--normal) var(--ease);
-        animation: rise var(--slow) var(--ease) both;
-        animation-delay: calc(var(--i, 0) * 45ms);
-        -webkit-tap-highlight-color: transparent;
-    }
-
-    /* A soft spotlight in the tile's colour that follows the pointer */
-    .option-btn::before {
-        content: '';
-        position: absolute;
-        inset: 0;
-        z-index: -1;
-        background: radial-gradient(
-            clamp(220px, 22vw, 420px) circle at var(--mx) var(--my),
-            color-mix(in srgb, var(--tile-accent) 20%, transparent),
-            transparent 70%
-        );
-        opacity: 0;
-        transition: opacity var(--normal) var(--ease);
-        pointer-events: none;
-    }
-
-    /* The accent stripe down the leading edge */
-    .option-btn::after {
-        content: '';
-        position: absolute;
-        left: 0;
-        top: 22%;
-        bottom: 22%;
-        width: 3px;
-        border-radius: 0 3px 3px 0;
-        background: var(--tile-accent);
-        box-shadow: 0 0 14px color-mix(in srgb, var(--tile-accent) 60%, transparent);
-        opacity: 0.8;
-        transition:
-            top var(--normal) var(--ease),
-            bottom var(--normal) var(--ease),
-            opacity var(--normal) var(--ease);
-    }
-
-    .option-btn:hover,
-    .option-btn:focus-visible {
-        transform: translateY(-4px);
-        border-color: color-mix(in srgb, var(--tile-accent) 50%, var(--line-strong));
-        box-shadow:
-            inset 0 1px 0 color-mix(in srgb, var(--rp-text) 8%, transparent),
-            0 18px 40px -12px color-mix(in srgb, var(--tile-accent) 35%, transparent),
-            var(--shadow);
-    }
-
-    .option-btn:hover::before,
-    .option-btn:focus-visible::before {
-        opacity: 1;
-    }
-
-    .option-btn:hover::after,
-    .option-btn:focus-visible::after {
-        top: 0;
-        bottom: 0;
-        opacity: 1;
-    }
-
-    .option-btn:active {
-        transform: translateY(-1px) scale(0.99);
-        transition-duration: var(--fast);
-    }
-
-    /* Emoji sit on a small tinted plate */
-    .tile-icon,
-    .tile-image {
-        grid-area: icon;
-        display: grid;
-        place-items: center;
-        width: var(--icon);
-        height: var(--icon);
-        box-sizing: border-box;
-        border-radius: calc(var(--icon) * 0.24);
-        background: color-mix(in srgb, var(--tile-accent) 13%, transparent);
-        border: 1px solid color-mix(in srgb, var(--tile-accent) 22%, transparent);
-        font-size: calc(var(--icon) * 0.5);
-        line-height: 1;
-        transition: transform var(--normal) var(--ease);
-    }
-
-    .tile-image {
-        padding: calc(var(--icon) * 0.1);
+        height: 100%;
         object-fit: contain;
+        padding: 3px;
     }
 
-    .option-btn:hover .tile-icon,
-    .option-btn:hover .tile-image {
-        transform: scale(1.06) rotate(-3deg);
-    }
-
-    .tile-body {
-        grid-area: body;
-        display: flex;
-        flex-direction: column;
-        gap: clamp(2px, 0.4vw, 6px);
+    .min-w-0 {
         min-width: 0;
     }
 
-    .tile-title {
-        font-size: clamp(1.05rem, 1.3vw, 1.5rem);
-        font-weight: 650;
-        letter-spacing: -0.015em;
-        line-height: 1.2;
-        color: var(--tile-accent);
-    }
-
-    :global(:root[data-theme='light']) .tile-title {
-        color: color-mix(in srgb, var(--tile-accent) 82%, #575279);
-    }
-
-    .tile-sub {
-        font-size: clamp(0.85rem, 0.9vw, 1rem);
-        color: var(--muted);
-        line-height: 1.4;
-    }
-
-    .tile-arrow {
-        grid-area: arrow;
-        display: grid;
-        place-items: center;
-        width: 34px;
-        height: 34px;
-        border-radius: 50%;
-        border: 1px solid var(--line);
-        color: var(--faint);
-        font-size: 1rem;
-        line-height: 1;
-        transition:
-            transform var(--normal) var(--ease),
-            color var(--normal) var(--ease),
-            border-color var(--normal) var(--ease),
-            background var(--normal) var(--ease);
-    }
-
-    .option-btn:hover .tile-arrow,
-    .option-btn:focus-visible .tile-arrow {
-        transform: rotate(-45deg);
-        color: var(--tile-accent);
-        border-color: color-mix(in srgb, var(--tile-accent) 45%, transparent);
-        background: color-mix(in srgb, var(--tile-accent) 12%, transparent);
-    }
-
-    /* A lone tile on the last row (signed out: 7 tiles) keeps its size and
-       sits in the middle, rather than stretching into a wide empty card */
-    @media (min-width: 1025px) {
-        .option-btn:last-child:nth-child(3n + 1) {
-            grid-column: 2;
+    /* Bootstrap has no w-md-auto */
+    @media (min-width: 768px) {
+        .w-md-auto {
+            width: auto !important;
         }
     }
 
-    @media (min-width: 641px) and (max-width: 1024px) {
-        .option-btn:last-child:nth-child(2n + 1) {
-            grid-column: 1 / -1;
-            justify-self: center;
-            width: calc(50% - clamp(12px, min(1.4vw, 2.2vh), 24px) / 2);
-        }
-    }
-
-    /* Big screens: tiles become cards, icon top-left, arrow top-right,
-       title and line at the bottom */
-    @media (min-width: 1025px) and (min-height: 940px) {
-        .option-btn {
-            grid-template-columns: 1fr auto;
-            grid-template-rows: auto auto;
-            grid-template-areas:
-                'icon arrow'
-                'body body';
-            align-items: start;
-            align-content: center;
-            row-gap: clamp(12px, 1.6vh, 20px);
-        }
-
-        .option-btn::after {
-            top: 18%;
-            bottom: 18%;
-        }
-    }
-
-    /* Tablets: two columns */
-    @media (max-width: 1024px) {
-        .option-buttons {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            grid-auto-rows: minmax(96px, 1fr);
-            max-height: none;
-        }
-
-        .option-btn {
-            --icon: 52px;
-        }
-    }
-
-    /* Phones: one column of rows with big tap targets. The page scrolls
-       naturally instead of stretching. */
-    @media (max-width: 640px) {
-        .home-options {
-            justify-content: flex-start;
-        }
-
-        .option-buttons {
-            grid-template-columns: 1fr;
-            grid-auto-rows: auto;
-            flex: none;
-            gap: 10px;
-            margin-top: 16px;
-        }
-
-        .option-btn {
-            --icon: 48px;
-            gap: 14px;
-            min-height: 76px;
-            padding: 14px 14px 14px 16px;
-        }
-
-        .tile-title {
-            font-size: 1.05rem;
-        }
-
-        .tile-sub {
-            font-size: 0.86rem;
-        }
-
-        .tile-arrow {
-            width: 30px;
-            height: 30px;
-        }
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-        .option-btn:hover,
-        .option-btn:focus-visible {
-            transform: none;
-        }
-    }
-
-    /* --- Borrow / Return / Guide: the original lab style ------------------ */
-
-    .view-title {
-        margin: 0;
-        font-size: clamp(1.35rem, 3vw, 1.7rem);
-        font-weight: 650;
-    }
-
-    .borrow-title { color: var(--rp-rose); }
-    .return-title { color: var(--rp-foam); }
-    .guide-title { color: var(--rp-gold); }
-
-    .view-sub {
-        margin: 6px 0 22px;
-        color: var(--muted);
-        font-size: clamp(0.9rem, 2vw, 1rem);
-    }
-
-    .label-row {
-        display: flex;
-        justify-content: space-between;
-        align-items: baseline;
-        gap: 8px;
-    }
-
-    .link-btn {
-        background: none;
-        border: none;
-        color: var(--link);
-        font: inherit;
-        font-size: 0.85rem;
-        cursor: pointer;
-        padding: 10px 0;
-        margin: -10px 0;
-        text-decoration: underline;
-    }
-
-    .optional-tag {
-        font-size: 0.75rem;
-        color: var(--faint);
-        font-weight: 400;
-    }
-
-    .chip-row {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        margin-bottom: 8px;
-    }
-
-    .chip {
-        display: inline-flex;
-        align-items: center;
-        background: color-mix(in srgb, var(--card-raised) 60%, transparent);
-        color: var(--rp-text);
-        border: 1px solid var(--line-strong);
-        border-radius: 999px;
-        padding: 10px 16px;
-        /* Comfortable one-handed tap target on a phone */
-        min-height: 44px;
-        font: inherit;
-        font-size: 0.95rem;
-        cursor: pointer;
-        transition: background var(--fast) var(--ease), border-color var(--fast) var(--ease);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .chip:hover {
-        background: var(--rp-hl-med);
-    }
-
-    .chip.selected {
-        background: var(--rp-rose);
-        border-color: var(--rp-rose);
-        color: var(--rp-base);
-        font-weight: 600;
-    }
-
-    /* Form Styles */
-    .form-container,
-    .return-container,
-    .printer-guide-container {
-        background: color-mix(in srgb, var(--card) 60%, transparent);
-        padding: clamp(16px, 3vw, 25px);
-        border-radius: 12px;
-        margin: 0 auto;
-        border: 1px solid var(--line-strong);
-        box-shadow: var(--shadow);
-        max-width: 800px;
-        box-sizing: border-box;
-        animation: rise var(--slow) var(--ease) both;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .printer-guide-container {
-        max-width: 1000px;
-    }
-
-    .form-group {
-        margin-bottom: clamp(18px, 3vw, 24px);
-        min-width: 0;
-    }
-
-    .form-group label,
-    .form-group .label {
-        display: block;
-        margin: 0 0 8px;
-        font-weight: 600;
-        color: var(--rp-text);
-        font-size: clamp(0.92rem, 2vw, 1rem);
-    }
-
-    .form-group input:not([type='checkbox']),
-    .form-group select,
-    .form-group textarea {
-        width: 100%;
-        min-height: 46px;
-        padding: clamp(10px, 2.5vw, 13px);
-        border: 2px solid var(--line-strong);
-        border-radius: 8px;
-        font: inherit;
-        font-size: clamp(0.95rem, 2vw, 1rem);
-        box-sizing: border-box;
-        background: color-mix(in srgb, var(--bg) 60%, transparent);
-        color: var(--rp-text);
-        transition: border-color var(--fast) var(--ease), box-shadow var(--fast) var(--ease);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .form-group textarea {
-        resize: vertical;
-        min-height: 70px;
-    }
-
-    .form-group input[type='file'] {
-        padding: 10px;
-        cursor: pointer;
-    }
-
-    .form-group input:focus,
-    .form-group select:focus,
-    .form-group textarea:focus {
-        border-color: var(--rp-rose);
-        outline: none;
-        box-shadow: 0 0 0 3px color-mix(in srgb, var(--rp-rose) 25%, transparent);
-    }
-
-    .help-text {
-        color: var(--muted);
-        font-size: clamp(0.82rem, 1.8vw, 0.9rem);
-        margin-top: 6px;
-        display: block;
-        line-height: 1.45;
-    }
-
-    .help-text strong {
-        color: var(--rp-text);
-    }
-
-    .warn-text {
-        color: var(--warn);
-    }
-
-    /* Who is borrowing */
-    .login-hint {
-        margin-bottom: 20px;
-        padding: 12px 14px;
-        border-radius: 8px;
-        border: 1px dashed color-mix(in srgb, var(--rp-iris) 50%, transparent);
-        background: color-mix(in srgb, var(--rp-iris) 8%, transparent);
-        color: var(--rp-text);
-        font-size: 0.92rem;
-    }
-
-    .login-hint a,
-    .status-message a {
-        color: var(--link);
-        font-weight: 600;
-    }
-
-    .account-box {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        justify-content: space-between;
-        gap: 6px 14px;
-        padding: 12px 14px;
-        border: 2px solid var(--line-strong);
-        border-radius: 8px;
-        background: color-mix(in srgb, var(--bg) 60%, transparent);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .account-name {
-        font-weight: 600;
-    }
-
-    .account-phone {
-        color: var(--muted);
-    }
-
-    /* What we know about the picked item */
-    .item-info {
-        margin-top: 10px;
-    }
-
-    .info-row {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-    }
-
-    .info-chip {
-        padding: 4px 10px;
-        border-radius: 999px;
-        font-size: 0.82rem;
-        background: color-mix(in srgb, var(--rp-foam) 12%, transparent);
-        color: var(--rp-foam);
-        border: 1px solid color-mix(in srgb, var(--rp-foam) 30%, transparent);
-    }
-
-    .info-chip.short {
-        background: color-mix(in srgb, var(--rp-gold) 12%, transparent);
-        color: var(--warn);
-        border-color: color-mix(in srgb, var(--rp-gold) 35%, transparent);
-    }
-
-    .form-group .status-message {
-        margin-top: 10px;
-        font-size: 0.92rem;
-        font-weight: 500;
-        text-align: left;
-    }
-
-    .form-group .accept {
-        display: flex;
-        gap: 10px;
-        align-items: flex-start;
-        margin: 12px 0 0;
-        padding: 12px;
-        border-radius: 8px;
-        background: color-mix(in srgb, var(--rp-gold) 10%, transparent);
-        font-weight: 500;
-        font-size: 0.92rem;
-        cursor: pointer;
-    }
-
-    .accept input {
-        width: 20px;
-        height: 20px;
-        margin: 1px 0 0;
-        flex: none;
-        accent-color: var(--rp-rose);
+    .date-input {
+        max-width: 14rem;
     }
 
     .photo-preview {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        gap: 10px 12px;
-        margin-top: 10px;
-        padding: 12px;
-        background: color-mix(in srgb, var(--ctp-green) 15%, transparent);
-        border-radius: 8px;
-        border: 1px solid color-mix(in srgb, var(--ctp-green) 30%, transparent);
-    }
-
-    .photo-preview img {
-        width: 64px;
-        height: 64px;
+        width: 4rem;
+        height: 4rem;
         object-fit: cover;
-        border-radius: 6px;
-        flex: none;
+        flex-shrink: 0;
     }
 
-    .photo-preview p {
-        flex: 1;
-        min-width: 0;
-        margin: 0;
-        color: var(--ctp-green);
-        font-size: clamp(0.82rem, 1.8vw, 0.9rem);
-        overflow-wrap: anywhere;
-    }
-
-    .remove-photo {
-        min-height: 40px;
-        padding: 0 14px;
-        border-radius: 8px;
-        border: 1px solid var(--line-strong);
-        background: color-mix(in srgb, var(--card-raised) 60%, transparent);
-        color: var(--rp-text);
-        font: inherit;
-        font-size: 0.85rem;
-        cursor: pointer;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .submit-btn {
-        background: linear-gradient(135deg, var(--rp-rose), var(--rp-love));
-        color: var(--rp-base);
-        border: none;
-        min-height: 50px;
-        padding: clamp(12px, 3vw, 16px) clamp(20px, 4vw, 30px);
-        border-radius: 8px;
-        font: inherit;
-        font-size: clamp(1rem, 2.5vw, 1.15rem);
-        cursor: pointer;
-        width: 100%;
-        transition: transform var(--normal) var(--ease), box-shadow var(--normal) var(--ease);
-        font-weight: 650;
-        margin-top: 6px;
-    }
-
-    .submit-btn:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 25px color-mix(in srgb, var(--rp-rose) 30%, transparent);
-    }
-
-    .submit-btn:disabled {
-        background: color-mix(in srgb, var(--card-raised) 60%, transparent);
-        cursor: not-allowed;
-        transform: none;
-        box-shadow: none;
-        color: var(--muted);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    /* Return Styles */
-    .search-container {
-        margin-bottom: clamp(18px, 4vw, 26px);
-    }
-
-    .search-container label {
-        font-weight: 600;
-    }
-
-    .search-input-group {
-        position: relative;
-        margin-top: 8px;
-    }
-
-    .search-container input {
-        width: 100%;
-        min-height: 48px;
-        padding: clamp(12px, 3vw, 14px);
-        padding-right: 52px; /* room for the clear button */
-        border: 2px solid var(--line-strong);
-        border-radius: 8px;
-        font: inherit;
-        font-size: clamp(0.95rem, 2vw, 1rem);
-        background: color-mix(in srgb, var(--bg) 60%, transparent);
-        color: var(--rp-text);
-        box-sizing: border-box;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .search-container input:focus {
-        border-color: var(--rp-rose);
-        outline: none;
-        box-shadow: 0 0 0 3px color-mix(in srgb, var(--rp-rose) 25%, transparent);
-    }
-
-    /* A 40px tap target around the small round ✕ */
-    .clear-search-btn {
-        position: absolute;
-        right: 4px;
-        top: 50%;
-        transform: translateY(-50%);
-        width: 44px;
-        height: 44px;
-        display: grid;
-        place-items: center;
-        padding: 0;
-        background: none;
-        border: none;
-        cursor: pointer;
-    }
-
-    .clear-search-btn span {
-        display: grid;
-        place-items: center;
-        width: 26px;
-        height: 26px;
-        border-radius: 50%;
-        background: var(--rp-love);
-        color: var(--rp-base);
-        font-size: 13px;
-        font-weight: bold;
-        transition: transform var(--fast) var(--ease);
-    }
-
-    .clear-search-btn:hover span {
-        transform: scale(1.1);
-    }
-
-    .loading-state,
-    .no-items-state {
-        text-align: center;
-        padding: 40px 20px;
-        background: color-mix(in srgb, var(--bg) 60%, transparent);
-        border-radius: 12px;
-        border: 1px solid var(--line-strong);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .loading-state p,
-    .no-items-state p {
-        font-size: 1.15rem;
-        margin: 0;
-    }
-
-    .no-items-state .search-suggestion {
-        color: var(--muted);
-        font-size: 1rem;
-        margin-top: 10px;
-    }
-
-    .results-header {
-        background: color-mix(in srgb, var(--bg) 60%, transparent);
-        padding: 14px 18px;
-        margin: 0 0 15px;
-        border-radius: 8px;
-        border: 1px solid var(--line-strong);
-        font-size: 1.05rem;
-        font-weight: 600;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .item-card {
-        background: color-mix(in srgb, var(--bg) 60%, transparent);
-        border: 1px solid var(--line-strong);
-        border-radius: 12px;
-        margin-bottom: 15px;
-        overflow: hidden;
-        transition: transform var(--normal) var(--ease), border-color var(--normal) var(--ease), box-shadow var(--normal) var(--ease);
-        box-shadow: var(--shadow-sm);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .item-card:hover {
-        border-color: var(--rp-rose);
-        transform: translateY(-2px);
-        box-shadow: var(--shadow);
-    }
-
-    .item-card.missing { border-left: 4px solid var(--rp-love); }
-    .item-card.borrowed { border-left: 4px solid var(--rp-pine); }
-    .item-card.overdue { border-left: 4px solid var(--rp-gold); }
-    .item-card.returned { border-left: 4px solid var(--rp-foam); }
-
-    .category-tag {
-        padding: 8px 15px;
-        font-weight: 600;
-        font-size: 0.85rem;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }
-
-    .category-tag.missing {
-        background: color-mix(in srgb, var(--rp-love) 15%, transparent);
-        color: var(--rp-love);
-    }
-
-    .category-tag.borrowed {
-        background: color-mix(in srgb, var(--rp-pine) 22%, transparent);
-        color: var(--link);
-    }
-
-    .category-tag.overdue {
-        background: color-mix(in srgb, var(--rp-gold) 15%, transparent);
-        color: var(--warn);
-    }
-
-    .category-tag.returned {
-        background: color-mix(in srgb, var(--rp-foam) 15%, transparent);
-        color: var(--rp-foam);
-    }
-
-    .tag-text {
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-    }
-
-    .mine-badge {
-        margin-left: auto;
-        padding: 2px 10px;
-        border-radius: 999px;
-        background: var(--rp-iris);
-        color: var(--rp-base);
-        font-size: 0.75rem;
-        letter-spacing: 0.3px;
-    }
-
-    .item-content {
-        padding: clamp(14px, 3vw, 20px);
-    }
-
-    .item-header {
-        margin-bottom: 12px;
-    }
-
-    .item-name {
-        margin: 0;
-        font-size: 1.25rem;
-        font-weight: 600;
-        overflow-wrap: anywhere;
-    }
-
-    .item-details {
-        margin-bottom: 16px;
-    }
-
-    .detail-row {
-        display: flex;
-        gap: 8px 20px;
-        margin-bottom: 10px;
-        flex-wrap: wrap;
-    }
-
-    .detail-item {
-        flex: 1;
-        min-width: 200px;
-        color: var(--muted);
-        font-size: 0.95rem;
-    }
-
-    .detail-item strong {
-        color: var(--rp-text);
-        font-weight: 600;
-    }
-
-    .detail-item.late-text {
-        color: var(--warn);
-    }
-
-    .item-photo {
-        margin-top: 14px;
-        text-align: center;
-    }
-
-    .photo-thumbnail {
-        max-width: 300px;
-        max-height: 200px;
-        width: auto;
-        height: auto;
+    .loan-photo {
+        width: 3.5rem;
+        height: 3.5rem;
         object-fit: cover;
-        border-radius: 8px;
-        border: 2px solid var(--line-strong);
-        transition: transform var(--fast) var(--ease), border-color var(--fast) var(--ease);
+        display: block;
     }
 
-    .photo-thumbnail:hover {
-        transform: scale(1.03);
-        border-color: var(--rp-rose);
+    /* Your own loans stand out a little in the list */
+    .mine-row {
+        box-shadow: inset 3px 0 0 var(--tblr-primary);
     }
 
-    .item-actions {
-        padding-top: 15px;
-        border-top: 1px solid var(--line-strong);
-        text-align: center;
-    }
-
-    .status-message {
-        margin: 0;
-        padding: 12px;
-        border-radius: 8px;
-        font-weight: 600;
-        font-size: 0.95rem;
-    }
-
-    .status-message.missing {
-        background: color-mix(in srgb, var(--rp-love) 15%, transparent);
-        color: var(--rp-love);
-        border: 1px solid color-mix(in srgb, var(--rp-love) 30%, transparent);
-    }
-
-    .status-message.returned {
-        background: color-mix(in srgb, var(--rp-foam) 15%, transparent);
-        color: var(--rp-foam);
-        border: 1px solid color-mix(in srgb, var(--rp-foam) 30%, transparent);
-    }
-
-    .status-message.pending {
-        background: color-mix(in srgb, var(--rp-gold) 15%, transparent);
-        color: var(--warn);
-        border: 1px solid color-mix(in srgb, var(--rp-gold) 30%, transparent);
-    }
-
-    .status-message.return-pending {
-        background: color-mix(in srgb, var(--rp-iris) 15%, transparent);
-        color: var(--rp-iris);
-        border: 1px solid color-mix(in srgb, var(--rp-iris) 30%, transparent);
-    }
-
-    .return-action-btn {
-        background: linear-gradient(135deg, var(--rp-foam), color-mix(in srgb, var(--rp-foam) 70%, var(--rp-pine)));
-        color: var(--rp-base);
-        border: none;
-        min-height: 46px;
-        padding: 12px 24px;
-        border-radius: 8px;
-        font: inherit;
-        font-size: 1rem;
-        font-weight: 600;
-        cursor: pointer;
-        transition: transform var(--normal) var(--ease), box-shadow var(--normal) var(--ease);
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 8px;
-    }
-
-    .return-action-btn:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px color-mix(in srgb, var(--rp-foam) 30%, transparent);
-    }
-
-    .return-action-btn.handover-btn {
-        background: linear-gradient(135deg, var(--rp-iris), var(--rp-rose));
-    }
-
-    .return-action-btn:disabled {
-        background: color-mix(in srgb, var(--card-raised) 60%, transparent);
-        color: var(--faint);
-        cursor: not-allowed;
-        transform: none;
-        box-shadow: none;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .return-confirm {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-        text-align: left;
-    }
-
-    .return-confirm label {
-        font-weight: 600;
-    }
-
-    .return-confirm input {
-        min-height: 46px;
-        padding: 12px;
-        border-radius: 8px;
-        border: 2px solid var(--line-strong);
-        background: color-mix(in srgb, var(--card) 60%, transparent);
-        color: var(--rp-text);
-        font: inherit;
-        font-size: 1rem;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .return-confirm input:focus {
-        border-color: var(--rp-rose);
-        outline: none;
-    }
-
-    .return-error {
-        margin: 0;
-        padding: 10px 12px;
-        border-radius: 8px;
-        background: color-mix(in srgb, var(--rp-love) 15%, transparent);
-        color: var(--rp-love);
-        border: 1px solid color-mix(in srgb, var(--rp-love) 30%, transparent);
-    }
-
-    .return-confirm-actions {
+    /* Borrower, lab, quantity and dates on one wrapping line */
+    .loan-meta {
         display: flex;
         flex-wrap: wrap;
-        gap: 10px;
-        justify-content: center;
+        gap: 0.125rem 0.75rem;
     }
 
-    .return-cancel-btn {
-        background: transparent;
-        color: var(--rp-text);
-        border: 1px solid var(--line-strong);
-        min-height: 46px;
-        padding: 12px 24px;
-        border-radius: 8px;
-        font: inherit;
-        font-size: 1rem;
-        cursor: pointer;
-    }
-
-    .item-actions .help-text {
-        margin-top: 8px;
-    }
-
-    /* Printer Guide Styles */
-    .guide-content {
-        margin-top: 4px;
-    }
-
-    .guide-section {
-        background: color-mix(in srgb, var(--bg) 60%, transparent);
-        padding: clamp(16px, 3.5vw, 28px);
-        border-radius: 10px;
-        margin-bottom: 22px;
-        border: 1px solid var(--line-strong);
-        min-width: 0;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .guide-section h3 {
-        color: var(--rp-rose);
-        margin: 0 0 16px;
-        font-size: clamp(1.15rem, 2.5vw, 1.4rem);
-    }
-
-    .section-intro {
-        margin: 0 0 16px;
-        font-size: clamp(0.92rem, 2vw, 1rem);
-        line-height: 1.6;
-    }
-
-    .body-text {
-        margin: 0 0 8px;
-        font-size: 0.92rem;
-        line-height: 1.5;
-    }
-
-    .sub-head {
-        margin: 20px 0 8px;
-        color: var(--rp-foam);
-        font-size: 1rem;
-    }
-
-    .guide-content code {
-        background: color-mix(in srgb, var(--card-raised) 60%, transparent);
-        border: 1px solid var(--line-strong);
-        border-radius: 4px;
-        padding: 1px 6px;
-        font-family: var(--mono);
-        font-size: 0.88em;
-        overflow-wrap: anywhere;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .guide-content a:not(.guide-link) {
-        color: var(--link);
-    }
-
-    .rule-box {
-        background: color-mix(in srgb, var(--rp-iris) 12%, color-mix(in srgb, var(--card) 60%, transparent));
-        border: 1px solid var(--rp-iris);
-        border-left: 4px solid var(--rp-iris);
-        border-radius: 8px;
-        padding: 14px 16px;
-        margin-bottom: 22px;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .rule-box strong {
-        color: var(--rp-iris);
-        font-size: 1.02rem;
-    }
-
-    .rule-box p {
-        margin: 8px 0 0;
-        line-height: 1.5;
-        font-size: 0.92rem;
-    }
-
-    .steps {
-        padding-left: 20px;
-        margin: 0;
-    }
-
-    .steps > li {
-        margin-bottom: 14px;
-        line-height: 1.5;
-        font-size: 0.92rem;
-    }
-
-    .steps > li:last-child {
-        margin-bottom: 0;
-    }
-
-    .steps strong {
-        color: var(--warn);
-    }
-
-    .sub-steps {
-        margin: 8px 0 0;
-        padding-left: 18px;
-    }
-
-    .sub-steps li {
-        margin-bottom: 6px;
-        font-size: 0.88rem;
-    }
-
-    .step-note {
-        display: block;
-        margin-top: 6px;
-        font-size: 0.84rem;
-        color: var(--muted);
-        line-height: 1.5;
-    }
-
-    .danger-note {
-        display: block;
-        margin-top: 10px;
-        padding: 8px 10px;
-        background: color-mix(in srgb, var(--rp-love) 12%, transparent);
-        border-left: 3px solid var(--rp-love);
-        border-radius: 4px;
-        font-size: 0.86rem;
-        line-height: 1.5;
-    }
-
-    .plain-list {
-        padding-left: 20px;
-        margin: 0;
-    }
-
-    .plain-list li {
-        margin-bottom: 10px;
-        line-height: 1.5;
-        font-size: 0.92rem;
-    }
-
-    .wifi-box {
-        background: color-mix(in srgb, var(--card) 60%, transparent);
-        border: 1px solid var(--line-strong);
-        border-radius: 8px;
-        padding: 10px 12px;
-        margin: 8px 0 4px;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .wifi-row {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        flex-wrap: wrap;
-        margin-bottom: 6px;
-    }
-
-    .wifi-label {
-        color: var(--muted);
-        font-size: 0.8rem;
-        min-width: 70px;
-    }
-
-    .hidden-password {
-        letter-spacing: 2px;
-        color: var(--faint);
-    }
-
-    .reveal-btn {
-        background: color-mix(in srgb, var(--card-raised) 60%, transparent);
-        color: var(--rp-text);
-        border: 1px solid var(--line-strong);
-        border-radius: 6px;
-        padding: 8px 14px;
-        min-height: 40px;
-        font: inherit;
-        font-size: 0.82rem;
-        cursor: pointer;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .reveal-btn:hover {
-        background: var(--rp-hl-med);
-    }
-
-    .wifi-note {
-        margin: 4px 0 0;
-        font-size: 0.78rem;
-        color: var(--faint);
-    }
-
-    .printer-table-wrap {
-        overflow-x: auto;
-        margin: 10px 0 4px;
-        max-width: 100%;
-    }
-
-    .printer-table {
-        border-collapse: collapse;
-        font-size: 0.85rem;
-        min-width: 380px;
-    }
-
-    .printer-table.wide {
+    .search-box {
         width: 100%;
-        min-width: 520px;
+        max-width: 20rem;
     }
 
-    .printer-table th,
-    .printer-table td {
-        border: 1px solid var(--line-strong);
-        padding: 6px 10px;
-        text-align: left;
-        vertical-align: top;
-    }
-
-    .printer-table th {
-        background: color-mix(in srgb, var(--card) 60%, transparent);
-        color: var(--muted);
-        font-weight: 600;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .printer-table .nowrap {
-        white-space: nowrap;
-    }
-
-    .two-col {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
-        gap: 12px;
-    }
-
-    .col-box {
-        background: color-mix(in srgb, var(--card) 60%, transparent);
-        border: 1px solid var(--line-strong);
-        border-radius: 8px;
-        padding: 10px 12px;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .col-box h4 {
-        margin: 0 0 8px;
-        color: var(--rp-foam);
-        font-size: 0.95rem;
-    }
-
-    .mini-steps {
-        padding-left: 18px;
-        margin: 0;
-    }
-
-    .mini-steps li {
-        margin-bottom: 6px;
-        font-size: 0.86rem;
-        line-height: 1.45;
-    }
-
-    .link-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
-        gap: 15px;
-    }
-
-    .guide-link {
-        display: flex;
-        align-items: flex-start;
-        gap: 15px;
-        padding: 16px 18px;
-        background: color-mix(in srgb, var(--card) 60%, transparent);
-        border: 2px solid var(--line-strong);
-        border-radius: 8px;
-        text-decoration: none;
-        color: var(--rp-text);
-        transition: transform var(--normal) var(--ease), border-color var(--normal) var(--ease), box-shadow var(--normal) var(--ease);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .guide-link:hover {
-        border-color: var(--rp-foam);
-        transform: translateY(-3px);
-        box-shadow: 0 8px 16px color-mix(in srgb, var(--rp-foam) 20%, transparent);
-    }
-
-    .download-link {
-        margin: 10px 0;
-        border-color: color-mix(in srgb, var(--rp-foam) 45%, var(--line-strong));
-    }
-
-    .link-icon {
-        font-size: 2rem;
-        flex-shrink: 0;
-        line-height: 1;
-    }
-
-    .link-content {
-        min-width: 0;
-    }
-
-    .guide-section .link-content strong {
-        color: var(--rp-foam);
-        font-size: clamp(0.98rem, 2.2vw, 1.08rem);
-        display: block;
-        margin-bottom: 4px;
-        overflow-wrap: anywhere;
-    }
-
-    .link-desc {
-        display: block;
-        color: var(--muted);
-        font-size: clamp(0.85rem, 1.8vw, 0.93rem);
-        line-height: 1.4;
-    }
-
-    .warning-section {
-        border: 2px solid var(--rp-love);
-        background: linear-gradient(135deg, color-mix(in srgb, var(--rp-love) 8%, color-mix(in srgb, var(--bg) 60%, transparent)), color-mix(in srgb, var(--bg) 60%, transparent));
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .warning-section h3 {
-        color: var(--rp-love);
-    }
-
-    .warning-list {
-        display: flex;
-        flex-direction: column;
-        gap: 14px;
-    }
-
-    .warning-item {
-        display: flex;
-        align-items: flex-start;
-        gap: 16px;
-        padding: 16px 18px;
-        background: color-mix(in srgb, var(--card) 60%, transparent);
-        border-left: 4px solid var(--rp-love);
-        border-radius: 8px;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .community-item {
-        border-left-color: var(--rp-foam);
-        background: color-mix(in srgb, var(--rp-foam) 8%, color-mix(in srgb, var(--card) 60%, transparent));
-        align-items: center;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .warning-icon {
-        font-size: 2rem;
-        flex-shrink: 0;
-        line-height: 1;
-    }
-
-    .warning-content strong {
-        color: var(--rp-rose);
-        font-size: clamp(1rem, 2.3vw, 1.1rem);
-        display: block;
-        margin-bottom: 6px;
-    }
-
-    .warning-content p {
-        margin: 0;
-        line-height: 1.55;
-        font-size: clamp(0.9rem, 1.9vw, 0.98rem);
-    }
-
-    .contact-section {
-        background: color-mix(in srgb, var(--rp-pine) 12%, color-mix(in srgb, var(--bg) 60%, transparent));
-        border: 2px solid var(--rp-pine);
-        text-align: center;
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    .contact-section h3 {
-        color: var(--link);
-    }
-
-    .contact-section p {
-        font-size: clamp(0.95rem, 2vw, 1.05rem);
-        line-height: 1.7;
-        margin: 0;
-    }
-
-    /* On Dawn, nudge coloured text towards the text colour so it reads */
-    :global(:root[data-theme='light']) .info-chip,
-    :global(:root[data-theme='light']) .category-tag.returned,
-    :global(:root[data-theme='light']) .status-message.returned,
-    :global(:root[data-theme='light']) .guide-section .link-content strong,
-    :global(:root[data-theme='light']) .sub-head,
-    :global(:root[data-theme='light']) .col-box h4 {
-        color: color-mix(in srgb, var(--rp-foam) 70%, var(--rp-text));
-    }
-
-    :global(:root[data-theme='light']) .guide-section h3,
-    :global(:root[data-theme='light']) .warning-content strong,
-    :global(:root[data-theme='light']) .borrow-title {
-        color: color-mix(in srgb, var(--rp-rose) 75%, var(--rp-text));
-    }
-
-    :global(:root[data-theme='light']) .steps strong {
-        color: color-mix(in srgb, var(--rp-gold) 70%, var(--rp-text));
-    }
-
-    .item-photo a {
-        display: inline-block;
-    }
-
-    @media (max-width: 768px) {
-        .detail-row {
-            flex-direction: column;
-            gap: 8px;
-        }
-
-        .detail-item {
-            min-width: auto;
-        }
-
-        .photo-thumbnail {
-            max-width: 100%;
-            max-height: 150px;
-        }
-
-        .return-action-btn,
-        .return-cancel-btn {
-            width: 100%;
-        }
-
-        .warning-item {
-            gap: 12px;
-            padding: 14px;
-        }
-
-        .warning-icon,
-        .link-icon {
-            font-size: 1.6rem;
+    @media (max-width: 575.98px) {
+        .search-box {
+            max-width: none;
         }
     }
 
-    @media (max-width: 480px) {
-        .form-container,
-        .return-container,
-        .printer-guide-container {
-            padding: 16px 14px;
-            border-radius: 10px;
-        }
+    .handover-hint {
+        max-width: 16rem;
+    }
 
-        .guide-section {
-            padding: 14px 12px;
+    @media (max-width: 767.98px) {
+        .handover-hint {
+            max-width: none;
         }
+    }
 
-        .steps,
-        .plain-list {
-            padding-left: 18px;
-        }
+    /* Printer guide */
+    .guide-nav {
+        position: sticky;
+        top: 1rem;
+    }
+
+    .guide section {
+        scroll-margin-top: 1rem;
+    }
+
+    /* Tabler clips .steps for its horizontal form; the counters need room */
+    .steps-vertical {
+        overflow: visible;
+    }
+
+    .well {
+        background: var(--tblr-bg-surface-secondary);
+    }
+
+    .wifi-grid {
+        --tblr-datagrid-item-width: 12rem;
+    }
+
+    .spaced li + li {
+        margin-top: 0.5rem;
     }
 </style>
