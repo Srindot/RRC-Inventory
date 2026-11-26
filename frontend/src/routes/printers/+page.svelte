@@ -1213,9 +1213,9 @@
 
 <style>
     .container {
-        max-width: 1200px;
+        max-width: var(--page-max);
         margin: 0 auto;
-        padding: 16px clamp(16px, 3vw, 28px) 32px;
+        padding: 16px var(--gutter) 32px;
         box-sizing: border-box;
     }
 

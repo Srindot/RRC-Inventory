@@ -268,9 +268,9 @@
 
 <style>
     .container {
-        max-width: 1200px;
+        max-width: var(--page-max);
         margin: 0 auto;
-        padding: clamp(10px, 2vw, 20px) clamp(16px, 2vw, 20px) 40px;
+        padding: clamp(10px, 2vw, 20px) var(--gutter) 40px;
         box-sizing: border-box;
     }
 

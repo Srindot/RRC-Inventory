@@ -2735,9 +2735,9 @@
 
     /* Same column as every other page, so the admin lines up with the header */
     .admin-container {
-        max-width: 1200px;
+        max-width: var(--page-max);
         margin: 0 auto;
-        padding: 20px clamp(16px, 3vw, 28px) 48px;
+        padding: 20px var(--gutter) 48px;
         box-sizing: border-box;
     }
 
@@ -5037,7 +5037,6 @@
     /* --- users & groups --- */
     .admin-management-container {
         padding: 0;
-        max-width: 1200px;
         margin: 0 auto;
     }
 

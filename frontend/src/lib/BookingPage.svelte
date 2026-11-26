@@ -734,9 +734,9 @@
 
 <style>
     .container {
-        max-width: 1200px;
+        max-width: var(--page-max);
         margin: 0 auto;
-        padding: 16px;
+        padding: 16px var(--gutter);
         box-sizing: border-box;
         min-width: 0;
     }
