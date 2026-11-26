@@ -213,6 +213,21 @@ func hmsWikiURL(code string) string {
 		strings.TrimPrefix(code, "HMS_")
 }
 
+// Models with no chamber temperature sensor still send chamber_temper, as a
+// fixed placeholder (5 on the P1S), which the page would show as a real
+// reading. They are known by their serial prefix: 01P is the P1S, 01S the
+// P1P, 030 the A1 mini and 039 the A1.
+var noChamberSensorPrefixes = []string{"01P", "01S", "030", "039"}
+
+func hasChamberSensor(serial string) bool {
+	for _, prefix := range noChamberSensorPrefixes {
+		if strings.HasPrefix(strings.ToUpper(serial), prefix) {
+			return false
+		}
+	}
+	return true
+}
+
 // printer holds the live state of one machine.
 type printer struct {
 	cfg PrinterConfig
@@ -752,7 +767,7 @@ func (p *printer) applyReport(payload []byte) {
 	if info.BedTemper != nil {
 		p.bedTemp = *info.BedTemper
 	}
-	if info.ChamberTemper != nil {
+	if info.ChamberTemper != nil && hasChamberSensor(p.cfg.Serial) {
 		p.chamberTemp = *info.ChamberTemper
 	}
 

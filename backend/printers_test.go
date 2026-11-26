@@ -612,3 +612,19 @@ func TestNextCameraRetry(t *testing.T) {
 		})
 	}
 }
+
+// A P1S has no chamber sensor and reports a fixed 5, which must not reach the
+// page as if it were a reading.
+func TestChamberTempIgnoredWithoutSensor(t *testing.T) {
+	p1s := &printer{cfg: PrinterConfig{Serial: "01P00A411600279"}}
+	p1s.applyReport([]byte(`{"print":{"chamber_temper":5,"bed_temper":55}}`))
+	if got := p1s.status(); got.ChamberTemp != 0 || got.BedTemp != 55 {
+		t.Errorf("P1S: want chamber 0 and bed 55, got %+v", got)
+	}
+
+	x1c := &printer{cfg: PrinterConfig{Serial: "00M09A350100123"}}
+	x1c.applyReport([]byte(`{"print":{"chamber_temper":34}}`))
+	if got := x1c.status(); got.ChamberTemp != 34 {
+		t.Errorf("X1C: want chamber 34, got %v", got.ChamberTemp)
+	}
+}
