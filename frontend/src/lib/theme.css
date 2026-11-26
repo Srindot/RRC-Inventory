@@ -632,3 +632,24 @@ textarea {
 .account-page .success {
     color: var(--ctp-green);
 }
+
+/* --- text over the live background ------------------------------------
+   Secondary text that sits straight on the dot background (subtitles,
+   hints, the back link, the footer) gets a soft halo in the page colour:
+   the dots fade out right around the letters and stay untouched elsewhere.
+   Class names cover each page's own subtitle styles. */
+.subtitle,
+.subtitle-text,
+.site-sub,
+.footnote,
+.crumbs a,
+.site-foot,
+.home-options h2,
+.page-head p,
+.admin-info > span:first-child {
+    text-shadow:
+        0 0 2px var(--bg),
+        0 0 6px var(--bg),
+        0 0 12px var(--bg),
+        0 0 20px color-mix(in srgb, var(--bg) 70%, transparent);
+}

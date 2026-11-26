@@ -128,11 +128,20 @@
         box-sizing: border-box;
     }
 
+    /* Logo and name share one frosted, semi-transparent box, so the name
+       stays readable over the live background without hiding it */
     .brand {
         display: flex;
         align-items: center;
         gap: clamp(12px, 2.5vw, 18px);
         min-width: 0;
+        padding: clamp(5px, 0.6vw, 8px) clamp(14px, 1.6vw, 22px) clamp(5px, 0.6vw, 8px) clamp(5px, 0.6vw, 8px);
+        border: 1px solid var(--line);
+        border-radius: clamp(14px, 1.4vw, 20px);
+        background: color-mix(in srgb, var(--card) 55%, transparent);
+        -webkit-backdrop-filter: blur(10px) saturate(1.15);
+        backdrop-filter: blur(10px) saturate(1.15);
+        box-shadow: var(--shadow-sm);
         color: inherit;
         text-decoration: none;
     }
@@ -145,8 +154,9 @@
         width: auto;
         padding: 3px 6px 3px 3px;
         border-radius: 12px;
-        background: #191724;
-        box-shadow: var(--shadow-sm);
+        /* Semi-transparent dark plate: the white lettering still reads, and
+           the frosted box shows through around it */
+        background: color-mix(in srgb, #191724 55%, transparent);
         transition: transform var(--normal) var(--ease), box-shadow var(--normal) var(--ease);
     }
 
