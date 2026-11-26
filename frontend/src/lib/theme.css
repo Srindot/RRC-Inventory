@@ -90,6 +90,20 @@
     --normal: 260ms;
     --slow: 420ms;
 
+    /* Layout: one fluid width for the whole site. The header, the back link
+       and .page all use it, so pages line up at every screen size. Page
+       containers should use max-width: var(--page-max) (it includes the
+       gutters) or width: var(--content-width) (it does not). */
+    --gutter: clamp(16px, 3.4vw, 64px);
+    --page-max: 1680px;
+    --content-width: min(100% - 2 * var(--gutter), var(--page-max) - 2 * var(--gutter));
+
+    /* Glass: content surfaces that float over the ASCII background */
+    --glass: color-mix(in srgb, var(--card) 72%, transparent);
+    --glass-strong: color-mix(in srgb, var(--card) 88%, transparent);
+    --glass-blur: saturate(140%) blur(14px);
+    --ascii-opacity: 0.42;
+
     --font: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
     --mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
 }
@@ -126,6 +140,8 @@
     --shadow-sm: 0 2px 8px rgba(87, 82, 121, 0.08);
     --shadow: 0 8px 24px rgba(87, 82, 121, 0.12);
     --shadow-lg: 0 18px 48px rgba(87, 82, 121, 0.18);
+
+    --ascii-opacity: 0.42;
 }
 
 html {
@@ -149,9 +165,10 @@ body {
    numbers, monospace digits, one accent used sparingly. */
 
 .page {
-    max-width: 1200px;
+    max-width: var(--page-max);
     margin: 0 auto;
-    padding: 20px clamp(16px, 3vw, 28px) 48px;
+    padding: clamp(16px, 2vw, 28px) var(--gutter) clamp(40px, 5vw, 72px);
+    box-sizing: border-box;
 }
 
 .page-head {
@@ -400,9 +417,6 @@ textarea {
 }
 
 @media (max-width: 700px) {
-    .page {
-        padding: 18px 16px 40px;
-    }
 
     .page-head h1 {
         font-size: 1.45rem;

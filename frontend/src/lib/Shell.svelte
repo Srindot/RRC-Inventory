@@ -7,6 +7,7 @@
     import { onMount } from 'svelte';
     import { page } from '$app/stores';
     import { can, getUser, loginUrl, refreshUser } from '$lib/auth.js';
+    import AsciiBackground from '$lib/AsciiBackground.svelte';
     import Icon from '$lib/Icon.svelte';
     import NotificationBell from '$lib/NotificationBell.svelte';
 
@@ -42,6 +43,8 @@
     // Read at click time: the shell outlives client-side navigation.
     const goLogin = () => (location.href = loginUrl());
 </script>
+
+<AsciiBackground />
 
 <div class="frame">
     <header class="site-head" class:compact={!home}>
@@ -93,7 +96,7 @@
         </nav>
     {/if}
 
-    <main class="content"><slot /></main>
+    <main class="content" class:home><slot /></main>
 
     <footer class="site-foot">
         <span>Created by <a href="https://github.com/srindot" target="_blank" rel="noopener noreferrer">Srinath</a></span>
@@ -102,6 +105,8 @@
 
 <style>
     .frame {
+        position: relative;
+        z-index: 1;
         display: flex;
         flex-direction: column;
         min-height: 100vh;
@@ -117,9 +122,9 @@
         flex-wrap: wrap;
         gap: 14px 20px;
         width: 100%;
-        max-width: 1200px;
+        max-width: var(--page-max);
         margin: 0 auto;
-        padding: clamp(14px, 3vw, 24px) clamp(16px, 3vw, 28px) 8px;
+        padding: clamp(14px, 2.2vw, 36px) var(--gutter) clamp(6px, 1vw, 14px);
         box-sizing: border-box;
     }
 
@@ -136,7 +141,7 @@
        a dark Rosé Pine plate. The light theme swaps in a copy with black
        lettering (same blue badge), which needs no plate. */
     .logo {
-        height: clamp(52px, 8vw, 78px);
+        height: clamp(52px, min(4.6vw, 8vh), 88px);
         width: auto;
         padding: 3px 6px 3px 3px;
         border-radius: 12px;
@@ -172,25 +177,26 @@
     }
 
     .site-title {
-        font-size: clamp(1.35rem, 3.6vw, 2.3rem);
-        font-weight: 500;
-        letter-spacing: -0.01em;
+        font-size: clamp(1.35rem, 2.4vw, 2.6rem);
+        font-weight: 600;
+        letter-spacing: -0.025em;
         line-height: 1.15;
         color: var(--rp-text);
     }
 
     .site-sub {
-        font-size: clamp(0.85rem, 1.6vw, 1.05rem);
+        font-size: clamp(0.85rem, 1.1vw, 1.1rem);
         color: var(--muted);
+        letter-spacing: 0.005em;
     }
 
     /* Inner pages: the same header, smaller, so the page itself leads */
     .site-head.compact .logo {
-        height: clamp(40px, 5vw, 52px);
+        height: clamp(40px, 3.6vw, 60px);
     }
 
     .site-head.compact .site-title {
-        font-size: clamp(1.1rem, 2.4vw, 1.45rem);
+        font-size: clamp(1.1rem, 1.6vw, 1.6rem);
     }
 
     .site-head.compact .site-sub {
@@ -209,18 +215,28 @@
         display: inline-flex;
         align-items: center;
         gap: 8px;
-        min-height: 40px;
+        min-height: clamp(40px, 2.2vw, 48px);
         padding: 0 14px;
         border: 1px solid var(--line-strong);
         border-radius: var(--radius-pill);
-        background: color-mix(in srgb, var(--card) 80%, transparent);
+        background: var(--glass);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
         color: var(--rp-text);
         font: inherit;
         font-size: 0.9rem;
         font-weight: 550;
         text-decoration: none;
         cursor: pointer;
-        transition: border-color var(--fast) var(--ease), background var(--fast) var(--ease);
+        transition:
+            border-color var(--fast) var(--ease),
+            background var(--fast) var(--ease),
+            transform var(--fast) var(--ease);
+    }
+
+    .theme-toggle:active,
+    .head-btn:active {
+        transform: scale(0.97);
     }
 
     .theme-toggle :global(svg) {
@@ -258,33 +274,62 @@
     .actions :global(.bell-btn) {
         border: 1px solid var(--line-strong);
         border-radius: var(--radius-pill);
-        background: color-mix(in srgb, var(--card) 80%, transparent);
+        background: var(--glass);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
     }
 
     /* --- back link ------------------------------------------------------- */
 
     .crumbs {
         width: 100%;
-        max-width: 1200px;
+        max-width: var(--page-max);
         margin: 0 auto;
-        padding: 6px clamp(16px, 3vw, 28px) 0;
+        padding: 6px var(--gutter) 0;
         box-sizing: border-box;
     }
 
     .crumbs a {
+        display: inline-flex;
+        align-items: center;
+        min-height: 36px;
+        padding: 0 14px;
+        margin-left: -2px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius-pill);
+        background: var(--glass);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
         color: var(--link);
         text-decoration: none;
-        font-size: 0.95rem;
+        font-size: 0.92rem;
+        font-weight: 500;
+        transition: border-color var(--fast) var(--ease), background var(--fast) var(--ease);
     }
 
     .crumbs a:hover {
-        text-decoration: underline;
+        border-color: color-mix(in srgb, var(--link) 45%, var(--line-strong));
+        background: color-mix(in srgb, var(--link) 10%, var(--glass));
     }
 
     /* --- page and footer ------------------------------------------------- */
 
     .content {
         flex: 1;
+        width: 100%;
+    }
+
+    /* The home page stretches to fill the screen, so its tiles can sit
+       balanced between the header and the footer */
+    .content.home {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .content.home > :global(.page) {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
         width: 100%;
     }
 
@@ -295,7 +340,9 @@
         gap: 2px;
         padding: 18px 16px calc(18px + env(safe-area-inset-bottom));
         border-top: 1px solid var(--line);
-        background: color-mix(in srgb, var(--rp-surface) 70%, transparent);
+        background: var(--glass);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
         color: var(--muted);
         font-size: 0.8rem;
         text-align: center;

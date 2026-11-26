@@ -633,7 +633,17 @@
 
         <div class="home-options">
             <h2>What would you like to do?</h2>
-            <div class="option-buttons">
+            <!-- The pointer position drives each tile's spotlight -->
+            <div
+                class="option-buttons"
+                on:pointermove={(e) => {
+                    const t = e.target.closest?.('.option-btn');
+                    if (!t) return;
+                    const r = t.getBoundingClientRect();
+                    t.style.setProperty('--mx', `${e.clientX - r.left}px`);
+                    t.style.setProperty('--my', `${e.clientY - r.top}px`);
+                }}
+            >
                 <button class="option-btn" style="--i: 0; --tile-accent: var(--rp-rose)" on:click={() => go('borrow')}>
                     <span class="tile-icon" aria-hidden="true">📦</span>
                     <span class="tile-body">
@@ -1541,67 +1551,116 @@
         color: var(--warn);
     }
 
-    /* Home: the menu of tiles, one row each - icon, text, arrow */
+    /* Home: the menu of tiles. On tablets and up the grid fills the space
+       between the header and the footer (tiles grow with the screen, within
+       limits); on phones it is one column of comfortable rows.
+       Tiles are a row (icon, text, arrow) by default, and become cards
+       (icon on top, title below) when there is room: wide and tall screens. */
+    .page:has(.home-options) {
+        --home-grid-max: 100%;
+        padding-bottom: clamp(20px, 3vh, 40px);
+    }
+
     .mine {
-        max-width: 1000px;
-        margin: 0 auto 18px;
+        width: 100%;
+        max-width: var(--home-grid-max);
+        margin: 0 auto clamp(14px, 2.2vh, 26px);
+        padding: clamp(14px, 1.4vw, 22px) clamp(16px, 1.8vw, 28px);
+        box-sizing: border-box;
+        background: color-mix(in srgb, var(--hue) 7%, var(--glass-strong));
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
+    }
+
+    .mine .label {
+        margin-bottom: 4px;
     }
 
     .home-options {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        width: 100%;
+        max-width: var(--home-grid-max);
+        margin: 0 auto;
         text-align: center;
     }
 
     .home-options h2 {
-        margin: 8px 0 0;
-        font-size: clamp(1.25rem, 3vw, 1.6rem);
-        font-weight: 500;
+        margin: 0;
+        font-size: clamp(1.3rem, 1.9vw, 2.1rem);
+        font-weight: 600;
+        letter-spacing: -0.025em;
+        line-height: 1.2;
         color: var(--rp-text);
+        animation: fade var(--slow) var(--ease) both;
     }
 
     .option-buttons {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-        gap: clamp(12px, 2vw, 18px);
-        max-width: 1000px;
-        margin: clamp(18px, 3vw, 28px) auto 0;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-auto-rows: minmax(clamp(96px, 12vh, 180px), 1fr);
+        gap: clamp(12px, min(1.4vw, 2.2vh), 24px);
+        width: 100%;
+        /* Take the free height (rows share it), but no further than looks right */
+        flex: 1 1 0;
+        max-height: 860px;
+        margin: clamp(14px, 2.2vh, 32px) auto 0;
     }
 
     .option-btn {
         --tile-accent: var(--rp-iris);
+        --mx: 50%;
+        --my: 50%;
+        --icon: clamp(44px, min(4.2vw, 5vh), 84px);
         position: relative;
-        display: flex;
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        grid-template-areas: 'icon body arrow';
         align-items: center;
-        gap: 14px;
+        gap: clamp(12px, 1.2vw, 20px);
         width: 100%;
-        min-height: 84px;
+        min-width: 0;
         box-sizing: border-box;
         text-align: left;
         text-decoration: none;
-        padding: clamp(14px, 2.4vw, 20px);
+        padding: clamp(14px, min(1.6vw, 2vh), 30px);
         border: 1px solid var(--line-strong);
-        border-radius: var(--radius-lg);
+        border-radius: clamp(14px, 1.2vw, 22px);
         background:
-            linear-gradient(180deg, color-mix(in srgb, var(--rp-text) 4%, transparent), transparent 60%),
-            var(--card);
+            linear-gradient(160deg, color-mix(in srgb, var(--tile-accent) 8%, transparent), transparent 50%),
+            var(--glass);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
         color: var(--rp-text);
         font: inherit;
         cursor: pointer;
         overflow: hidden;
-        box-shadow: var(--shadow-sm);
+        isolation: isolate;
+        box-shadow:
+            inset 0 1px 0 color-mix(in srgb, var(--rp-text) 6%, transparent),
+            var(--shadow-sm);
         transition:
             transform var(--normal) var(--ease),
             border-color var(--normal) var(--ease),
             box-shadow var(--normal) var(--ease);
         animation: rise var(--slow) var(--ease) both;
-        animation-delay: calc(var(--i, 0) * 50ms);
+        animation-delay: calc(var(--i, 0) * 45ms);
+        -webkit-tap-highlight-color: transparent;
     }
 
-    /* A colour wash that grows from the left edge on hover */
+    /* A soft spotlight in the tile's colour that follows the pointer */
     .option-btn::before {
         content: '';
         position: absolute;
         inset: 0;
-        background: linear-gradient(90deg, color-mix(in srgb, var(--tile-accent) 18%, transparent), transparent 55%);
+        z-index: -1;
+        background: radial-gradient(
+            clamp(220px, 22vw, 420px) circle at var(--mx) var(--my),
+            color-mix(in srgb, var(--tile-accent) 20%, transparent),
+            transparent 70%
+        );
         opacity: 0;
         transition: opacity var(--normal) var(--ease);
         pointer-events: none;
@@ -1612,19 +1671,27 @@
         content: '';
         position: absolute;
         left: 0;
-        top: 0;
-        bottom: 0;
+        top: 22%;
+        bottom: 22%;
         width: 3px;
+        border-radius: 0 3px 3px 0;
         background: var(--tile-accent);
-        transform: scaleY(0.3);
-        transition: transform var(--normal) var(--ease);
+        box-shadow: 0 0 14px color-mix(in srgb, var(--tile-accent) 60%, transparent);
+        opacity: 0.8;
+        transition:
+            top var(--normal) var(--ease),
+            bottom var(--normal) var(--ease),
+            opacity var(--normal) var(--ease);
     }
 
     .option-btn:hover,
     .option-btn:focus-visible {
-        transform: translateY(-3px);
-        border-color: color-mix(in srgb, var(--tile-accent) 55%, var(--line-strong));
-        box-shadow: var(--shadow);
+        transform: translateY(-4px);
+        border-color: color-mix(in srgb, var(--tile-accent) 50%, var(--line-strong));
+        box-shadow:
+            inset 0 1px 0 color-mix(in srgb, var(--rp-text) 8%, transparent),
+            0 18px 40px -12px color-mix(in srgb, var(--tile-accent) 35%, transparent),
+            var(--shadow);
     }
 
     .option-btn:hover::before,
@@ -1634,77 +1701,183 @@
 
     .option-btn:hover::after,
     .option-btn:focus-visible::after {
-        transform: scaleY(1);
+        top: 0;
+        bottom: 0;
+        opacity: 1;
     }
 
     .option-btn:active {
-        transform: translateY(-1px) scale(0.995);
+        transform: translateY(-1px) scale(0.99);
+        transition-duration: var(--fast);
     }
 
-    .tile-icon {
-        font-size: 1.85rem;
+    /* Emoji sit on a small tinted plate */
+    .tile-icon,
+    .tile-image {
+        grid-area: icon;
+        display: grid;
+        place-items: center;
+        width: var(--icon);
+        height: var(--icon);
+        box-sizing: border-box;
+        border-radius: calc(var(--icon) * 0.24);
+        background: color-mix(in srgb, var(--tile-accent) 13%, transparent);
+        border: 1px solid color-mix(in srgb, var(--tile-accent) 22%, transparent);
+        font-size: calc(var(--icon) * 0.5);
         line-height: 1;
-        flex-shrink: 0;
         transition: transform var(--normal) var(--ease);
     }
 
     .tile-image {
-        width: 46px;
-        height: 46px;
+        padding: calc(var(--icon) * 0.1);
         object-fit: contain;
-        flex-shrink: 0;
-        transition: transform var(--normal) var(--ease);
     }
 
     .option-btn:hover .tile-icon,
     .option-btn:hover .tile-image {
-        transform: scale(1.08) rotate(-2deg);
+        transform: scale(1.06) rotate(-3deg);
     }
 
     .tile-body {
+        grid-area: body;
         display: flex;
         flex-direction: column;
-        gap: 3px;
+        gap: clamp(2px, 0.4vw, 6px);
         min-width: 0;
-        flex: 1;
     }
 
     .tile-title {
-        font-size: clamp(1rem, 2vw, 1.12rem);
+        font-size: clamp(1.05rem, 1.3vw, 1.5rem);
         font-weight: 650;
+        letter-spacing: -0.015em;
+        line-height: 1.2;
         color: var(--tile-accent);
     }
 
+    :global(:root[data-theme='light']) .tile-title {
+        color: color-mix(in srgb, var(--tile-accent) 82%, #575279);
+    }
+
     .tile-sub {
-        font-size: clamp(0.82rem, 1.6vw, 0.9rem);
+        font-size: clamp(0.85rem, 0.9vw, 1rem);
         color: var(--muted);
-        line-height: 1.35;
+        line-height: 1.4;
     }
 
     .tile-arrow {
-        flex-shrink: 0;
+        grid-area: arrow;
+        display: grid;
+        place-items: center;
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        border: 1px solid var(--line);
         color: var(--faint);
-        font-size: 1.1rem;
-        opacity: 0;
-        transform: translateX(-4px);
-        transition: transform var(--normal) var(--ease), opacity var(--normal) var(--ease), color var(--normal) var(--ease);
+        font-size: 1rem;
+        line-height: 1;
+        transition:
+            transform var(--normal) var(--ease),
+            color var(--normal) var(--ease),
+            border-color var(--normal) var(--ease),
+            background var(--normal) var(--ease);
     }
 
     .option-btn:hover .tile-arrow,
     .option-btn:focus-visible .tile-arrow {
-        opacity: 1;
-        transform: none;
+        transform: rotate(-45deg);
         color: var(--tile-accent);
+        border-color: color-mix(in srgb, var(--tile-accent) 45%, transparent);
+        background: color-mix(in srgb, var(--tile-accent) 12%, transparent);
     }
 
-    /* Phones: there is no hover, so show the arrow, and use one column */
+    /* A lone tile on the last row (signed out: 7 tiles) spans the row
+       instead of leaving a hole */
+    @media (min-width: 1025px) {
+        .option-btn:last-child:nth-child(3n + 1) {
+            grid-column: 1 / -1;
+        }
+    }
+
+    @media (min-width: 641px) and (max-width: 1024px) {
+        .option-btn:last-child:nth-child(2n + 1) {
+            grid-column: 1 / -1;
+        }
+    }
+
+    /* Big screens: tiles become cards, icon top-left, arrow top-right,
+       title and line at the bottom */
+    @media (min-width: 1025px) and (min-height: 940px) {
+        .option-btn {
+            grid-template-columns: 1fr auto;
+            grid-template-rows: 1fr auto;
+            grid-template-areas:
+                'icon arrow'
+                'body body';
+            align-items: start;
+        }
+
+        .tile-body {
+            align-self: end;
+        }
+
+        .option-btn::after {
+            top: 18%;
+            bottom: 18%;
+        }
+    }
+
+    /* Tablets: two columns */
+    @media (max-width: 1024px) {
+        .option-buttons {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            grid-auto-rows: minmax(96px, 1fr);
+            max-height: none;
+        }
+
+        .option-btn {
+            --icon: 52px;
+        }
+    }
+
+    /* Phones: one column of rows with big tap targets. The page scrolls
+       naturally instead of stretching. */
     @media (max-width: 640px) {
+        .home-options {
+            justify-content: flex-start;
+        }
+
         .option-buttons {
             grid-template-columns: 1fr;
+            grid-auto-rows: auto;
+            flex: none;
+            gap: 10px;
+            margin-top: 16px;
+        }
+
+        .option-btn {
+            --icon: 48px;
+            gap: 14px;
+            min-height: 76px;
+            padding: 14px 14px 14px 16px;
+        }
+
+        .tile-title {
+            font-size: 1.05rem;
+        }
+
+        .tile-sub {
+            font-size: 0.86rem;
         }
 
         .tile-arrow {
-            opacity: 1;
+            width: 30px;
+            height: 30px;
+        }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .option-btn:hover,
+        .option-btn:focus-visible {
             transform: none;
         }
     }
